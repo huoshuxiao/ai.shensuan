@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ---- 场内ETF策略：运行时产物 ----
+data_cache/
+output/reports/
+storage/position_state.json
+storage/position_state.json.tmp

@@ -1,0 +1,35 @@
+# 核心
+pandas>=2.0.0
+numpy>=1.24.0
+pyarrow>=14.0.0
+scipy>=1.11.0
+
+# 数据源
+akshare>=1.12.0
+
+# 可视化
+matplotlib>=3.7.0
+plotly>=5.18.0
+streamlit>=1.30.0
+
+# 配置
+pyyaml>=6.0
+python-dotenv>=1.0.0
+
+# LLM
+openai>=1.30.0
+tenacity>=8.2.0
+
+# 可选（推荐）
+lightgbm>=4.0.0
+shap>=0.44.0
+statsmodels>=0.14.0
+kaleido>=0.2.1
+Pillow>=10.0.0
+imageio>=2.31.0
+imageio-ffmpeg>=0.4.9
+schedule>=1.2.0
+
+# 官方 RD-Agent（可选）
+# git+https://github.com/microsoft/RD-Agent.git
+# qlib

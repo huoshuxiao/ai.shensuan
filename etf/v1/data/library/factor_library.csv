@@ -1,8 +1,11 @@
-﻿name,expr,ic,icir,source,status,first_seen,last_seen,updates
-volatility_20,,-0.0346,-1.25,pipeline,active,2026-09-19 21:12:24,2026-09-19 21:12:24,1
-reversal_5,,0.0227,0.4661,pipeline,active,2026-09-19 21:12:24,2026-09-19 21:12:24,1
-volume_ratio_20,,0.0213,0.7451,pipeline,active,2026-09-19 21:12:24,2026-09-19 21:12:24,1
-ma_ratio_10_30,,0.0149,0.2916,pipeline,active,2026-09-19 21:12:24,2026-09-19 21:12:24,1
-rsi_14,,-0.009,-0.1084,pipeline,active,2026-09-19 21:12:24,2026-09-19 21:12:24,1
-price_position_20,,-0.0065,-0.135,pipeline,active,2026-09-19 21:12:24,2026-09-19 21:12:24,1
-momentum_10,,0.0052,0.0853,pipeline,active,2026-09-19 21:12:24,2026-09-19 21:12:24,1
+﻿name,cn_name,expr,ic,icir,source,status,first_seen,last_seen,updates
+volatility_20,20日低波动,,-0.0346,-1.25,pipeline,active,2026-09-19 21:12:24,2026-09-19 21:12:24,1
+reversal_5,5日反转,,0.0227,0.4661,pipeline,active,2026-09-19 21:12:24,2026-09-19 21:12:24,1
+volume_ratio_20,20日量比,,0.0213,0.7451,pipeline,active,2026-09-19 21:12:24,2026-09-19 21:12:24,1
+ma_ratio_10_30,均线比(10日/30日),,0.0149,0.2916,pipeline,active,2026-09-19 21:12:24,2026-09-19 21:12:24,1
+rsi_14,14日RSI相对强弱,,-0.009,-0.1084,pipeline,active,2026-09-19 21:12:24,2026-09-19 21:12:24,1
+price_position_20,20日价格分位,,-0.0065,-0.135,pipeline,active,2026-09-19 21:12:24,2026-09-19 21:12:24,1
+momentum_10,10日动量,,0.0052,0.0853,pipeline,active,2026-09-19 21:12:24,2026-09-19 21:12:24,1
+vol_20,20日低波动(模板),"-ts_std(returns, 20)",-0.0346,-1.25,simple,active,2026-09-19 21:45:16,2026-09-19 21:45:16,1
+gp_0,遗传规划因子1号,"ts_std(log((open + (open * log((open + (open * close)))))), 5)",0.0426,1.559,genetic,active,2026-09-19 21:45:16,2026-09-19 21:45:16,1
+gp_2,遗传规划因子3号,close,-0.0334,-0.394,genetic,active,2026-09-19 21:45:16,2026-09-19 21:45:16,1

@@ -1,16 +1,16 @@
 ﻿name,cn_name,expr,ic,icir,source,status,first_seen,last_seen,updates
-gp_0,遗传规划因子1号,"((low - ((open * delay(returns, 5)) - log(returns))) * volume)",-0.0438,-1.1322,genetic,active,2026-09-19 22:40:25,2026-09-19 23:14:41,3
-gp_1,遗传规划因子2号,"((low - (high - log(returns))) * ts_std(high, 20))",-0.0411,-1.2627,genetic,active,2026-09-19 22:40:25,2026-09-19 22:44:17,2
-gp_2,遗传规划因子3号,"((low - ((open * delay(returns, 5)) - log(returns))) * ts_std(high, 20))",-0.0394,-1.1156,pipeline,active,2026-09-19 22:44:17,2026-09-19 22:44:17,1
-gp_5,遗传规划因子6号,"((-ts_sum(log(returns), 5)) * ts_std(high, 20))",0.0331,2.1224,pipeline,active,2026-09-19 22:44:17,2026-09-19 22:44:17,1
-volatility_20,20日低波动,,-0.0311,-1.5786,pipeline,active,2026-09-19 22:44:17,2026-09-19 22:44:17,1
-gp_7,遗传规划因子8号,(returns + (low - (high - sign(high)))),-0.017,-1.4526,pipeline,active,2026-09-19 22:44:17,2026-09-19 23:14:41,2
-mogp_0,多目标遗传规划因子1号,(close / low),-0.03,0.0,pipeline,active,2026-09-19 22:44:17,2026-09-19 22:44:17,1
-mogp_1,多目标遗传规划因子2号,"delta(ts_std(abs(abs(high)), 10), 10)",0.0238,0.0,pipeline,active,2026-09-19 22:44:17,2026-09-19 22:44:17,1
-hybrid_1,LLM-遗传混合因子2号,abs(volume),0.0237,0.0,pipeline,active,2026-09-19 22:44:17,2026-09-19 22:44:17,1
-volume_ratio_20,20日量比,,0.0212,0.7463,pipeline,active,2026-09-19 22:44:17,2026-09-19 22:44:17,1
-reversal_5,5日反转,,0.0176,0.5362,pipeline,active,2026-09-19 22:44:17,2026-09-19 22:44:17,1
-ma_ratio_10_30,均线比(10日/30日),,0.0123,0.4995,pipeline,active,2026-09-19 22:44:17,2026-09-19 22:44:17,1
-mogp_4,多目标遗传规划因子5号,"ts_mean(returns, 10)",0.0103,0.0,pipeline,active,2026-09-19 22:44:17,2026-09-19 22:44:17,1
-ma_ratio_5_20,均线比(5日/20日),,0.0081,0.3655,pipeline,active,2026-09-19 22:44:17,2026-09-19 22:44:17,1
+gp_0,遗传规划因子1号,"((low - ((open * delay(returns, 5)) - log(returns))) * volume)",-0.0438,-1.1322,genetic,active,2026-09-19 22:40:25,2026-09-19 23:17:43,4
+gp_1,遗传规划因子2号,"((low - (high - log(returns))) * ts_std(high, 20))",-0.0411,-1.2627,genetic,active,2026-09-19 22:40:25,2026-09-19 23:17:43,3
+gp_2,遗传规划因子3号,"((low - ((open * delay(returns, 5)) - log(returns))) * ts_std(high, 20))",-0.0394,-1.1156,pipeline,active,2026-09-19 22:44:17,2026-09-19 23:17:43,2
+gp_5,遗传规划因子6号,"((-ts_sum(log(returns), 5)) * ts_std(high, 20))",0.0331,2.1224,pipeline,active,2026-09-19 22:44:17,2026-09-19 23:17:43,2
+volatility_20,20日低波动,,-0.0311,-1.5786,pipeline,active,2026-09-19 22:44:17,2026-09-19 23:17:43,2
+gp_7,遗传规划因子8号,(returns + (low - (high - sign(high)))),-0.0306,-1.7558,pipeline,active,2026-09-19 22:44:17,2026-09-19 23:17:43,3
+mogp_0,多目标遗传规划因子1号,(close / low),-0.03,0.0,pipeline,active,2026-09-19 22:44:17,2026-09-19 23:17:43,2
+mogp_1,多目标遗传规划因子2号,"delta(ts_std(abs(abs(high)), 10), 10)",0.0238,0.0,pipeline,active,2026-09-19 22:44:17,2026-09-19 23:17:43,2
+hybrid_1,LLM-遗传混合因子2号,abs(volume),0.0237,0.0,pipeline,active,2026-09-19 22:44:17,2026-09-19 23:17:43,2
+volume_ratio_20,20日量比,,0.0212,0.7463,pipeline,active,2026-09-19 22:44:17,2026-09-19 23:17:43,2
+reversal_5,5日反转,,0.0176,0.5362,pipeline,active,2026-09-19 22:44:17,2026-09-19 23:17:43,2
+ma_ratio_10_30,均线比(10日/30日),,0.0123,0.4995,pipeline,active,2026-09-19 22:44:17,2026-09-19 23:17:43,2
+mogp_4,多目标遗传规划因子5号,"ts_mean(returns, 10)",0.0103,0.0,pipeline,active,2026-09-19 22:44:17,2026-09-19 23:17:43,2
+ma_ratio_5_20,均线比(5日/20日),,0.0081,0.3655,pipeline,active,2026-09-19 22:44:17,2026-09-19 23:17:43,2
 vol_20,20日低波动(模板),"-ts_std(returns, 20)",-0.0311,-1.5786,simple,active,2026-09-19 23:14:41,2026-09-19 23:14:41,1

@@ -1,0 +1,110 @@
+{
+  "volatility_20": {
+    "name": "volatility_20",
+    "expr": "",
+    "ic": -0.04586052389419662,
+    "icir": -1.2552897572329176,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-19 18:43:01",
+    "last_seen": "2026-09-19 18:43:01",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-19 18:43:01",
+        "ic": -0.04586052389419662,
+        "icir": -1.2552897572329176
+      }
+    ]
+  },
+  "momentum_20": {
+    "name": "momentum_20",
+    "expr": "",
+    "ic": -0.016346036041542604,
+    "icir": -0.7976453299923497,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-19 18:43:01",
+    "last_seen": "2026-09-19 18:43:01",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-19 18:43:01",
+        "ic": -0.016346036041542604,
+        "icir": -0.7976453299923497
+      }
+    ]
+  },
+  "rsi_14": {
+    "name": "rsi_14",
+    "expr": "",
+    "ic": -0.01386101334594255,
+    "icir": -2.313266884305826,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-19 18:43:01",
+    "last_seen": "2026-09-19 18:43:01",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-19 18:43:01",
+        "ic": -0.01386101334594255,
+        "icir": -2.313266884305826
+      }
+    ]
+  },
+  "reversal_5": {
+    "name": "reversal_5",
+    "expr": "",
+    "ic": 0.008246202766140449,
+    "icir": 0.2843425286305871,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-19 18:43:01",
+    "last_seen": "2026-09-19 18:43:01",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-19 18:43:01",
+        "ic": 0.008246202766140449,
+        "icir": 0.2843425286305871
+      }
+    ]
+  },
+  "momentum_10": {
+    "name": "momentum_10",
+    "expr": "",
+    "ic": -0.006580009243834439,
+    "icir": -0.8176489250670567,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-19 18:43:01",
+    "last_seen": "2026-09-19 18:43:01",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-19 18:43:01",
+        "ic": -0.006580009243834439,
+        "icir": -0.8176489250670567
+      }
+    ]
+  },
+  "volume_ratio_20": {
+    "name": "volume_ratio_20",
+    "expr": "",
+    "ic": -0.005562064464241256,
+    "icir": -0.4206754510589541,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-19 18:43:01",
+    "last_seen": "2026-09-19 18:43:01",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-19 18:43:01",
+        "ic": -0.005562064464241256,
+        "icir": -0.4206754510589541
+      }
+    ]
+  }
+}

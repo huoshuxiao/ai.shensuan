@@ -4,6 +4,7 @@
 import json
 import numpy as np
 import pandas as pd
+import _bootstrap  # noqa: F401  必须先于项目模块导入
 from config import (
     FREQ, DSR, MULTI_STRATEGY, RISK_BUDGET,
     MULTI_SOURCE, FREQ_MAP, LOOKBACK_BARS,

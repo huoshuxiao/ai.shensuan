@@ -2,10 +2,10 @@
 """easytrader 券商实现"""
 
 from datetime import datetime
-from .broker_interface import (
+from broker_interface import (
     BrokerInterface, Order, Position, Account,
 )
-from .config_live import ACCOUNT
+from config_live import ACCOUNT
 
 
 class EasytraderBroker(BrokerInterface):

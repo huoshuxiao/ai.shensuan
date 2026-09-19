@@ -10,12 +10,12 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tenacity import retry, stop_after_attempt, wait_exponential
 from config import LLM_API_KEY_ENV
-from ..feedback.generation_config import (
+from generation_config import (
     GENERATION_MODELS, GENERATION_STRATEGY,
     get_style_instruction, MERGE_CONFIG, OUTPUT,
 )
-from .report_prompts import get_system_prompt
-from .report_templates import ReportTemplate
+from report_prompts import get_system_prompt
+from report_templates import ReportTemplate
 
 
 class SingleLLMGenerator:
@@ -146,7 +146,7 @@ class MultiLLMGenerator:
            wait=wait_exponential(multiplier=1, min=2, max=6))
     def _evaluate_one(self, model, report_text, raw_data):
         from openai import OpenAI
-        from .eval_prompts import get_eval_prompt
+        from eval_prompts import get_eval_prompt
         system = get_eval_prompt("single", self.language)
         user = (f"# 日报\n{report_text[:4000]}\n\n# 原始数据\n"
                 f"```json\n{json.dumps(raw_data, ensure_ascii=False)[:2500]}\n```")
@@ -201,7 +201,7 @@ class MultiLLMGenerator:
         if not MERGE_CONFIG.get("enabled"):
             return None
         try:
-            from .report_merger import ReportMerger
+            from report_merger import ReportMerger
             merger = ReportMerger(self.language)
             ranking = eval_result.get("ranking",
                                     [])[:MERGE_CONFIG.get("merge_top_k", 2)]

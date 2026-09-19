@@ -7,7 +7,7 @@ from config import FACTOR_ATTRIBUTION, RISK_BUDGET
 from factor_orthogonal import orthogonalize_factors
 from risk_budget import compute_factor_weights
 from strategy import IntradayRotationStrategy
-from backtest import MinuteBacktester
+from backtest import get_backtester
 
 
 class AttributionEvaluator:
@@ -36,8 +36,8 @@ class AttributionEvaluator:
                 ortho, self.pool, self.universe,
                 factor_weights=weights)
             sig = s.generate_signals(self.all_ts)
-            bt = MinuteBacktester(self.pool, self.universe,
-                                  self.risk_params)
+            bt = get_backtester(self.pool, self.universe,
+                                self.risk_params)
             r = bt.run(sig)
             return float(r["stats"].get("总收益率", "0%").strip("%"))
         except Exception:

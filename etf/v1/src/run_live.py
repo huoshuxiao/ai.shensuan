@@ -5,10 +5,11 @@ import os
 import json
 import argparse
 import pandas as pd
-from live.config_live import ACCOUNT, MODE
-from live.paper_broker import PaperBroker
-from live.live_engine import LiveEngine
-from live.market_data import MarketDataManager
+import _bootstrap  # noqa: F401  必须先于项目模块导入
+from config_live import ACCOUNT, MODE
+from paper_broker import PaperBroker
+from live_engine import LiveEngine
+from market_data import MarketDataManager
 
 
 def load_optimized_config(path="optimized_params.json"):
@@ -21,10 +22,10 @@ def load_optimized_config(path="optimized_params.json"):
 def create_broker():
     broker_name = ACCOUNT["broker"]
     if broker_name == "qmt":
-        from live.qmt_broker import QMTBroker
+        from qmt_broker import QMTBroker
         return QMTBroker()
     elif broker_name == "easytrader":
-        from live.easytrader_broker import EasytraderBroker
+        from easytrader_broker import EasytraderBroker
         return EasytraderBroker()
     print("  ℹ️ 使用模拟盘")
     return PaperBroker(initial_capital=ACCOUNT["initial_capital"])

@@ -7,7 +7,7 @@ import numpy as np
 from datetime import datetime
 from collections import Counter
 from tenacity import retry, stop_after_attempt, wait_exponential
-from .eval_prompts import get_eval_prompt
+from eval_prompts import get_eval_prompt
 
 
 DEFAULT_MODELS = [
@@ -124,7 +124,7 @@ class VotingSelfEvaluator:
         if not voting:
             return {}
         agg = voting["aggregated"]
-        from .eval_metrics import EvalMetrics
+        from eval_metrics import EvalMetrics
         obj = EvalMetrics.compute_objective_score(report_text, raw_data)
         final = agg["total_median"] * 0.7 + obj["objective_score"] * 0.3
         return {"final_score": round(final, 1),

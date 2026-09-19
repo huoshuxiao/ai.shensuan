@@ -97,7 +97,7 @@ def create_animation(snapshots, html_path=None, dims=None):
                                               frame=dict(
                                                   duration=800,
                                                   redraw=True),
-                                              fromcurrent=True))])],
+                                              fromcurrent=True)])])],
                         height=700))
     fig.write_html(html_path, auto_play=True)
     print(f"  ✅ 动画: {html_path}")

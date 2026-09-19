@@ -3,6 +3,8 @@ pandas>=2.0.0
 numpy>=1.24.0
 pyarrow>=14.0.0
 scipy>=1.11.0
+scikit-learn>=1.3.0
+requests>=2.31.0
 
 # 数据源
 akshare>=1.12.0
@@ -29,6 +31,10 @@ Pillow>=10.0.0
 imageio>=2.31.0
 imageio-ffmpeg>=0.4.9
 schedule>=1.2.0
+
+# 实盘券商（可选）
+# easytrader   # 二级券商接口
+# xtquant      # QMT 接口，随 QMT 客户端发行，不可 pip 安装
 
 # 官方 RD-Agent（可选）
 # git+https://github.com/microsoft/RD-Agent.git

@@ -3,7 +3,7 @@
 
 import uuid
 from datetime import datetime
-from .broker_interface import (
+from broker_interface import (
     BrokerInterface, Order, Position, Account,
 )
 

@@ -5,14 +5,14 @@ import os
 import time
 import pandas as pd
 from datetime import datetime
-from .config_live import (
+from config_live import (
     ACCOUNT, MODE, LIVE_RISK, STORAGE, NOTIFY,
 )
-from .broker_interface import Order
-from .paper_broker import PaperBroker
-from .live_risk import LiveRiskController
-from .market_data import MarketDataManager
-from .live_attribution import LiveAttributionTracker
+from broker_interface import Order
+from paper_broker import PaperBroker
+from live_risk import LiveRiskController
+from market_data import MarketDataManager
+from live_attribution import LiveAttributionTracker
 
 
 class Notifier:

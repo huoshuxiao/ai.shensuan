@@ -7,7 +7,7 @@ import random
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tenacity import retry, stop_after_attempt, wait_exponential
-from ..feedback.generation_config import GENERATION_MODELS
+from generation_config import GENERATION_MODELS
 
 
 class BlindEvaluator:
@@ -21,7 +21,7 @@ class BlindEvaluator:
            wait=wait_exponential(multiplier=1, min=2, max=6))
     def _eval_one(self, model, report_text, raw_data):
         from openai import OpenAI
-        from .eval_prompts import get_eval_prompt
+        from eval_prompts import get_eval_prompt
         system = get_eval_prompt("single", self.language)
         user = (f"# 日报\n{report_text[:4000]}\n\n# 原始数据\n"
                 f"```json\n{json.dumps(raw_data, ensure_ascii=False)[:2500]}\n```")

@@ -82,7 +82,7 @@ def create_animation_with_shap(snapshots, html_path=None):
                                               frame=dict(
                                                   duration=800,
                                                   redraw=True),
-                                              fromcurrent=True))])],
+                                              fromcurrent=True)])])],
         sliders=[dict(steps=[
             dict(method="animate",
                  args=[[f.name], dict(mode="immediate",

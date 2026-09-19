@@ -5,7 +5,7 @@ import time
 import threading
 import requests
 from collections import deque
-from .config_live import MARKET_DATA
+from config_live import MARKET_DATA
 
 
 class SinaDataSource:

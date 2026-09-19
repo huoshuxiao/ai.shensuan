@@ -2,7 +2,8 @@
 """月度复盘脚本"""
 
 import argparse
-from etf.v1.src.report.monthly_review import generate_monthly_review
+import _bootstrap  # noqa: F401  必须先于项目模块导入
+from monthly_review import generate_monthly_review
 
 
 def main():

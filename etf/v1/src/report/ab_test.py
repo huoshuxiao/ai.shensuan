@@ -10,8 +10,8 @@ import re
 from datetime import datetime
 from tenacity import retry, stop_after_attempt, wait_exponential
 from config import LLM_API_KEY_ENV, LLM_MODEL
-from .eval_prompts import get_eval_prompt
-from .multi_llm_voter import MultiLLMVoter
+from eval_prompts import get_eval_prompt
+from multi_llm_voter import MultiLLMVoter
 
 
 class PromptABTest:
@@ -26,7 +26,7 @@ class PromptABTest:
            wait=wait_exponential(multiplier=1, min=2, max=6))
     def _generate(self, prompt, raw_data):
         from openai import OpenAI
-        from .report_templates import ReportTemplate
+        from report_templates import ReportTemplate
         client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
         user = ReportTemplate.build_daily_prompt(raw_data)
         resp = client.chat.completions.create(
@@ -164,7 +164,7 @@ class PromptABTest:
 
 def run_prompt_ab_test(prompt_a=None, prompt_b=None, n_samples=5):
     if prompt_a is None:
-        from .report_prompts import SYSTEM_PROMPT_ZH
+        from report_prompts import SYSTEM_PROMPT_ZH
         prompt_a = SYSTEM_PROMPT_ZH
     if prompt_b is None:
         backups = sorted([f for f in os.listdir("prompt_backups")

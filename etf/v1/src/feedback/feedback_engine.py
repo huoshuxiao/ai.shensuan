@@ -5,12 +5,12 @@ import os
 import json
 import pandas as pd
 from datetime import datetime
-from .slippage_analyzer import SlippageAnalyzer
-from .latency_analyzer import LatencyAnalyzer
-from .turnover_analyzer import TurnoverAnalyzer
-from .config_updater import ConfigUpdater
-from .strategy_feedback import StrategyFeedback
-from .factor_feedback import FactorFeedback
+from slippage_analyzer import SlippageAnalyzer
+from latency_analyzer import LatencyAnalyzer
+from turnover_analyzer import TurnoverAnalyzer
+from config_updater import ConfigUpdater
+from strategy_feedback import StrategyFeedback
+from factor_feedback import FactorFeedback
 
 
 class FeedbackEngine:

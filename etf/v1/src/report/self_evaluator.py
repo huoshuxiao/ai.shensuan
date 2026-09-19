@@ -49,7 +49,7 @@ class SelfEvaluator:
 
     def eval_single(self, report_text, raw_data):
         # 客观指标
-        from .eval_metrics import EvalMetrics
+        from eval_metrics import EvalMetrics
         obj = EvalMetrics.compute_objective_score(report_text, raw_data)
 
         # LLM 评分

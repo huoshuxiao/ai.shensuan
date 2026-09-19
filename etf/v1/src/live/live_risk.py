@@ -5,7 +5,7 @@ import time
 import pandas as pd
 from datetime import datetime, timedelta
 from collections import deque
-from .config_live import LIVE_RISK, STORAGE
+from config_live import LIVE_RISK, STORAGE
 
 
 class LiveRiskController:

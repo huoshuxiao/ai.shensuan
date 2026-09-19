@@ -3,7 +3,8 @@
 
 import argparse
 import os
-from feedback.multi_llm_generator import (
+import _bootstrap  # noqa: F401  必须先于项目模块导入
+from multi_llm_generator import (
     run_multi_llm_generation,
     run_multi_llm_generation_batch,
 )

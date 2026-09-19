@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 """全局配置（支持日线 + 分钟线）"""
 
+import os
+
 # ========== 频率配置 ==========
-FREQ = "daily"           # daily | 1min | 5min | 15min | 30min | 60min
+# 可用环境变量 ETF_FREQ 覆盖（run_daily_backtest.py / run_minute_backtest.py 依赖此机制）
+FREQ = os.environ.get("ETF_FREQ", "daily")  # daily | 1min | 5min | 15min | 30min | 60min
 
 # 频率 → akshare 参数映射
 FREQ_MAP = {
@@ -61,6 +64,13 @@ ORTHOGONAL = {
     "corr_threshold": 0.7,
     "method": "gram_schmidt",
     "min_factors_keep": 2,
+}
+
+# ========== LLM 调正交化（orthogonal_optimizer） ==========
+ORTHO_LLM = {
+    "enabled": True, "max_rounds": 4,
+    "threshold_range": [0.3, 0.9],
+    "methods": ["gram_schmidt", "pca", "none"],
 }
 
 # ========== DSR ==========
@@ -237,6 +247,15 @@ LLM_SHAP_EXPLAINER = {
     "save_report": True,
     "report_path": "llm_shap_report.md",
     "language": "zh", "include_action_suggestion": True,
+}
+
+# ========== 因子衰减监控（strategy_lifecycle.FactorDecayMonitor） ==========
+FACTOR_DECAY = {
+    "enabled": True,
+    "ic_window_bars": 252 if FREQ == "daily" else 2400,
+    "ic_min_threshold": 0.01,
+    "halflife_warn": 500 if FREQ == "daily" else 4800,
+    "consecutive_decay_rounds": 2,
 }
 
 # ========== 风险预算 ==========

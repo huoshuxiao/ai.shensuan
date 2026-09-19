@@ -3,20 +3,12 @@
 
 import os
 
+# 必须在导入 config / main 之前设置，config.py 会读取该环境变量
+os.environ["ETF_FREQ"] = "1min"
 
-def main():
-    os.environ["ETF_FREQ"] = "1min"
-    import importlib
-    import config
-    config.FREQ = "1min"
-    importlib.reload(config)
-
-    import data_loader
-    importlib.reload(data_loader)
-
-    from main import main as run_main
-    run_main()
+import _bootstrap  # noqa: E402,F401
+from main import main as run_main  # noqa: E402
 
 
 if __name__ == "__main__":
-    main()
+    run_main()

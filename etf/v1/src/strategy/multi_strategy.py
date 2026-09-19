@@ -12,7 +12,7 @@ from config import (
 from factor_orthogonal import orthogonalize_factors
 from risk_budget import compute_factor_weights
 from strategy import IntradayRotationStrategy
-from backtest import MinuteBacktester
+from backtest import get_backtester
 from strategy_lifecycle import (
     StrategyLifecycleManager, FactorDecayMonitor,
     combine_with_lifecycle,
@@ -56,7 +56,7 @@ def run_single_strategy(config, raw_factors, pool, universe, all_ts):
     strategy = IntradayRotationStrategy(factors, pool, universe,
                                         factor_weights=weights)
     signals = strategy.generate_signals(all_ts)
-    bt = MinuteBacktester(pool, universe, config["risk"])
+    bt = get_backtester(pool, universe, config["risk"])
     result = bt.run(signals)
     result["config"] = config
     result["factors"] = factors

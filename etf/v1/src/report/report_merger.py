@@ -3,7 +3,7 @@
 
 import os
 from tenacity import retry, stop_after_attempt, wait_exponential
-from ..feedback.generation_config import GENERATION_MODELS
+from generation_config import GENERATION_MODELS
 
 
 class ReportMerger:

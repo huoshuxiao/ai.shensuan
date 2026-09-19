@@ -6,7 +6,7 @@ import json
 import numpy as np
 import pandas as pd
 from datetime import datetime
-from .config_live import LIVE_ATTRIBUTION, STORAGE
+from config_live import LIVE_ATTRIBUTION, STORAGE
 
 
 class LiveAttributionTracker:

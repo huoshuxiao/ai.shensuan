@@ -1,5 +1,5 @@
 ﻿name,cn_name,expr,ic,icir,source,status,first_seen,last_seen,updates
-gp_0,遗传规划因子1号,"((low - ((open * delay(returns, 5)) - log(returns))) * volume)",-0.0417,-0.9363,genetic,active,2026-09-19 22:40:25,2026-09-20 00:36:26,6
+gp_0,遗传规划因子1号,"((low - ((open * delay(returns, 5)) - log(returns))) * volume)",-0.0417,-0.9363,genetic,active,2026-09-19 22:40:25,2026-09-20 06:18:33,7
 gp_1,遗传规划因子2号,"((low - (high - log(returns))) * ts_std(high, 20))",0.0364,1.3286,genetic,active,2026-09-19 22:40:25,2026-09-20 00:36:26,4
 gp_2,遗传规划因子3号,"((low - ((open * delay(returns, 5)) - log(returns))) * ts_std(high, 20))",-0.0268,-0.7394,pipeline,active,2026-09-19 22:44:17,2026-09-20 00:36:26,3
 gp_5,遗传规划因子6号,"((-ts_sum(log(returns), 5)) * ts_std(high, 20))",0.0331,2.1224,pipeline,active,2026-09-19 22:44:17,2026-09-19 23:17:43,2
@@ -13,8 +13,8 @@ reversal_5,5日反转,,0.0152,0.3839,pipeline,active,2026-09-19 22:44:17,2026-09
 ma_ratio_10_30,均线比(10日/30日),,0.02,0.8512,pipeline,active,2026-09-19 22:44:17,2026-09-20 00:36:26,3
 mogp_4,多目标遗传规划因子5号,"ts_mean(returns, 10)",0.0131,0.0,pipeline,active,2026-09-19 22:44:17,2026-09-20 00:36:26,3
 ma_ratio_5_20,均线比(5日/20日),,0.0124,0.5941,pipeline,active,2026-09-19 22:44:17,2026-09-20 00:36:26,3
-vol_20,20日低波动(模板),"-ts_std(returns, 20)",-0.0257,-0.9483,simple,active,2026-09-19 23:14:41,2026-09-20 00:32:27,2
-gp_3,遗传规划因子4号,"delta(delta(delta(abs(close), 20), 20), 5)",-0.0187,-1.383,genetic,active,2026-09-20 00:32:27,2026-09-20 00:36:26,2
+vol_20,20日低波动(模板),"-ts_std(returns, 20)",-0.0257,-0.9483,simple,active,2026-09-19 23:14:41,2026-09-20 06:18:33,3
+gp_3,遗传规划因子4号,"delta(delta(delta(abs(close), 20), 20), 5)",-0.0187,-1.383,genetic,active,2026-09-20 00:32:27,2026-09-20 06:18:33,3
 mogp_3,多目标遗传规划因子4号,"(delta(ts_std(ts_sum(volume, 60), 10), 60) + (returns - (-abs(returns))))",-0.0144,0.0,pipeline,active,2026-09-20 00:36:26,2026-09-20 00:36:26,1
 hybrid_3,LLM-遗传混合因子4号,"((ts_mean((returns * volume), 10) - open) * ts_sum((abs(high) * (open * close)), 10))",0.014,0.0,pipeline,active,2026-09-20 00:36:26,2026-09-20 00:36:26,1
 hybrid_8,LLM-遗传混合因子9号,"(close - min(df, 20)) / (max(df, 20) - min(df, 20) + 1e-9)",0.0089,0.0,pipeline,active,2026-09-20 00:36:26,2026-09-20 00:36:26,1

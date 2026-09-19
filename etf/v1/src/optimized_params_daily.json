@@ -1,0 +1,13 @@
+{
+  "freq": "daily",
+  "n_factors": 5,
+  "factor_weights": {
+    "volatility_20": 0.2,
+    "momentum_20": 0.2,
+    "reversal_5": 0.2,
+    "momentum_10": 0.2,
+    "volume_ratio_20": 0.2
+  },
+  "n_trials": 8,
+  "bars_per_year": 252
+}

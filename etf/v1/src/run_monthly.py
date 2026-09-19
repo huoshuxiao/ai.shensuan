@@ -20,7 +20,7 @@ def main():
         print("\n" + "─" * 60)
         print(text[:3000])
         print("─" * 60)
-    print("\n🎉 完成！报告: live_data/report_monthly.md")
+    print("\n🎉 完成！报告目录见上方输出路径")
 
 
 if __name__ == "__main__":

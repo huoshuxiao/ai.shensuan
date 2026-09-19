@@ -221,6 +221,8 @@ class MultiLLMGenerator:
     def _save_all(self, result, raw_data):
         save_dir = self.output_cfg["save_dir"]
         os.makedirs(save_dir, exist_ok=True)
+        os.makedirs(os.path.dirname(
+            self.output_cfg["final_report_path"]), exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         if self.output_cfg["save_all_versions"]:
             for r in result["all_reports"]:

@@ -11,6 +11,12 @@ import plotly.graph_objects as go
 st.set_page_config(page_title="反馈闭环", layout="wide")
 st.title("🔄 实盘反馈闭环看板")
 
+# 实盘原始数据（输入）在 live_data/，报告产物在 etf/v1/report/
+LIVE_DATA_DIR = "live_data"
+REPORT_DIR = os.environ.get("ETF_REPORT_DIR") or os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
+                 "report"))
+
 
 @st.cache_data(ttl=10)
 def load_csv(p):
@@ -77,19 +83,19 @@ with tabs[4]:
         st.dataframe(f, use_container_width=True)
 
 with tabs[5]:
-    if os.path.exists("live_data/feedback_report.md"):
-        with open("live_data/feedback_report.md", "r",
+    if os.path.exists(f"{REPORT_DIR}/feedback_report.md"):
+        with open(f"{REPORT_DIR}/feedback_report.md", "r",
                   encoding="utf-8") as fp:
             st.markdown(fp.read())
 
 with tabs[6]:
-    if os.path.exists("live_data/report_daily.md"):
-        with open("live_data/report_daily.md", "r",
+    if os.path.exists(f"{REPORT_DIR}/report_daily.md"):
+        with open(f"{REPORT_DIR}/report_daily.md", "r",
                   encoding="utf-8") as fp:
             st.markdown(fp.read())
 
 with tabs[7]:
-    summary = load_json("live_data/self_eval_summary.json")
+    summary = load_json(f"{REPORT_DIR}/self_eval_summary.json")
     if summary:
         c1, c2, c3 = st.columns(3)
         c1.metric("平均分", summary.get("avg_score", 0))
@@ -99,13 +105,13 @@ with tabs[7]:
             st.markdown(f"- ({issue['count']}) {issue['text']}")
 
 with tabs[8]:
-    if os.path.exists("live_data/report_monthly.md"):
-        with open("live_data/report_monthly.md", "r",
+    if os.path.exists(f"{REPORT_DIR}/report_monthly.md"):
+        with open(f"{REPORT_DIR}/report_monthly.md", "r",
                   encoding="utf-8") as fp:
             st.markdown(fp.read())
 
 with tabs[9]:
-    s = load_json("live_data/voting_eval_summary.json")
+    s = load_json(f"{REPORT_DIR}/voting_eval_summary.json")
     if s:
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("平均分", s.get("avg_score", 0))
@@ -114,14 +120,14 @@ with tabs[9]:
         c4.metric("报告数", s.get("n_reports", 0))
 
 with tabs[10]:
-    if os.path.exists("live_data/ab_test_report.md"):
-        with open("live_data/ab_test_report.md", "r",
+    if os.path.exists(f"{REPORT_DIR}/ab_test_report.md"):
+        with open(f"{REPORT_DIR}/ab_test_report.md", "r",
                   encoding="utf-8") as fp:
             st.markdown(fp.read())
 
 with tabs[11]:
-    if os.path.exists("live_data/report_daily.md"):
-        with open("live_data/report_daily.md", "r",
+    if os.path.exists(f"{REPORT_DIR}/report_daily.md"):
+        with open(f"{REPORT_DIR}/report_daily.md", "r",
                   encoding="utf-8") as fp:
             st.markdown(fp.read())
     st.caption("多 LLM 生成后，此报告为胜出版本")

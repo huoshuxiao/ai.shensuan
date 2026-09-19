@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 from tenacity import retry, stop_after_attempt, wait_exponential
-from config import LLM_MODEL, LLM_API_KEY_ENV
+from config import LLM_MODEL, LLM_API_KEY_ENV, LIVE_DATA_DIR, REPORT_DIR
 
 
 EVAL_PROMPT = """你是量化报告审核专家。评估日报质量。
@@ -30,8 +30,9 @@ EVAL_PROMPT = """你是量化报告审核专家。评估日报质量。
 
 
 class SelfEvaluator:
-    def __init__(self, live_data_dir="live_data"):
-        self.dir = live_data_dir
+    def __init__(self, live_data_dir=None, report_dir=None):
+        self.dir = live_data_dir or LIVE_DATA_DIR
+        self.out = report_dir or REPORT_DIR
         self.api_key = os.environ.get(LLM_API_KEY_ENV, "")
         self.enabled = bool(self.api_key)
         self.history = []
@@ -133,14 +134,14 @@ class SelfEvaluator:
                                for k, v in weak_cnt.most_common(5)]}
 
     def _save(self, results, summary):
-        os.makedirs(self.dir, exist_ok=True)
+        os.makedirs(self.out, exist_ok=True)
         pd.DataFrame([{"date": r["date"],
                        "final_score": r["final_score"],
                        "grade": r["grade"]}
                       for r in results]).to_csv(
-            f"{self.dir}/self_eval_detail.csv",
+            f"{self.out}/self_eval_detail.csv",
             index=False, encoding="utf-8-sig")
-        with open(f"{self.dir}/self_eval_summary.json", "w",
+        with open(f"{self.out}/self_eval_summary.json", "w",
                   encoding="utf-8") as f:
             json.dump(summary, f, ensure_ascii=False, indent=2,
                       default=str)

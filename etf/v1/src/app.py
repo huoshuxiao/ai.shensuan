@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 st.set_page_config(page_title="ETF 量化看板", layout="wide")
-st.title("📊 ETF 分钟线量化系统看板")
+st.title("📊 ETF 量化系统看板")
 
 
 @st.cache_data(ttl=30)
@@ -26,32 +26,45 @@ def load_json(p):
     return None
 
 
+def _held_mask(signals):
+    code = signals["target_code"].astype(str)
+    return code.notna() & ~code.isin(["", "nan", "None"])
+
+
 equity_df = load_csv("equity.csv")
 trades_df = load_csv("trades.csv")
 dsr_df = load_csv("dsr.csv")
 signals_df = load_csv("signals.csv")
 
-col1, col2, col3, col4, col5 = st.columns(5)
+col1, col2, col3, col4, col5, col6, col7, col8 = st.columns(8)
 if equity_df is not None and not equity_df.empty:
     dt = equity_df.columns[0]
     eq = equity_df.set_index(dt)["equity"]
     total = eq.iloc[-1] / eq.iloc[0] - 1
+    span_days = max((pd.to_datetime(eq.index[-1]) -
+                     pd.to_datetime(eq.index[0])).days, 1)
+    ann = (1 + total) ** (365 / span_days) - 1
+    rets = eq.pct_change().dropna()
+    sharpe = rets.mean() / (rets.std() + 1e-9) * np.sqrt(252)
+    max_dd = float(((eq - eq.cummax()) / eq.cummax()).min())
     col1.metric("总收益率", f"{total * 100:.2f}%")
-    col2.metric("最终资金", f"{eq.iloc[-1]:.2f}")
+    col2.metric("年化收益率", f"{ann * 100:.2f}%")
+    col3.metric("最大回撤", f"{max_dd * 100:.2f}%")
+    col4.metric("夏普比率", f"{sharpe:.2f}")
+    col5.metric("最终资金", f"{eq.iloc[-1]:,.2f}")
 if dsr_df is not None and not dsr_df.empty:
     dsr_val = float(dsr_df.iloc[0].get("dsr", 0))
-    col3.metric("DSR", f"{dsr_val:.4f}",
+    col6.metric("DSR", f"{dsr_val:.4f}",
                 delta="显著" if dsr_val > 0.95 else "不显著")
 if trades_df is not None:
-    col4.metric("交易次数", len(trades_df))
+    col7.metric("交易次数", len(trades_df))
 if signals_df is not None and "target_code" in signals_df.columns:
-    hold = (signals_df["target_code"].notna() &
-            (signals_df["target_code"] != "")).sum()
-    col5.metric("持仓 bar", int(hold))
+    hold = _held_mask(signals_df).sum()
+    col8.metric("持仓 bar", int(hold),
+                delta=f"占比 {hold / max(len(signals_df), 1) * 100:.1f}%")
 
 st.divider()
 
-# 在 app.py 的 tabs 里加
 tabs = st.tabs(["📈 净值", "📋 交易", "🎯 DSR", "⚙️ 信号",
                 "🧩 聚类", "🎯 归因", "📉 衰减", "🧬 GP",
                 "📜 Git", "📊 频率对比"])
@@ -88,11 +101,26 @@ with tabs[2]:
 
 with tabs[3]:
     if signals_df is not None and "target_code" in signals_df.columns:
-        counts = signals_df[signals_df["target_code"] != ""][
-            "target_code"].value_counts()
+        held_df = signals_df[_held_mask(signals_df)]
+        counts = held_df["target_code"].value_counts()
         if not counts.empty:
-            fig = go.Figure(go.Bar(x=counts.index, y=counts.values))
+            c1, c2, c3 = st.columns(3)
+            c1.metric("持仓 bar 数", len(held_df))
+            c2.metric("持仓时间占比",
+                      f"{len(held_df) / max(len(signals_df), 1) * 100:.1f}%")
+            c3.metric("涉及标的数", counts.size)
+            fig = go.Figure(go.Bar(
+                x=counts.index, y=counts.values,
+                text=[f"{v / len(held_df) * 100:.1f}%"
+                      for v in counts.values],
+                textposition="outside", marker_color="steelblue"))
+            fig.update_layout(
+                title="持仓分布（bar 数，标注为持仓内占比）",
+                xaxis_title="标的", yaxis_title="持仓 bar 数",
+                height=400)
             st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("全程空仓")
 
 with tabs[4]:
     coords = load_csv("factor_clusters.csv")
@@ -157,7 +185,6 @@ with tabs[9]:
     minute_eq = load_csv("equity_1min.csv")
 
     if daily_eq is not None or minute_eq is not None:
-        import plotly.graph_objects as go
         fig = go.Figure()
 
         if daily_eq is not None:
@@ -184,9 +211,29 @@ with tabs[9]:
             st.subheader("指标对比")
             st.dataframe(comp, use_container_width=True)
 
-        # 一致性检查
-        st.subheader("信号一致性")
-        st.caption("同一策略在两种频率下应产生同方向信号")
+        st.subheader("🎯 持仓相似度（每日收盘仓位：日线 vs 分钟线）")
+        sim = load_json("holdings_similarity.json")
+        if sim:
+            def _pct(v):
+                return "N/A" if v is None else f"{v * 100:.2f}%"
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("对齐天数", sim.get("对齐天数", 0))
+            c2.metric("总相似度", _pct(sim.get("总相似度")),
+                      help="全部对齐日中两频率收盘持仓相同的比例")
+            c3.metric("持仓日相似度", _pct(sim.get("持仓日相似度")),
+                      help="仅统计任一频率持仓的日子")
+            c4.metric("双边持仓日相似度",
+                      _pct(sim.get("双边持仓日相似度")),
+                      help="仅统计两个频率同时持仓的日子")
+            c5, c6 = st.columns(2)
+            c5.metric("日线持仓时间占比", _pct(sim.get("持仓占比_a")))
+            c6.metric("分钟线持仓时间占比", _pct(sim.get("持仓占比_b")))
+            ex = sim.get("不一致示例") or []
+            if ex:
+                st.caption("不一致示例（最多 20 条）")
+                st.dataframe(pd.DataFrame(ex), use_container_width=True)
+        else:
+            st.info("未找到 holdings_similarity.json，"
+                    "请在两种频率回测完成后运行: python compare_freq.py")
     else:
-        st.info("请先跑 python main.py（FREQ=daily）"
-                "和 python main.py（FREQ=1min）")        
+        st.info("请先运行 run_daily_backtest.py 和 run_minute_backtest.py")        

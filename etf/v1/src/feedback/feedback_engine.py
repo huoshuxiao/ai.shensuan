@@ -5,6 +5,7 @@ import os
 import json
 import pandas as pd
 from datetime import datetime
+from config import LIVE_DATA_DIR, REPORT_DIR
 from slippage_analyzer import SlippageAnalyzer
 from latency_analyzer import LatencyAnalyzer
 from turnover_analyzer import TurnoverAnalyzer
@@ -48,8 +49,9 @@ class FeedbackEngine:
         return self.report
 
     def _save_report(self):
-        os.makedirs("live_data", exist_ok=True)
-        with open("live_data/feedback_report.json", "w",
+        os.makedirs(LIVE_DATA_DIR, exist_ok=True)
+        os.makedirs(REPORT_DIR, exist_ok=True)
+        with open(f"{LIVE_DATA_DIR}/feedback_report.json", "w",
                   encoding="utf-8") as f:
             json.dump(self.report, f, ensure_ascii=False,
                       indent=2, default=str)
@@ -66,10 +68,10 @@ class FeedbackEngine:
             lines.append("")
             lines.append("## 📈 策略")
             lines.append(f"- 实盘夏普: {st.get('live_sharpe', 0):.3f}")
-        with open("live_data/feedback_report.md", "w",
+        with open(f"{REPORT_DIR}/feedback_report.md", "w",
                   encoding="utf-8") as f:
             f.write("\n".join(lines))
-        print("\n  ✅ 报告已保存: live_data/feedback_report.md")
+        print(f"\n  ✅ 报告已保存: {REPORT_DIR}/feedback_report.md")
 
 
 def run_feedback(auto_update=False):

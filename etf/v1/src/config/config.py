@@ -30,8 +30,17 @@ def _get_lookback_bars(freq, days=20):
 LOOKBACK_DAYS = 20
 LOOKBACK_BARS = _get_lookback_bars(FREQ, LOOKBACK_DAYS)
 
+# ========== 目录 ==========
+# etf/v1 项目根目录（config.py 位于 etf/v1/src/config/ 下）
+V1_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# 报告输出目录（所有人类可读报告统一写到此处），可用 ETF_REPORT_DIR 覆盖
+REPORT_DIR = os.environ.get("ETF_REPORT_DIR",
+                            os.path.join(V1_ROOT, "report"))
+# 实盘原始数据目录（live_orders/live_attribution/feedback_report.json 等输入）
+LIVE_DATA_DIR = "live_data"
+
 # ========== 回测区间 ==========
-BACKTEST_START = "2022-01-01" if FREQ == "daily" else "2024-01-01"
+BACKTEST_START = "2010-01-01"
 BACKTEST_END   = "2024-12-31"
 
 # ========== 资金 ==========

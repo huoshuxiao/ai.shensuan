@@ -8,6 +8,7 @@ import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tenacity import retry, stop_after_attempt, wait_exponential
 from generation_config import GENERATION_MODELS
+from config import LIVE_DATA_DIR, REPORT_DIR
 
 
 class BlindEvaluator:
@@ -81,7 +82,7 @@ def evaluate_multiple_reports(reports, raw_data):
 
 def evaluate_historical_reports(n_days=5):
     import glob
-    gen_files = sorted(glob.glob("live_data/multi_gen/*.json"))
+    gen_files = sorted(glob.glob(f"{REPORT_DIR}/multi_gen/*.json"))
     if not gen_files:
         return {}
     with open(gen_files[-1], "r", encoding="utf-8") as f:
@@ -94,8 +95,8 @@ def evaluate_historical_reports(n_days=5):
     if not reports:
         return {}
     raw = {}
-    if os.path.exists("live_data/feedback_report.json"):
-        with open("live_data/feedback_report.json", "r",
+    if os.path.exists(f"{LIVE_DATA_DIR}/feedback_report.json"):
+        with open(f"{LIVE_DATA_DIR}/feedback_report.json", "r",
                   encoding="utf-8") as f:
             raw = json.load(f)
     return evaluate_multiple_reports(reports, raw)

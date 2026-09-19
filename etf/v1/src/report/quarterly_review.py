@@ -6,7 +6,7 @@ import json
 import glob
 from datetime import datetime
 from tenacity import retry, stop_after_attempt, wait_exponential
-from config import LLM_MODEL, LLM_API_KEY_ENV
+from config import LLM_MODEL, LLM_API_KEY_ENV, REPORT_DIR
 
 
 QUARTERLY_PROMPT = """你是量化投资总监。写季度报告给投委会。
@@ -20,8 +20,9 @@ ANNUAL_PROMPT = """你是量化投资总监。写年度总结给高管+投资人
 
 
 class PeriodReviewGenerator:
-    def __init__(self, live_data_dir="live_data"):
-        self.dir = live_data_dir
+    def __init__(self, live_data_dir=None):
+        # 输入（月报 metrics/archive）与输出均在报告目录
+        self.dir = live_data_dir or REPORT_DIR
         self.api_key = os.environ.get(LLM_API_KEY_ENV, "")
         self.enabled = bool(self.api_key)
 

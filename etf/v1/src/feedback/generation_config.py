@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """生成配置"""
 
+from config import REPORT_DIR
+
 GENERATION_MODELS = [
     {"name": "gpt-4o-mini", "provider": "openai",
      "env_key": "OPENAI_API_KEY", "weight": 1.0,
@@ -50,9 +52,9 @@ MERGE_CONFIG = {
 
 OUTPUT = {
     "save_all_versions": True,
-    "save_dir": "live_data/multi_gen",
-    "final_report_path": "live_data/report_daily.md",
-    "eval_result_path": "live_data/multi_gen_eval.json",
+    "save_dir": f"{REPORT_DIR}/multi_gen",
+    "final_report_path": f"{REPORT_DIR}/report_daily.md",
+    "eval_result_path": f"{REPORT_DIR}/multi_gen_eval.json",
     "archive": True,
 }
 

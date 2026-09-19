@@ -6,11 +6,13 @@ import json
 import glob
 import pandas as pd
 from collections import Counter
+from config import LIVE_DATA_DIR, REPORT_DIR
 
 
 class BlindSpotDetector:
-    def __init__(self, live_data_dir="live_data"):
-        self.dir = live_data_dir
+    def __init__(self, live_data_dir=None, report_dir=None):
+        self.dir = live_data_dir or LIVE_DATA_DIR
+        self.out = report_dir or REPORT_DIR
 
     def detect(self, days=20):
         daily_files = sorted(glob.glob(
@@ -66,7 +68,8 @@ class BlindSpotDetector:
                 "n_days": len(all_texts)}
 
     def save(self, result):
-        path = f"{self.dir}/blind_spots.json"
+        os.makedirs(self.out, exist_ok=True)
+        path = f"{self.out}/blind_spots.json"
         with open(path, "w", encoding="utf-8") as f:
             json.dump(result, f, ensure_ascii=False, indent=2)
         lines = ["# 🔍 盲点检测报告", "",
@@ -84,7 +87,7 @@ class BlindSpotDetector:
                 lines.append(f"- {item['name']} (出现 {item['count']} 次)")
             lines.append("")
         md = "\n".join(lines)
-        with open(f"{self.dir}/blind_spots.md", "w",
+        with open(f"{self.out}/blind_spots.md", "w",
                   encoding="utf-8") as f:
             f.write(md)
         return md

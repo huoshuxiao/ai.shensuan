@@ -7,11 +7,11 @@ import _bootstrap  # noqa: F401  必须先于项目模块导入
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--auto", action="store_true")
+    parser.add_argument("--auto", action="store_true",
+                        help="按滑点统计自动回写 config 建议值")
     parser.add_argument("--llm", type=str, default="",
-                        choices=["", "daily", "weekly",
-                                 "incident", "summary", "all"])
-    parser.add_argument("--lang", type=str, default="zh")
+                        choices=["", "daily", "summary", "all"],
+                        help="反馈分析后生成 LLM 报告")
     parser.add_argument("--monthly", action="store_true")
     parser.add_argument("--monthly-days", type=int, default=20)
     parser.add_argument("--quarterly", action="store_true")
@@ -24,6 +24,21 @@ def main():
     print("=" * 60)
     print("  反馈闭环")
     print("=" * 60)
+
+    from feedback_engine import run_feedback
+    run_feedback(auto_update=args.auto)
+
+    if args.llm:
+        from llm_report_generator import (
+            generate_daily_report, generate_summary)
+        if args.llm in ("daily", "all"):
+            text = generate_daily_report()
+            if text:
+                print("  ✅ 日报已生成: report/report_daily.md")
+        if args.llm in ("summary", "all"):
+            summary = generate_summary()
+            if summary:
+                print("\n" + summary)
 
     if args.self_eval:
         from self_evaluator import run_self_evaluation

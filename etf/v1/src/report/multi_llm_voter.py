@@ -8,6 +8,7 @@ from datetime import datetime
 from collections import Counter
 from tenacity import retry, stop_after_attempt, wait_exponential
 from eval_prompts import get_eval_prompt
+from config import LIVE_DATA_DIR, REPORT_DIR
 
 
 DEFAULT_MODELS = [
@@ -114,8 +115,10 @@ class MultiLLMVoter:
 
 
 class VotingSelfEvaluator:
-    def __init__(self, live_data_dir="live_data", language="zh"):
-        self.dir = live_data_dir
+    def __init__(self, live_data_dir=None, language="zh",
+                 report_dir=None):
+        self.dir = live_data_dir or LIVE_DATA_DIR
+        self.out = report_dir or REPORT_DIR
         self.voter = MultiLLMVoter(language=language)
         self.history = []
 
@@ -180,15 +183,15 @@ class VotingSelfEvaluator:
 
     def _save(self, results, summary):
         import pandas as pd
-        os.makedirs(self.dir, exist_ok=True)
+        os.makedirs(self.out, exist_ok=True)
         pd.DataFrame([{"date": r["date"],
                        "final_score": r["final_score"],
                        "grade": r["grade"],
                        "consistency": r["consistency"]}
                       for r in results]).to_csv(
-            f"{self.dir}/voting_eval_detail.csv",
+            f"{self.out}/voting_eval_detail.csv",
             index=False, encoding="utf-8-sig")
-        with open(f"{self.dir}/voting_eval_summary.json", "w",
+        with open(f"{self.out}/voting_eval_summary.json", "w",
                   encoding="utf-8") as f:
             json.dump(summary, f, ensure_ascii=False, indent=2)
 

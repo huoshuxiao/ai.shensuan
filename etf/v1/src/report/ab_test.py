@@ -9,14 +9,17 @@ import numpy as np
 import re
 from datetime import datetime
 from tenacity import retry, stop_after_attempt, wait_exponential
-from config import LLM_API_KEY_ENV, LLM_MODEL
+from config import (LLM_API_KEY_ENV, LLM_MODEL,
+                    LIVE_DATA_DIR, REPORT_DIR)
 from eval_prompts import get_eval_prompt
 from multi_llm_voter import MultiLLMVoter
 
 
 class PromptABTest:
-    def __init__(self, live_data_dir="live_data", language="zh"):
-        self.dir = live_data_dir
+    def __init__(self, live_data_dir=None, language="zh",
+                 report_dir=None):
+        self.dir = live_data_dir or LIVE_DATA_DIR
+        self.out = report_dir or REPORT_DIR
         self.language = language
         self.voter = MultiLLMVoter(language=language)
         self.backup_dir = "prompt_backups"
@@ -123,8 +126,8 @@ class PromptABTest:
                 "overall_winner": overall}
 
     def _save(self, results, summary):
-        os.makedirs(self.dir, exist_ok=True)
-        with open(f"{self.dir}/ab_test_result.json", "w",
+        os.makedirs(self.out, exist_ok=True)
+        with open(f"{self.out}/ab_test_result.json", "w",
                   encoding="utf-8") as f:
             json.dump({"generated_at": datetime.now().isoformat(),
                        "results": results, "summary": summary},
@@ -140,10 +143,10 @@ class PromptABTest:
                  f"| A 平均分 | {summary['avg_a']} |",
                  f"| B 平均分 | {summary['avg_b']} |",
                  f"| 总冠军 | **{summary['overall_winner']}** |", ""]
-        with open(f"{self.dir}/ab_test_report.md", "w",
+        with open(f"{self.out}/ab_test_report.md", "w",
                   encoding="utf-8") as f:
             f.write("\n".join(lines))
-        print(f"\n  ✅ A/B 报告: {self.dir}/ab_test_report.md")
+        print(f"\n  ✅ A/B 报告: {self.out}/ab_test_report.md")
 
     def apply_winner(self, winner_prompt):
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")

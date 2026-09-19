@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 from tenacity import retry, stop_after_attempt, wait_exponential
-from config import LLM_MODEL, LLM_API_KEY_ENV
+from config import LLM_MODEL, LLM_API_KEY_ENV, LIVE_DATA_DIR, REPORT_DIR
 
 
 MONTHLY_PROMPT = """你是量化投资总监。写月度复盘报告给投委会。
@@ -27,8 +27,9 @@ MONTHLY_PROMPT = """你是量化投资总监。写月度复盘报告给投委会
 
 
 class MonthlyReviewGenerator:
-    def __init__(self, live_data_dir="live_data"):
-        self.dir = live_data_dir
+    def __init__(self, live_data_dir=None, report_dir=None):
+        self.dir = live_data_dir or LIVE_DATA_DIR
+        self.out = report_dir or REPORT_DIR
         self.api_key = os.environ.get(LLM_API_KEY_ENV, "")
         self.enabled = bool(self.api_key)
 
@@ -76,14 +77,15 @@ class MonthlyReviewGenerator:
         else:
             text = self._fallback(metrics)
         # 保存
-        with open(f"{self.dir}/report_monthly.md", "w",
+        os.makedirs(self.out, exist_ok=True)
+        with open(f"{self.out}/report_monthly.md", "w",
                   encoding="utf-8") as f:
             f.write(text)
-        with open(f"{self.dir}/monthly_metrics.json", "w",
+        with open(f"{self.out}/monthly_metrics.json", "w",
                   encoding="utf-8") as f:
             json.dump(metrics, f, ensure_ascii=False, indent=2,
                       default=str)
-        print(f"  ✅ 月报: {self.dir}/report_monthly.md")
+        print(f"  ✅ 月报: {self.out}/report_monthly.md")
         return text
 
     def _compute_metrics(self, reports):

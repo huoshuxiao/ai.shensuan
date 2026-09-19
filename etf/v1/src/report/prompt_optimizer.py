@@ -79,7 +79,10 @@ class PromptOptimizer:
             f.write(content)
 
 
-def optimize_prompt(summary_path="live_data/self_eval_summary.json"):
+def optimize_prompt(summary_path=None):
+    from config import REPORT_DIR
+    if summary_path is None:
+        summary_path = f"{REPORT_DIR}/self_eval_summary.json"
     if not os.path.exists(summary_path):
         return {}
     with open(summary_path, "r", encoding="utf-8") as f:

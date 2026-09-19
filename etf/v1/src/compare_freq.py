@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-频率对比：同一策略在日线 vs 分钟线的表现
+频率对比：同一策略在日线 vs 分钟线的表现 + 持仓相似度
 用法：python compare_freq.py
 """
 
 import os
+import json
 import pandas as pd
 import numpy as np
 
@@ -15,8 +16,6 @@ def load_results(freq):
     if not os.path.exists(eq_path):
         return None
     eq = pd.read_csv(eq_path)
-    eq_col = eq.columns[1] if eq.columns[0] in ("date", "datetime") \
-        else eq.columns[0]
     eq = eq.set_index(eq.columns[0])
     trades = pd.read_csv(trades_path) if os.path.exists(trades_path) \
         else pd.DataFrame()
@@ -44,12 +43,56 @@ def compute_stats(eq_series, trades_df, freq):
             "交易次数": len(trades_df)}
 
 
+def load_daily_positions(freq):
+    """从 signals_{freq}.csv 提取每日收盘持仓（当天最后一个非空 target_code）"""
+    path = f"signals_{freq}.csv"
+    if not os.path.exists(path):
+        return None
+    s = pd.read_csv(path)
+    ts_col = s.columns[0]
+    code = s["target_code"].astype(str)
+    s["date"] = pd.to_datetime(s[ts_col]).dt.date
+    s["target_code"] = code.where(
+        code.notna() & ~code.isin(["", "nan", "None"]), "")
+    held = s[s["target_code"] != ""]
+    all_dates = pd.Index(sorted(s["date"].unique()), name="date")
+    daily = held.groupby("date")["target_code"].last().reindex(
+        all_dates, fill_value="")
+    return daily
+
+
+def holdings_similarity(pos_a, pos_b):
+    """两个频率每日收盘持仓的一致程度"""
+    common = pos_a.index.intersection(pos_b.index)
+    if len(common) == 0:
+        return None
+    a, b = pos_a.loc[common].values, pos_b.loc[common].values
+    match = a == b
+    at_least_one = (a != "") | (b != "")
+    both_held = (a != "") & (b != "")
+    disagree = [(str(d), x, y or "-") for d, x, y, m
+                in zip(common, a, b, match) if not m][:20]
+    return {
+        "对齐天数": int(len(common)),
+        "总相似度": round(float(match.mean()), 4),
+        "持仓日相似度": round(float(match[at_least_one].mean()), 4)
+                         if at_least_one.any() else None,
+        "双边持仓日相似度": round(float(match[both_held].mean()), 4)
+                             if both_held.any() else None,
+        "持仓占比_a": round(float((a != "").mean()), 4),
+        "持仓占比_b": round(float((b != "").mean()), 4),
+        "不一致示例": [{"date": d, "a": x, "b": y}
+                       for d, x, y in disagree],
+    }
+
+
 def main():
     print("=" * 60)
     print("  频率对比：日线 vs 分钟线")
     print("=" * 60)
 
     results = []
+    positions = {}
     for freq in ["daily", "1min"]:
         data = load_results(freq)
         if data is None:
@@ -63,12 +106,33 @@ def main():
         print(f"\n  [{freq}]")
         for k, v in stats.items():
             print(f"    {k}: {v}")
+        pos = load_daily_positions(freq)
+        if pos is not None:
+            positions[freq] = pos
 
     if results:
         df = pd.DataFrame(results)
         df.to_csv("freq_comparison.csv", index=False,
                   encoding="utf-8-sig")
         print(f"\n  ✅ 对比已保存: freq_comparison.csv")
+
+    sim = None
+    if "daily" in positions and "1min" in positions:
+        sim = holdings_similarity(positions["daily"],
+                                  positions["1min"])
+    if sim:
+        print("\n  🎯 持仓相似度（日线 vs 分钟线，每日收盘仓位）")
+        for k, v in sim.items():
+            if k != "不一致示例" and v is not None:
+                print(f"    {k}: {v}")
+        with open("holdings_similarity.json", "w",
+                  encoding="utf-8") as f:
+            json.dump(sim, f, ensure_ascii=False, indent=2,
+                      default=str)
+        print("  ✅ 已保存: holdings_similarity.json")
+    elif len(results) == 2:
+        print("\n  ⚠️ 缺少 signals_daily.csv / signals_1min.csv，"
+              "无法计算持仓相似度")
 
 
 if __name__ == "__main__":

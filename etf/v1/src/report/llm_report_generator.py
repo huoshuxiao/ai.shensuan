@@ -6,7 +6,7 @@ import json
 import re
 from datetime import datetime
 from tenacity import retry, stop_after_attempt, wait_exponential
-from config import LLM_MODEL, LLM_API_KEY_ENV
+from config import LLM_MODEL, LLM_API_KEY_ENV, REPORT_DIR
 
 
 DAILY_PROMPT = """你是量化交易主管。根据实盘反馈数据，写一份给交易员看的每日报告。
@@ -54,8 +54,8 @@ class LLMReportGenerator:
                 text = self._fallback(report)
         else:
             text = self._fallback(report)
-        os.makedirs("live_data", exist_ok=True)
-        with open("live_data/report_daily.md", "w",
+        os.makedirs(REPORT_DIR, exist_ok=True)
+        with open(f"{REPORT_DIR}/report_daily.md", "w",
                   encoding="utf-8") as f:
             f.write(text)
         return text

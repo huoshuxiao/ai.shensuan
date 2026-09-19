@@ -7,11 +7,16 @@
     "source": "genetic",
     "status": "active",
     "first_seen": "2026-09-19 22:40:25",
-    "last_seen": "2026-09-19 22:40:25",
-    "update_count": 1,
+    "last_seen": "2026-09-19 22:44:17",
+    "update_count": 2,
     "ic_history": [
       {
         "time": "2026-09-19 22:40:25",
+        "ic": -0.04383120247053973,
+        "icir": -1.1321790496862538
+      },
+      {
+        "time": "2026-09-19 22:44:17",
         "ic": -0.04383120247053973,
         "icir": -1.1321790496862538
       }
@@ -25,13 +30,234 @@
     "source": "genetic",
     "status": "active",
     "first_seen": "2026-09-19 22:40:25",
-    "last_seen": "2026-09-19 22:40:25",
-    "update_count": 1,
+    "last_seen": "2026-09-19 22:44:17",
+    "update_count": 2,
     "ic_history": [
       {
         "time": "2026-09-19 22:40:25",
         "ic": -0.04113166058171907,
         "icir": -1.2627309150153065
+      },
+      {
+        "time": "2026-09-19 22:44:17",
+        "ic": -0.04113166058171907,
+        "icir": -1.2627309150153065
+      }
+    ]
+  },
+  "gp_2": {
+    "name": "gp_2",
+    "expr": "((low - ((open * delay(returns, 5)) - log(returns))) * ts_std(high, 20))",
+    "ic": -0.03936430220621161,
+    "icir": -1.1156393995732132,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-19 22:44:17",
+    "last_seen": "2026-09-19 22:44:17",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-19 22:44:17",
+        "ic": -0.03936430220621161,
+        "icir": -1.1156393995732132
+      }
+    ]
+  },
+  "gp_5": {
+    "name": "gp_5",
+    "expr": "((-ts_sum(log(returns), 5)) * ts_std(high, 20))",
+    "ic": 0.0331234997921515,
+    "icir": 2.1224427520529927,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-19 22:44:17",
+    "last_seen": "2026-09-19 22:44:17",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-19 22:44:17",
+        "ic": 0.0331234997921515,
+        "icir": 2.1224427520529927
+      }
+    ]
+  },
+  "volatility_20": {
+    "name": "volatility_20",
+    "expr": "",
+    "ic": -0.031064117111306612,
+    "icir": -1.578560137071063,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-19 22:44:17",
+    "last_seen": "2026-09-19 22:44:17",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-19 22:44:17",
+        "ic": -0.031064117111306612,
+        "icir": -1.578560137071063
+      }
+    ]
+  },
+  "gp_7": {
+    "name": "gp_7",
+    "expr": "(returns + (low - (high - sign(high))))",
+    "ic": -0.03063128700480546,
+    "icir": -1.755777737037398,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-19 22:44:17",
+    "last_seen": "2026-09-19 22:44:17",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-19 22:44:17",
+        "ic": -0.03063128700480546,
+        "icir": -1.755777737037398
+      }
+    ]
+  },
+  "mogp_0": {
+    "name": "mogp_0",
+    "expr": "(close / low)",
+    "ic": -0.02998150182603675,
+    "icir": 0.0,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-19 22:44:17",
+    "last_seen": "2026-09-19 22:44:17",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-19 22:44:17",
+        "ic": -0.02998150182603675,
+        "icir": 0.0
+      }
+    ]
+  },
+  "mogp_1": {
+    "name": "mogp_1",
+    "expr": "delta(ts_std(abs(abs(high)), 10), 10)",
+    "ic": 0.02382825677623704,
+    "icir": 0.0,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-19 22:44:17",
+    "last_seen": "2026-09-19 22:44:17",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-19 22:44:17",
+        "ic": 0.02382825677623704,
+        "icir": 0.0
+      }
+    ]
+  },
+  "hybrid_1": {
+    "name": "hybrid_1",
+    "expr": "abs(volume)",
+    "ic": 0.023654091221732128,
+    "icir": 0.0,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-19 22:44:17",
+    "last_seen": "2026-09-19 22:44:17",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-19 22:44:17",
+        "ic": 0.023654091221732128,
+        "icir": 0.0
+      }
+    ]
+  },
+  "volume_ratio_20": {
+    "name": "volume_ratio_20",
+    "expr": "",
+    "ic": 0.021206181030901945,
+    "icir": 0.746292426579034,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-19 22:44:17",
+    "last_seen": "2026-09-19 22:44:17",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-19 22:44:17",
+        "ic": 0.021206181030901945,
+        "icir": 0.746292426579034
+      }
+    ]
+  },
+  "reversal_5": {
+    "name": "reversal_5",
+    "expr": "",
+    "ic": 0.017562834576181262,
+    "icir": 0.5362407046647163,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-19 22:44:17",
+    "last_seen": "2026-09-19 22:44:17",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-19 22:44:17",
+        "ic": 0.017562834576181262,
+        "icir": 0.5362407046647163
+      }
+    ]
+  },
+  "ma_ratio_10_30": {
+    "name": "ma_ratio_10_30",
+    "expr": "",
+    "ic": 0.012334638531360005,
+    "icir": 0.49948968105857516,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-19 22:44:17",
+    "last_seen": "2026-09-19 22:44:17",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-19 22:44:17",
+        "ic": 0.012334638531360005,
+        "icir": 0.49948968105857516
+      }
+    ]
+  },
+  "mogp_4": {
+    "name": "mogp_4",
+    "expr": "ts_mean(returns, 10)",
+    "ic": 0.010284953727668899,
+    "icir": 0.0,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-19 22:44:17",
+    "last_seen": "2026-09-19 22:44:17",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-19 22:44:17",
+        "ic": 0.010284953727668899,
+        "icir": 0.0
+      }
+    ]
+  },
+  "ma_ratio_5_20": {
+    "name": "ma_ratio_5_20",
+    "expr": "",
+    "ic": 0.0081237712204707,
+    "icir": 0.3654850898229339,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-19 22:44:17",
+    "last_seen": "2026-09-19 22:44:17",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-19 22:44:17",
+        "ic": 0.0081237712204707,
+        "icir": 0.3654850898229339
       }
     ]
   }

@@ -2,18 +2,23 @@
   "gp_0": {
     "name": "gp_0",
     "expr": "ts_std(returns, 5)",
-    "ic": 0.02132383754690943,
-    "icir": 0.6441512515195058,
+    "ic": 0.031467837915180465,
+    "icir": 1.4286333677732863,
     "source": "genetic",
     "status": "active",
     "first_seen": "2026-09-20 10:53:42",
-    "last_seen": "2026-09-20 10:53:42",
-    "update_count": 1,
+    "last_seen": "2026-09-20 10:56:10",
+    "update_count": 2,
     "ic_history": [
       {
         "time": "2026-09-20 10:53:42",
         "ic": 0.02132383754690943,
         "icir": 0.6441512515195058
+      },
+      {
+        "time": "2026-09-20 10:56:10",
+        "ic": 0.031467837915180465,
+        "icir": 1.4286333677732863
       }
     ]
   },
@@ -25,11 +30,16 @@
     "source": "genetic",
     "status": "active",
     "first_seen": "2026-09-20 10:53:42",
-    "last_seen": "2026-09-20 10:53:42",
-    "update_count": 1,
+    "last_seen": "2026-09-20 10:56:10",
+    "update_count": 2,
     "ic_history": [
       {
         "time": "2026-09-20 10:53:42",
+        "ic": 0.02003074520690374,
+        "icir": 1.2259455227308953
+      },
+      {
+        "time": "2026-09-20 10:56:10",
         "ic": 0.02003074520690374,
         "icir": 1.2259455227308953
       }
@@ -38,18 +48,239 @@
   "gp_2": {
     "name": "gp_2",
     "expr": "ts_mean(((high / close) + (delta(close, 10) + (high / low))), 20)",
-    "ic": 0.01867644892483128,
-    "icir": 0.657825372573106,
+    "ic": 0.024065888513496874,
+    "icir": 1.0006400844796484,
     "source": "genetic",
     "status": "active",
     "first_seen": "2026-09-20 10:53:42",
-    "last_seen": "2026-09-20 10:53:42",
-    "update_count": 1,
+    "last_seen": "2026-09-20 10:56:10",
+    "update_count": 2,
     "ic_history": [
       {
         "time": "2026-09-20 10:53:42",
         "ic": 0.01867644892483128,
         "icir": 0.657825372573106
+      },
+      {
+        "time": "2026-09-20 10:56:10",
+        "ic": 0.024065888513496874,
+        "icir": 1.0006400844796484
+      }
+    ]
+  },
+  "mogp_0": {
+    "name": "mogp_0",
+    "expr": "delta(ts_std(abs(abs(high)), 10), 10)",
+    "ic": 0.025257685056716828,
+    "icir": 0.0,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-20 10:56:10",
+    "last_seen": "2026-09-20 10:56:10",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-20 10:56:10",
+        "ic": 0.025257685056716828,
+        "icir": 0.0
+      }
+    ]
+  },
+  "gp_3": {
+    "name": "gp_3",
+    "expr": "(volume * (-ts_sum(log(delta(volume, 20)), 5)))",
+    "ic": -0.022550987609036604,
+    "icir": -0.6672072426775015,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-20 10:56:10",
+    "last_seen": "2026-09-20 10:56:10",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-20 10:56:10",
+        "ic": -0.022550987609036604,
+        "icir": -0.6672072426775015
+      }
+    ]
+  },
+  "gp_4": {
+    "name": "gp_4",
+    "expr": "ts_mean(((high / (((high / ((delta(close, 10) + (high / low)) * open)) + (delta(abs(high), 10) + (high / low))) * open)) + (delta(close, 10) + (high / low))), 20)",
+    "ic": 0.01975074898479651,
+    "icir": 0.6428997137711095,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-20 10:56:10",
+    "last_seen": "2026-09-20 10:56:10",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-20 10:56:10",
+        "ic": 0.01975074898479651,
+        "icir": 0.6428997137711095
+      }
+    ]
+  },
+  "hybrid_1": {
+    "name": "hybrid_1",
+    "expr": "((ts_mean((returns * volume), 10) - open) * ts_sum((abs(high) * (open * close)), 10))",
+    "ic": 0.01679080542594185,
+    "icir": 0.0,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-20 10:56:10",
+    "last_seen": "2026-09-20 10:56:10",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-20 10:56:10",
+        "ic": 0.01679080542594185,
+        "icir": 0.0
+      }
+    ]
+  },
+  "hybrid_2": {
+    "name": "hybrid_2",
+    "expr": "close",
+    "ic": -0.015874908964980547,
+    "icir": 0.0,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-20 10:56:10",
+    "last_seen": "2026-09-20 10:56:10",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-20 10:56:10",
+        "ic": -0.015874908964980547,
+        "icir": 0.0
+      }
+    ]
+  },
+  "volume_ratio_20": {
+    "name": "volume_ratio_20",
+    "expr": "",
+    "ic": 0.014537129641292279,
+    "icir": 0.5279960374534662,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-20 10:56:10",
+    "last_seen": "2026-09-20 10:56:10",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-20 10:56:10",
+        "ic": 0.014537129641292279,
+        "icir": 0.5279960374534662
+      }
+    ]
+  },
+  "mogp_3": {
+    "name": "mogp_3",
+    "expr": "ts_mean(returns, 10)",
+    "ic": 0.013905022204647888,
+    "icir": 0.0,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-20 10:56:10",
+    "last_seen": "2026-09-20 10:56:10",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-20 10:56:10",
+        "ic": 0.013905022204647888,
+        "icir": 0.0
+      }
+    ]
+  },
+  "reversal_5": {
+    "name": "reversal_5",
+    "expr": "",
+    "ic": 0.013620245349970994,
+    "icir": 0.38930384982068333,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-20 10:56:10",
+    "last_seen": "2026-09-20 10:56:10",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-20 10:56:10",
+        "ic": 0.013620245349970994,
+        "icir": 0.38930384982068333
+      }
+    ]
+  },
+  "rsi_14": {
+    "name": "rsi_14",
+    "expr": "",
+    "ic": 0.011827378655485504,
+    "icir": 0.4129729239826594,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-20 10:56:10",
+    "last_seen": "2026-09-20 10:56:10",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-20 10:56:10",
+        "ic": 0.011827378655485504,
+        "icir": 0.4129729239826594
+      }
+    ]
+  },
+  "mogp_4": {
+    "name": "mogp_4",
+    "expr": "(delta(ts_std(ts_sum(volume, 60), 10), 60) + (returns - (-abs(returns))))",
+    "ic": -0.010661152151577364,
+    "icir": 0.0,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-20 10:56:10",
+    "last_seen": "2026-09-20 10:56:10",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-20 10:56:10",
+        "ic": -0.010661152151577364,
+        "icir": 0.0
+      }
+    ]
+  },
+  "mogp_5": {
+    "name": "mogp_5",
+    "expr": "ts_mean(returns, 20)",
+    "ic": 0.007989954396956645,
+    "icir": 0.0,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-20 10:56:10",
+    "last_seen": "2026-09-20 10:56:10",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-20 10:56:10",
+        "ic": 0.007989954396956645,
+        "icir": 0.0
+      }
+    ]
+  },
+  "price_position_20": {
+    "name": "price_position_20",
+    "expr": "",
+    "ic": 0.00522566638338998,
+    "icir": 0.17912946808383476,
+    "source": "pipeline",
+    "status": "active",
+    "first_seen": "2026-09-20 10:56:10",
+    "last_seen": "2026-09-20 10:56:10",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-20 10:56:10",
+        "ic": 0.00522566638338998,
+        "icir": 0.17912946808383476
       }
     ]
   }

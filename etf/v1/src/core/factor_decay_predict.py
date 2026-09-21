@@ -1,16 +1,19 @@
 # -*- coding: utf-8 -*-
-"""因子衰减预测"""
+"""因子衰减预测
+
+用滚动 IC 序列外推因子未来预测力：IC 绝对值显著走低 => 因子
+失效预警（danger/warn），提示重挖或降权。"""
 
 import warnings
 import numpy as np
 import pandas as pd
-from config import DECAY_PREDICT
-from factor_dsl import compute_ic
-
-warnings.filterwarnings("ignore")
+from config import DECAY_PREDICT, RESULTS_DIR
+from factor_dsl import compute_ic, safe_spearman
 
 
 def extract_ic_series(factor, pool, window=None, step=None):
+    """滚动 IC 时间序列（参考标的代理）：窗口 window 内因子值与
+    下期收益的 Spearman 相关，每 step 采样一个点。"""
     cfg = DECAY_PREDICT
     window = window or cfg["ic_window_bars"]
     step = step or cfg["ic_step_bars"]
@@ -29,17 +32,24 @@ def extract_ic_series(factor, pool, window=None, step=None):
         a, b = sub.iloc[:, 0], sub.iloc[:, 1]
         if a.std() < 1e-9 or b.std() < 1e-9:
             continue
-        ics.append(a.corr(b, method="spearman"))
+        ics.append(safe_spearman(a, b))
         idx.append(pair.index[i])
     return pd.Series(ics, index=idx)
 
 
 def _predict_arima(ic, horizon):
+    """预测 horizon 步后的 IC 水平：ARIMA(2,1,2) 差分整合一次
+    （IC 序列常带趋势）；拟合失败/库缺失时回退到最近 20 点
+    线性趋势外推。"""
     try:
         from statsmodels.tsa.arima.model import ARIMA
-        model = ARIMA(ic, order=(2, 1, 2))
-        fit = model.fit()
-        forecast = fit.forecast(steps=horizon)
+        with warnings.catch_warnings():
+            # ARIMA 小样本常不收敛（ConvergenceWarning），结果仍可用；
+            # 局部抑制，避免全局 filterwarnings 被其他库重置后仍然刷屏
+            warnings.simplefilter("ignore")
+            model = ARIMA(ic, order=(2, 1, 2))
+            fit = model.fit()
+            forecast = fit.forecast(steps=horizon)
         return float(forecast.iloc[-1])
     except Exception:
         if len(ic) < 5:
@@ -55,6 +65,10 @@ class FactorDecayPredictor:
         self.predictions = {}
 
     def predict_one(self, factor, pool):
+        """单因子衰减判定。delta = (|预测IC| - |当前IC|) · sign(当前IC)：
+        带符号的"有效预测力变化量"（负=衰减）。
+        alert: delta < danger_threshold => danger；
+               delta < warn_threshold  => warn；否则 ok。"""
         ic_series = extract_ic_series(factor, pool)
         if len(ic_series) < 10:
             return {"factor": factor["name"], "current_ic": 0.0,
@@ -100,6 +114,6 @@ def predict_factor_decay(factors, pool):
     predictor = FactorDecayPredictor()
     df = predictor.predict_all(factors, pool)
     if not df.empty:
-        df.to_csv("factor_decay_predict.csv", index=False,
-                  encoding="utf-8-sig")
+        df.to_csv(f"{RESULTS_DIR}/factor_decay_predict.csv",
+                  index=False, encoding="utf-8-sig")
     return df

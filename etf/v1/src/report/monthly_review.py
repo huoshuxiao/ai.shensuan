@@ -9,6 +9,7 @@ import pandas as pd
 from datetime import datetime
 from tenacity import retry, stop_after_attempt, wait_exponential
 from config import LLM_MODEL, LLM_API_KEY_ENV, LIVE_DATA_DIR, REPORT_DIR
+from llm_client import (make_openai_client, endpoint_enabled)
 
 
 MONTHLY_PROMPT = """你是量化投资总监。写月度复盘报告给投委会。
@@ -31,13 +32,12 @@ class MonthlyReviewGenerator:
         self.dir = live_data_dir or LIVE_DATA_DIR
         self.out = report_dir or REPORT_DIR
         self.api_key = os.environ.get(LLM_API_KEY_ENV, "")
-        self.enabled = bool(self.api_key)
+        self.enabled = endpoint_enabled(self.api_key)
 
     @retry(stop=stop_after_attempt(3),
            wait=wait_exponential(multiplier=1, min=2, max=10))
     def _chat(self, messages):
-        from openai import OpenAI
-        client = OpenAI(api_key=self.api_key)
+        client = make_openai_client(api_key=self.api_key)
         resp = client.chat.completions.create(
             model=LLM_MODEL, messages=messages, temperature=0.5)
         return resp.choices[0].message.content

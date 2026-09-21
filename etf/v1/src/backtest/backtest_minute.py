@@ -7,6 +7,7 @@ from config import (
     INIT_CAPITAL, COMMISSION_RATE, MIN_COMMISSION, SLIPPAGE,
     MIN_TRADE_AMOUNT, RISK_CONTROL,
 )
+from data_loader import PointInTimeData
 
 
 class RiskController:
@@ -66,19 +67,15 @@ class MinuteBacktester:
         self.pool = pool
         self.universe = universe
         self.risk_params = risk_params
+        # 与日线引擎一致：取价统一走时点访问器（只允许看到 ts 及之前的 bar）
+        self.pit = PointInTimeData(pool)
 
     @staticmethod
     def _cost(amount):
         return max(amount * COMMISSION_RATE, MIN_COMMISSION) + amount * SLIPPAGE
 
     def _price(self, code, ts, field="close"):
-        if code not in self.pool:
-            return None
-        df = self.pool[code]
-        if ts not in df.index:
-            return None
-        v = df.loc[ts, field]
-        return float(v) if not pd.isna(v) else None
+        return self.pit.get_price(code, ts, field)
 
     def run(self, signals):
         cash = INIT_CAPITAL
@@ -188,6 +185,8 @@ class MinuteBacktester:
                 win_rate = wins / n
 
         return {
+            "回测区间": (f"{eq.index[0]} ~ {eq.index[-1]} "
+                        f"({len(eq)} bars)"),
             "初始资金": round(eq.iloc[0], 2),
             "最终资金": round(eq.iloc[-1], 2),
             "总收益率": f"{total_ret * 100:.2f}%",

@@ -9,13 +9,14 @@ import numpy as np
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tenacity import retry, stop_after_attempt, wait_exponential
-from config import LLM_API_KEY_ENV
+from config import LLM_API_KEY_ENV, LIVE_DATA_DIR
 from generation_config import (
     GENERATION_MODELS, GENERATION_STRATEGY,
     get_style_instruction, MERGE_CONFIG, OUTPUT,
 )
 from report_prompts import get_system_prompt
 from report_templates import ReportTemplate
+from llm_client import (make_openai_client, endpoint_enabled)
 
 
 class SingleLLMGenerator:
@@ -23,16 +24,15 @@ class SingleLLMGenerator:
         self.model = model_cfg
         self.language = language
         self.api_key = os.environ.get(model_cfg["env_key"], "")
-        self.enabled = bool(self.api_key)
+        self.enabled = endpoint_enabled(self.api_key)
 
     @retry(stop=stop_after_attempt(2),
            wait=wait_exponential(multiplier=1, min=2, max=6))
     def _call(self, messages, temperature):
-        from openai import OpenAI
         kwargs = {"api_key": self.api_key}
         if self.model.get("base_url"):
             kwargs["base_url"] = self.model["base_url"]
-        client = OpenAI(**kwargs)
+        client = make_openai_client(**kwargs)
         resp = client.chat.completions.create(
             model=self.model["name"], messages=messages,
             temperature=temperature)
@@ -65,7 +65,8 @@ class SingleLLMGenerator:
 
 
 class MultiLLMGenerator:
-    def __init__(self, language="zh", live_data_dir="live_data"):
+    def __init__(self, language="zh",
+                 live_data_dir=LIVE_DATA_DIR):
         self.language = language
         self.dir = live_data_dir
         self.config = GENERATION_STRATEGY
@@ -145,7 +146,6 @@ class MultiLLMGenerator:
     @retry(stop=stop_after_attempt(2),
            wait=wait_exponential(multiplier=1, min=2, max=6))
     def _evaluate_one(self, model, report_text, raw_data):
-        from openai import OpenAI
         from eval_prompts import get_eval_prompt
         system = get_eval_prompt("single", self.language)
         user = (f"# 日报\n{report_text[:4000]}\n\n# 原始数据\n"
@@ -153,7 +153,7 @@ class MultiLLMGenerator:
         kwargs = {"api_key": os.environ.get(model["env_key"])}
         if model.get("base_url"):
             kwargs["base_url"] = model["base_url"]
-        client = OpenAI(**kwargs)
+        client = make_openai_client(**kwargs)
         resp = client.chat.completions.create(
             model=model["name"],
             messages=[{"role": "system", "content": system},
@@ -258,7 +258,7 @@ class MultiLLMGenerator:
 def run_multi_llm_generation(report_path=None,
                               report_type="daily"):
     if report_path is None:
-        report_path = "live_data/feedback_report.json"
+        report_path = f"{LIVE_DATA_DIR}/feedback_report.json"
     if not os.path.exists(report_path):
         return {}
     with open(report_path, "r", encoding="utf-8") as f:
@@ -269,7 +269,7 @@ def run_multi_llm_generation(report_path=None,
 def run_multi_llm_generation_batch(n_days=5):
     results = []
     files = sorted(glob.glob(
-        "live_data/feedback_report*.json"))[-n_days:]
+        f"{LIVE_DATA_DIR}/feedback_report*.json"))[-n_days:]
     for f in files:
         with open(f, "r", encoding="utf-8") as fp:
             raw = json.load(fp)

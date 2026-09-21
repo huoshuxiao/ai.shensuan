@@ -1,10 +1,18 @@
 # -*- coding: utf-8 -*-
-"""多目标遗传编程（NSGA-II 简化版）"""
+"""多目标遗传编程（NSGA-II 简化版）
+
+单目标 GP 只追 |IC|，容易挖出高换手、与已有因子雷同的"刷分"表达式。
+本模块同时优化三维目标：|IC| 越大越好，turnover（信号翻转率）与
+max_corr（与库内因子最大相关）越小越好，用 Pareto 前沿保留
+互不支配的折中解集。"""
 
 import random
 import numpy as np
 import pandas as pd
-from config import GENETIC_MULTI_OBJECTIVE as CFG
+from config import (
+    GENETIC_MULTI_OBJECTIVE as CFG,
+    LLM_MUTATION, LLM_CROSSOVER, RL_WEIGHT, RESULTS_DIR,
+)
 from factor_genetic import (
     ExprNode, random_expr, mutate, crossover,
 )
@@ -15,6 +23,8 @@ from pareto_animation import ParetoRecorder
 
 
 def dominates(a, b):
+    """Pareto 支配：a 三目标全部不劣于 b，且至少一个严格更优。
+    （不存在单一起步权重可把 a 排到 b 之后 => b 应被淘汰）"""
     better_or_equal = (a["abs_ic"] >= b["abs_ic"] and
                        a["turnover"] <= b["turnover"] and
                        a["max_corr"] <= b["max_corr"])
@@ -25,9 +35,12 @@ def dominates(a, b):
 
 
 def fast_non_dominated_sort(metrics):
+    """NSGA-II 快速非支配分层：
+    第 0 层 = 不被任何人支配的解；剔除后再找下一层……
+    返回 [[前沿1下标...], [前沿2...], ...]，复杂度 O(M·n²)。"""
     n = len(metrics)
-    S = [[] for _ in range(n)]
-    n_dominated = [0] * n
+    S = [[] for _ in range(n)]           # i 支配的解集
+    n_dominated = [0] * n                # i 被多少个解支配
     fronts = [[]]
     for i in range(n):
         for j in range(n):
@@ -40,7 +53,7 @@ def fast_non_dominated_sort(metrics):
         if n_dominated[i] == 0:
             fronts[0].append(i)
     k = 0
-    while fronts[k]:
+    while fronts[k]:                     # 剥洋葱：支配数清零则进入下一层
         nxt = []
         for i in fronts[k]:
             for j in S[i]:
@@ -53,6 +66,10 @@ def fast_non_dominated_sort(metrics):
 
 
 def crowding_distance(front, metrics):
+    """拥挤度：同层内保持多样性的排名的密度代理。
+    对每个目标轴排序后，个体得分 = 左右邻居间距/该轴全域跨度 之和；
+    前沿两端无穷大（边界解必留）。选择时优先淘汰拥挤度小（密集区）
+    的解，使 Pareto 前沿均匀铺开。"""
     if len(front) <= 2:
         return {i: float("inf") for i in front}
     distances = {i: 0.0 for i in front}
@@ -79,11 +96,26 @@ class MultiObjectiveGP:
         self.ref_code = next(iter(pool))
         self.history = []
         self.adaptive = AdaptiveMutationController()
-        self.weight_scheduler = DynamicWeightScheduler(
-            self.cfg["n_generations"])
+        if RL_WEIGHT.get("enabled"):
+            from rl_weight_scheduler import RLWeightScheduler
+            self.weight_scheduler = RLWeightScheduler(
+                self.cfg["n_generations"],
+                alpha=RL_WEIGHT.get("alpha", 0.5),
+                load_path=RL_WEIGHT.get("load_path"))
+        else:
+            self.weight_scheduler = DynamicWeightScheduler(
+                self.cfg["n_generations"])
         self.recorder = ParetoRecorder()
         self.mutation_rate = self.cfg["mutation_rate"]
         self.crossover_rate = self.cfg["crossover_rate"]
+        self.mut_op = None
+        self.cross_op = None
+        if LLM_MUTATION.get("enabled"):
+            from llm_mutation_operator import LLMMutationOperator
+            self.mut_op = LLMMutationOperator()
+        if LLM_CROSSOVER.get("enabled"):
+            from llm_crossover_operator import LLMCrossoverOperator
+            self.cross_op = LLMCrossoverOperator()
 
     def _init_population(self):
         return [random_expr(self.rng, self.cfg["max_expr_depth"])
@@ -105,6 +137,8 @@ class MultiObjectiveGP:
         if not self.cfg["enabled"]:
             return []
         pop = self._init_population()
+        stagnation = self.cfg.get("stagnation_generations", 0)
+        stall, best_so_far = 0, 0.0
         for gen in range(self.cfg["n_generations"]):
             metrics = self._evaluate_population(pop)
             fronts = fast_non_dominated_sort(metrics)
@@ -118,9 +152,23 @@ class MultiObjectiveGP:
             self.mutation_rate = adapt["mutation_rate"]
             self.crossover_rate = adapt["crossover_rate"]
             weights = self.weight_scheduler.get_weights(gen)
+            if self.mut_op is not None:
+                self.mut_op.reset_generation()
+            if self.cross_op is not None:
+                self.cross_op.reset_generation()
             best_ic = max(m["abs_ic"] for m in metrics)
             print(f"  第 {gen + 1} 代: 最佳|IC|={best_ic:.4f}  "
                   f"前沿={len(fronts[0]) if fronts else 0}")
+            if best_ic > best_so_far + 1e-6:
+                best_so_far, stall = best_ic, 0
+            else:
+                stall += 1
+                if stagnation and stall >= stagnation \
+                        and gen + 1 < self.cfg["n_generations"]:
+                    print(f"  ℹ️ 最佳|IC| 已连续 {stall} 代无提升，"
+                          f"早停于第 {gen + 1} 代"
+                          f"（计划 {self.cfg['n_generations']} 代）")
+                    break
 
             next_pop = []
             for front in fronts:
@@ -132,14 +180,27 @@ class MultiObjectiveGP:
                         break
                     next_pop.append(metrics[i]["node"])
             while len(next_pop) < self.cfg["population_size"]:
-                a = metrics[self.rng.randint(0, len(metrics) - 1)]["node"]
-                b = metrics[self.rng.randint(0, len(metrics) - 1)]["node"]
+                ma = metrics[self.rng.randint(0, len(metrics) - 1)]
+                mb = metrics[self.rng.randint(0, len(metrics) - 1)]
+                a, b = ma["node"], mb["node"]
                 if self.rng.random() < self.crossover_rate:
-                    c1, c2 = crossover(a, b, self.rng)
+                    if self.cross_op is not None:
+                        from llm_crossover_operator import smart_crossover
+                        c1, c2 = smart_crossover(a, b, ma, mb,
+                                                 self.rng, self.cross_op)
+                    else:
+                        c1, c2 = crossover(a, b, self.rng)
                 else:
                     c1, c2 = a.clone(), b.clone()
                 if self.rng.random() < self.mutation_rate:
-                    c1 = mutate(c1, self.rng, self.cfg["max_expr_depth"])
+                    if self.mut_op is not None:
+                        from llm_mutation_operator import smart_mutate
+                        c1 = smart_mutate(c1, ma, self.rng,
+                                          self.cfg["max_expr_depth"],
+                                          self.mut_op)
+                    else:
+                        c1 = mutate(c1, self.rng,
+                                    self.cfg["max_expr_depth"])
                 next_pop.append(c1)
                 if len(next_pop) < self.cfg["population_size"]:
                     next_pop.append(c2)
@@ -168,12 +229,14 @@ class MultiObjectiveGP:
         self.recorder.save()
         adapt_hist = self.adaptive.get_history_df()
         if not adapt_hist.empty:
-            adapt_hist.to_csv("adaptive_mutation_history.csv",
-                              index=False, encoding="utf-8-sig")
+            adapt_hist.to_csv(
+                f"{RESULTS_DIR}/adaptive_mutation_history.csv",
+                index=False, encoding="utf-8-sig")
         weights_hist = self.weight_scheduler.get_history_df()
         if not weights_hist.empty:
-            weights_hist.to_csv("dynamic_weights_history.csv",
-                                index=False, encoding="utf-8-sig")
+            weights_hist.to_csv(
+                f"{RESULTS_DIR}/dynamic_weights_history.csv",
+                index=False, encoding="utf-8-sig")
         return result
 
     def get_history_df(self):
@@ -187,21 +250,45 @@ def multi_objective_mine(pool, existing_factors=None):
     factors = gp.run()
     hist = gp.get_history_df()
     if not hist.empty:
-        hist.to_csv("mogp_history.csv", index=False,
-                    encoding="utf-8-sig")
+        hist.to_csv(f"{RESULTS_DIR}/mogp_history.csv",
+                    index=False, encoding="utf-8-sig")
     if factors:
-        pd.DataFrame([{k: f.get(k) for k in
-                       ["name", "expr", "mean_ic", "turnover",
-                        "max_corr", "stability", "simplicity"]}
+        from factor_naming import cn_name
+        pd.DataFrame([{**{k: f.get(k) for k in
+                          ["name", "expr", "mean_ic", "turnover",
+                           "max_corr", "stability", "simplicity"]},
+                       "cn_name": cn_name(f.get("name", ""),
+                                          f.get("expr", ""))}
                       for f in factors]).to_csv(
-            "mogp_pareto_front.csv", index=False,
-            encoding="utf-8-sig")
+            f"{RESULTS_DIR}/mogp_pareto_front.csv",
+            index=False, encoding="utf-8-sig")
     try:
         from animation_exporter import export_animation
         if gp.recorder.snapshots:
             export_animation(gp.recorder.snapshots)
     except Exception as e:
         print(f"  ⚠️ 动画导出失败: {e}")
+    try:
+        from pareto_animation import create_animation
+        if gp.recorder.snapshots:
+            create_animation(gp.recorder.snapshots)
+    except Exception as e:
+        print(f"  ⚠️ HTML 动画生成失败: {e}")
+    try:
+        from animation_shap_overlay import create_animation_with_shap
+        if gp.recorder.snapshots:
+            create_animation_with_shap(gp.recorder.snapshots)
+    except Exception as e:
+        print(f"  ⚠️ SHAP 叠加动画失败: {e}")
+    try:
+        for op, fn in ((gp.mut_op, "llm_mutation_history.csv"),
+                       (gp.cross_op, "llm_crossover_history.csv")):
+            if op is not None and op.history:
+                op.get_history_df().to_csv(
+                    f"{RESULTS_DIR}/{fn}",
+                    index=False, encoding="utf-8-sig")
+    except Exception:
+        pass
     return factors
 
 

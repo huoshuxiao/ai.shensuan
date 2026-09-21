@@ -9,6 +9,7 @@ import pandas as pd
 from datetime import datetime
 from tenacity import retry, stop_after_attempt, wait_exponential
 from config import LLM_MODEL, LLM_API_KEY_ENV, LIVE_DATA_DIR, REPORT_DIR
+from llm_client import (make_openai_client, endpoint_enabled)
 
 
 EVAL_PROMPT = """你是量化报告审核专家。评估日报质量。
@@ -34,14 +35,13 @@ class SelfEvaluator:
         self.dir = live_data_dir or LIVE_DATA_DIR
         self.out = report_dir or REPORT_DIR
         self.api_key = os.environ.get(LLM_API_KEY_ENV, "")
-        self.enabled = bool(self.api_key)
+        self.enabled = endpoint_enabled(self.api_key)
         self.history = []
 
     @retry(stop=stop_after_attempt(3),
            wait=wait_exponential(multiplier=1, min=2, max=10))
     def _chat(self, messages, temperature=0.3):
-        from openai import OpenAI
-        client = OpenAI(api_key=self.api_key)
+        client = make_openai_client(api_key=self.api_key)
         resp = client.chat.completions.create(
             model=LLM_MODEL, messages=messages,
             temperature=temperature,

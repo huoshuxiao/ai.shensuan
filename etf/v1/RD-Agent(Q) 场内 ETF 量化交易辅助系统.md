@@ -313,3 +313,37 @@ etf/v1/
 | 报告 | LLM | 多模型投票 | 稳健 |
 | 看板 | Web | Streamlit | 快速 |
 | 存储 | 版本 | Git + CSV + JSON | 可追溯 |
+
+### 3.3 模块接入关系（谁调用谁）
+
+全部模块均已挂接到运行入口，无游离代码；研究环节由 `config.py` 各 `enabled` 开关控制，单环节异常打印 ⚠️ 后继续，不中断主流程。
+
+**main.py 研究主流程（9 阶段）**
+
+| 阶段 | 模块 | 触发条件 |
+| :--- | :--- | :--- |
+| 1-2 数据 | etf_universe / data_loader / frequency_adapter | 必选 |
+| 3 挖掘 | factors+factor_dsl（注册表基线）、rdagent_facade→multi_source_mining（official/llm/simple/genetic 四源）、factor_genetic（llm_research_planner 提供种子；llm_mutation/crossover_operator 的 smart 算子）、genetic_multi_objective（adaptive_mutation + dynamic_objective_weights/rl_weight_scheduler + genetic_extended_objectives，产出 pareto_history 供 view 三件套出 HTML/GIF/MP4）、llm_genetic_hybrid | `MULTI_SOURCE` `GENETIC` `LLM_RESEARCH_PLANNER` `LLM_MUTATION/CROSSOVER` `GENETIC_MULTI_OBJECTIVE` `LLM_GENETIC_HYBRID` |
+| 4 资产化 | factor_library(+factor_library_git 自动提交)、factor_clustering（聚类+代表去重，正交化前执行以保留 expr/source） | `FACTOR_LIBRARY(_GIT)` `FACTOR_CLUSTERING` |
+| 5 正交化 | joint_optimizer（正交×风控联合，按 DSR 迭代）> orthogonal_optimizer（LLM 调阈值/方法）> factor_orthogonal 默认 | `JOINT_LLM` `ORTHO_LLM` |
+| 6-7 信号回测 | risk_budget、strategy、backtest(get_backtester)、dsr | 必选 |
+| 8 验证 | walk_forward、strategy_pbo、pbo、pbo_timeline、multi_strategy（内含 strategy_lifecycle 生命周期/衰减 + save 多策略产物） | `WALK_FORWARD` `STRATEGY_PBO` `PBO_TIMELINE` `MULTI_STRATEGY` |
+| 9 分析闭环 | factor_decay_predict、decay_explain→llm_shap_explainer、shap_timeline、factor_attribution（marginal/shapley/loo）、strategy_lifecycle.FactorDecayMonitor、trigger_logic→auto_remining（满足条件时重挖并按 DSR 决定采纳）、optimizer/plot（净值图） | `DECAY_*` `FACTOR_ATTRIBUTION` `FACTOR_DECAY` `TRIGGER_LOGIC` `AUTO_REMINING` |
+
+**run_feedback.py 反馈与评估链**
+
+| 入口 | 模块 | 说明 |
+| :--- | :--- | :--- |
+| （默认必跑） | feedback_engine → slippage/latency/turnover/strategy/factor 分析器，config_updater 回写 | 产出 data/live/feedback_report.json + report/feedback_report.md |
+| `--llm daily/summary/all` | llm_report_generator | report/report_daily.md |
+| `--self-eval` | self_evaluator | report/self_eval_summary.json |
+| `--optimize-prompt` | prompt_optimizer | 依自评改写 report/report_prompts.py（自动备份 prompt_backups/） |
+| `--vote-eval` | multi_llm_voter | report/voting_eval_summary.json |
+| `--blind-eval` | multi_llm_blind_eval | 消费 report/multi_gen*/ 产物做跨模型排名 |
+| `--ab-test / --ab-apply` | ab_test（内部用 multi_llm_voter） | report/ab_test_report.md |
+| `--blind-spot` | blind_spot_detector | 报告盲区检测 |
+| `--monthly/--quarterly/--annual` | monthly_review / quarterly_review | 复盘报告 |
+| `--multi-gen` 或 run_multi_gen.py | multi_llm_generator（+generation_config/report_prompts/report_templates/report_merger/eval_prompts/eval_metrics） | 多模型日报投票 |
+
+**compare_freq.py**：双频率绩效对比 + 持仓相似度（signals_{freq}.csv 每日收盘仓位对齐）。
+**scheduler.py**：subprocess 定时触发 run_feedback.py --auto --llm daily / main.py / run_monthly.py。

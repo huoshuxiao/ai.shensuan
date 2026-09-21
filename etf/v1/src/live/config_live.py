@@ -1,8 +1,16 @@
 # -*- coding: utf-8 -*-
-"""实盘配置"""
+"""实盘配置
+
+模拟盘/实盘总开关（默认全部关闭，安全侧默认走模拟盘）：
+- ACCOUNT["broker"]："paper"（模拟盘，默认）| "qmt" | "easytrader"；
+- MODE["live_trading"]：是否实盘账户；
+- MODE["auto_order"]：False 时一切订单只记 DRY_RUN，不触真实委托；
+两者需同时为 True 才会经券商接口真实下单。"""
+
+from config import LIVE_DATA_DIR
 
 ACCOUNT = {
-    "broker": "paper",
+    "broker": "paper",   # paper | qmt | easytrader（默认模拟盘）
     "account_id": "test_001",
     "initial_capital": 10_000,
     "qmt": {
@@ -35,7 +43,11 @@ LIVE_RISK = {
     "enabled": True,
     "max_position_ratio": 0.95,
     "min_cash_reserve": 100,
-    "max_daily_turnover": 0.5,
+    # 换手上限必须 ≥ max_position_ratio：单标的轮动策略一次建仓就要打满
+    # ~95% 权益（amount/equity≈0.87），若上限低于此值，首笔买入即被
+    # check_order 判"日换手超限"拒单，账户永远开不出仓——闸门彼此矛盾。
+    # 真正的频控由 max_orders_per_day + cooldown 承担，此处只挡同日反复倒仓。
+    "max_daily_turnover": 1.0,
     "max_order_amount": 9000,
     "min_order_amount": 100,
     "max_orders_per_day": 10,
@@ -53,7 +65,7 @@ LIVE_ATTRIBUTION = {
     "enabled": True,
     "snapshot_interval_minutes": 5,
     "compare_with_backtest": True,
-    "save_dir": "live_data",
+    "save_dir": LIVE_DATA_DIR,
 }
 
 NOTIFY = {
@@ -66,7 +78,7 @@ NOTIFY = {
 }
 
 STORAGE = {
-    "dir": "live_data",
+    "dir": LIVE_DATA_DIR,
     "orders": "live_orders.csv",
     "positions": "live_positions.csv",
     "signals": "live_signals.csv",

@@ -3,19 +3,23 @@
 
 import os
 import json
+import _bootstrap  # noqa: F401  必须先于项目模块导入
 import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
+from config import (
+    LIVE_DATA_DIR as _LIVE, RESULTS_DIR as _RESULTS,
+    REPORT_DIR as _REPORT,
+)
 
 st.set_page_config(page_title="反馈闭环", layout="wide")
 st.title("🔄 实盘反馈闭环看板")
 
-# 实盘原始数据（输入）在 live_data/，报告产物在 etf/v1/report/
-LIVE_DATA_DIR = "live_data"
-REPORT_DIR = os.environ.get("ETF_REPORT_DIR") or os.path.normpath(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
-                 "report"))
+# 数据统一在 etf/v1/data/ 下，报告在 etf/v1/report/
+LIVE_DATA_DIR = _LIVE
+RESULTS_DIR = _RESULTS
+REPORT_DIR = os.environ.get("ETF_REPORT_DIR") or _REPORT
 
 
 @st.cache_data(ttl=10)
@@ -31,7 +35,7 @@ def load_json(p):
     return None
 
 
-report = load_json("live_data/feedback_report.json")
+report = load_json(f"{LIVE_DATA_DIR}/feedback_report.json")
 if not report:
     st.warning("未找到反馈报告，先运行: python run_feedback.py")
     st.stop()
@@ -60,7 +64,7 @@ tabs = st.tabs(["📊 滑点", "⏱️ 延迟", "🔄 换手",
                 "🤖 多 LLM 生成"])
 
 with tabs[0]:
-    df = load_csv("live_data/slippage_detail.csv")
+    df = load_csv(f"{LIVE_DATA_DIR}/slippage_detail.csv")
     if df is not None and not df.empty:
         fig = go.Figure(go.Histogram(x=df["slippage"], nbinsx=30,
                                       marker_color="coral"))
@@ -78,7 +82,7 @@ with tabs[3]:
     st.json(st_)
 
 with tabs[4]:
-    f = load_csv("live_data/factor_feedback.csv")
+    f = load_csv(f"{LIVE_DATA_DIR}/factor_feedback.csv")
     if f is not None and not f.empty:
         st.dataframe(f, use_container_width=True)
 

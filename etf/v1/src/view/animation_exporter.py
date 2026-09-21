@@ -41,7 +41,11 @@ def export_frames(snapshots, frames_dir=None, max_frames=None):
             fig.write_image(png_path, scale=1.0)
             png_paths.append(png_path)
         except Exception as e:
-            print(f"    ❌ 帧导出失败: {e}")
+            # 图像后端（kaleido/chromium）故障是环境性的，逐帧重试无意义
+            first_line = str(e).splitlines()[0] if str(e) else e
+            print(f"  ⚠️ 帧导出失败，跳过 GIF/MP4 导出（HTML 动画不受影响）: "
+                  f"{type(e).__name__}: {first_line}")
+            break
     return png_paths
 
 
@@ -84,6 +88,11 @@ def make_mp4(png_paths, output=None):
 def export_animation(snapshots):
     print("\n========== 动画导出 ==========")
     if not CFG["enabled"]:
+        return {}
+    if not (CFG["export_gif"] or CFG["export_mp4"] or CFG["keep_frames"]):
+        # 帧 PNG 只为 GIF/MP4 服务；三者都不需要时跳过，
+        # 避免在无可用 chromium 的环境下徒劳触发 kaleido
+        print("  ℹ️ GIF/MP4/保留帧均未启用，跳过静态导出（HTML 动画不受影响）")
         return {}
     png_paths = export_frames(snapshots)
     if not png_paths:

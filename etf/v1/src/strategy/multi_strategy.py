@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""多策略并行"""
+"""多策略并行
+
+对同一批因子，用不同（正交方法 × 风控参数 × 加权方式）配置并行
+生成多条策略净值，再做 PBO 过滤与组合，分散单一配置的运气成分。"""
 
 import json
 import numpy as np
@@ -8,6 +11,7 @@ from itertools import product
 from config import (
     MULTI_STRATEGY, STRATEGY_GRID, RISK_CONTROL,
     INIT_CAPITAL, RISK_BUDGET, STRATEGY_LIFECYCLE, STRATEGY_PBO,
+    RESULTS_DIR,
 )
 from factor_orthogonal import orthogonalize_factors
 from risk_budget import compute_factor_weights
@@ -18,9 +22,13 @@ from strategy_lifecycle import (
     combine_with_lifecycle,
 )
 from strategy_pbo import filter_strategies_by_pbo
+from strategy_naming import strategy_cn
 
 
 def generate_strategy_configs(n=None):
+    """策略网格：ortho × risk × weight_method 笛卡尔积；
+    超过 n 时在展开序列上等间隔抽样（保证覆盖各维度而非截前 n 个）。
+    命名 S{i}_{正交法}_sl{止损}_加权法，供 strategy_cn 解析中文名。"""
     n = n or MULTI_STRATEGY["n_strategies"]
     configs = []
     ortho_list = STRATEGY_GRID["ortho"]
@@ -44,6 +52,8 @@ def generate_strategy_configs(n=None):
 
 
 def run_single_strategy(config, raw_factors, pool, universe, all_ts):
+    """单条策略完整链：按该配置正交化 -> 加权 -> 轮动信号 -> 回测。
+    同一批 raw_factors，配置差异只体现在正交阈值/方法与权重方案。"""
     factors = orthogonalize_factors(
         raw_factors, threshold=config["ortho"]["corr_threshold"],
         method=config["ortho"]["method"])
@@ -65,11 +75,17 @@ def run_single_strategy(config, raw_factors, pool, universe, all_ts):
 
 
 def _align_equities(equity_dict):
+    """多条净值按时间轴对齐（缺失日 ffill，起点前填初始资金）"""
     df = pd.DataFrame({n: e["equity"] for n, e in equity_dict.items()})
     return df.sort_index().ffill().fillna(INIT_CAPITAL)
 
 
 def combine_equities(equity_df, mode="equal"):
+    """净值层组合（先各自转收益序列再线性加权，复合收益）：
+    port_ret_t = Σ wᵢ · rᵢ,t，净值 = INIT · Π(1+port_ret)。
+    - equal: 1/n
+    - risk_parity: w ∝ 1/σ_i（波动倒数归一，稳者多配）
+    - ic_weighted: 此处以逐 bar 夏普 mean/std 为分数，负值截 0 后归一"""
     rets = equity_df.pct_change().fillna(0.0)
     if mode == "equal" or equity_df.shape[1] == 1:
         w = np.ones(equity_df.shape[1]) / equity_df.shape[1]
@@ -91,7 +107,8 @@ def run_multi_strategy(raw_factors, pool, universe, all_ts):
     configs = generate_strategy_configs()
     strategies = {}
     for i, cfg in enumerate(configs):
-        print(f"\n  [{i+1}/{len(configs)}] {cfg['name']}")
+        print(f"\n  [{i+1}/{len(configs)}] {cfg['name']}"
+              f"  [{strategy_cn(cfg['name'])}]")
         try:
             r = run_single_strategy(cfg, raw_factors, pool,
                                      universe, all_ts)
@@ -138,7 +155,8 @@ def run_multi_strategy(raw_factors, pool, universe, all_ts):
     summary_rows = []
     for name, r in strategies.items():
         s = r["stats"]
-        row = {"策略": name, "总收益": s["总收益率"],
+        row = {"策略": name, "中文名称": strategy_cn(name),
+               "总收益": s["总收益率"],
                "年化": s["年化收益率"], "夏普": s["夏普比率"],
                "回撤": s["最大回撤"], "交易次数": s["交易次数"],
                "胜率": s["胜率"]}
@@ -154,6 +172,7 @@ def run_multi_strategy(raw_factors, pool, universe, all_ts):
         sharpe = ann / (vol + 1e-9)
         dd = (eq - eq.cummax()) / eq.cummax()
         summary_rows.append({"策略": f"[组合] {mode}",
+                             "中文名称": strategy_cn(f"[组合] {mode}"),
                              "总收益": f"{total*100:.2f}%",
                              "年化": f"{ann*100:.2f}%",
                              "夏普": round(sharpe, 3),
@@ -175,11 +194,18 @@ def run_multi_strategy(raw_factors, pool, universe, all_ts):
             "decay_state": decay_state}
 
 
-def save_multi_strategy_results(result, out_dir="."):
+def save_multi_strategy_results(result, out_dir=RESULTS_DIR):
     if not result:
         return
     result["summary"].to_csv(f"{out_dir}/multi_summary.csv",
                               index=False, encoding="utf-8-sig")
+    from strategy_naming import STRATEGY_METRIC_GLOSSARY
+    with open(f"{out_dir}/multi_summary_指标说明.md", "w",
+              encoding="utf-8") as f:
+        f.write("# multi_summary.csv 指标口径\n\n"
+                "| 列名 | 中文名 | 含义与参考口径 |\n|---|---|---|\n")
+        for col, label, desc in STRATEGY_METRIC_GLOSSARY:
+            f.write(f"| `{col}` | {label} | {desc} |\n")
     result["equity_df"].to_csv(f"{out_dir}/multi_equity.csv",
                                 encoding="utf-8-sig")
     pd.DataFrame(result["combined"]).to_csv(

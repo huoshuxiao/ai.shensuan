@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project
+etf/v1/data/*.*
+etf/v1/data/*/*.*
+etf/v1/log/*.*
+etf/v1/report/*.*

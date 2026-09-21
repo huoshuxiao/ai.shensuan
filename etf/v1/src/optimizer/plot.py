@@ -6,13 +6,15 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib import rcParams
+from config import RESULTS_DIR
 
 rcParams["font.sans-serif"] = ["SimHei", "Arial Unicode MS",
                                 "DejaVu Sans"]
 rcParams["axes.unicode_minus"] = False
 
 
-def plot_equity(equity_df, save_path="equity_curve.png"):
+def plot_equity(equity_df,
+                save_path=f"{RESULTS_DIR}/equity_curve.png"):
     fig, axes = plt.subplots(2, 1, figsize=(12, 8),
                              gridspec_kw={"height_ratios": [3, 1]})
     eq = equity_df["equity"]

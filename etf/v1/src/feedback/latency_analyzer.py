@@ -4,10 +4,12 @@
 import os
 import pandas as pd
 import numpy as np
+from config import LIVE_DATA_DIR
 
 
 class LatencyAnalyzer:
-    def __init__(self, live_orders_path="live_data/live_orders.csv"):
+    def __init__(self,
+                 live_orders_path=f"{LIVE_DATA_DIR}/live_orders.csv"):
         self.path = live_orders_path
 
     def analyze(self):

@@ -4,7 +4,7 @@
 import warnings
 import numpy as np
 import pandas as pd
-from config import DECAY_EXPLAIN as CFG
+from config import DECAY_EXPLAIN as CFG, RESULTS_DIR
 from factor_decay_predict import extract_ic_series
 
 warnings.filterwarnings("ignore")
@@ -151,8 +151,8 @@ def explain_all(factors, pool):
                      "root_cause": r["root_cause"]})
     df = pd.DataFrame(rows)
     if not df.empty:
-        df.to_csv("decay_explanation.csv", index=False,
-                  encoding="utf-8-sig")
+        df.to_csv(f"{RESULTS_DIR}/decay_explanation.csv",
+                  index=False, encoding="utf-8-sig")
     try:
         from llm_shap_explainer import generate_llm_report
         llm_report = generate_llm_report(factors, results)

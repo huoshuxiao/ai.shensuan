@@ -6,6 +6,7 @@ import json
 from collections import OrderedDict
 from tenacity import retry, stop_after_attempt, wait_exponential
 from config import LLM_CROSSOVER as CFG, LLM_MODEL, LLM_API_KEY_ENV
+from llm_client import (make_openai_client, endpoint_enabled)
 
 
 CROSSOVER_SYSTEM_PROMPT = """你是量化因子研究员。给定两个父代因子表达式，生成"融合"表达式。
@@ -24,7 +25,7 @@ CROSSOVER_SYSTEM_PROMPT = """你是量化因子研究员。给定两个父代因
 class LLMCrossoverOperator:
     def __init__(self):
         self.api_key = os.environ.get(LLM_API_KEY_ENV, "")
-        self.enabled = bool(self.api_key)
+        self.enabled = endpoint_enabled(self.api_key)
         self.cache = OrderedDict()
         self.n_calls = 0
         self.calls_this_gen = 0
@@ -44,8 +45,7 @@ class LLMCrossoverOperator:
     @retry(stop=stop_after_attempt(2),
            wait=wait_exponential(multiplier=1, min=2, max=8))
     def _chat(self, messages):
-        from openai import OpenAI
-        client = OpenAI(api_key=self.api_key)
+        client = make_openai_client(api_key=self.api_key)
         resp = client.chat.completions.create(
             model=LLM_MODEL, messages=messages,
             temperature=CFG["temperature"],

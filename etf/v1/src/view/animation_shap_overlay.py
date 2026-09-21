@@ -4,7 +4,7 @@
 import os
 import numpy as np
 import pandas as pd
-from config import ANIMATION_SHAP as CFG
+from config import ANIMATION_SHAP as CFG, RESULTS_DIR
 
 
 def get_current_shap_distribution(snapshot_points, global_shap=None):
@@ -29,7 +29,7 @@ def create_animation_with_shap(snapshots, html_path=None):
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
 
-    html_path = html_path or "pareto_shap_animation.html"
+    html_path = html_path or f"{RESULTS_DIR}/pareto_shap_animation.html"
     max_frames = 10
     if len(snapshots) > max_frames:
         idx = np.linspace(0, len(snapshots) - 1,

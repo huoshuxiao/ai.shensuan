@@ -4,6 +4,7 @@
 import argparse
 import os
 import _bootstrap  # noqa: F401  必须先于项目模块导入
+from log_kit import setup_logging
 from multi_llm_generator import (
     run_multi_llm_generation,
     run_multi_llm_generation_batch,
@@ -11,6 +12,7 @@ from multi_llm_generator import (
 
 
 def main():
+    setup_logging("multi_gen")
     parser = argparse.ArgumentParser()
     parser.add_argument("--days", type=int, default=0)
     parser.add_argument("--report-path", type=str, default=None)

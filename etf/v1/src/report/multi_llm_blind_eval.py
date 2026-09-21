@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from tenacity import retry, stop_after_attempt, wait_exponential
 from generation_config import GENERATION_MODELS
 from config import LIVE_DATA_DIR, REPORT_DIR
+from llm_client import (make_openai_client, endpoint_enabled)
 
 
 class BlindEvaluator:
@@ -21,7 +22,6 @@ class BlindEvaluator:
     @retry(stop=stop_after_attempt(2),
            wait=wait_exponential(multiplier=1, min=2, max=6))
     def _eval_one(self, model, report_text, raw_data):
-        from openai import OpenAI
         from eval_prompts import get_eval_prompt
         system = get_eval_prompt("single", self.language)
         user = (f"# 日报\n{report_text[:4000]}\n\n# 原始数据\n"
@@ -29,7 +29,7 @@ class BlindEvaluator:
         kwargs = {"api_key": os.environ.get(model["env_key"])}
         if model.get("base_url"):
             kwargs["base_url"] = model["base_url"]
-        client = OpenAI(**kwargs)
+        client = make_openai_client(**kwargs)
         resp = client.chat.completions.create(
             model=model["name"],
             messages=[{"role": "system", "content": system},
@@ -83,6 +83,7 @@ def evaluate_multiple_reports(reports, raw_data):
 def evaluate_historical_reports(n_days=5):
     import glob
     gen_files = sorted(glob.glob(f"{REPORT_DIR}/multi_gen/*.json"))
+    gen_files += sorted(glob.glob(f"{REPORT_DIR}/multi_gen_eval.json"))
     if not gen_files:
         return {}
     with open(gen_files[-1], "r", encoding="utf-8") as f:

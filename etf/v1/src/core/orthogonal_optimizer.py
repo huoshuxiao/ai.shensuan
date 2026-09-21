@@ -10,6 +10,7 @@ from config import (
     ORTHO_LLM, LLM_MODEL, LLM_API_KEY_ENV, ORTHOGONAL,
 )
 from factor_orthogonal import orthogonalize_factors
+from llm_client import (make_openai_client, endpoint_enabled)
 
 
 ORTHO_SYSTEM_PROMPT = """你是因子组合优化专家。建议下一组因子正交化参数。
@@ -28,14 +29,13 @@ ORTHO_SYSTEM_PROMPT = """你是因子组合优化专家。建议下一组因子�
 class LLMOrthoOptimizer:
     def __init__(self):
         self.api_key = os.environ.get(LLM_API_KEY_ENV, "")
-        self.enabled = bool(self.api_key)
+        self.enabled = endpoint_enabled(self.api_key)
         self.history = []
 
     @retry(stop=stop_after_attempt(3),
            wait=wait_exponential(multiplier=1, min=2, max=10))
     def _chat(self, messages):
-        from openai import OpenAI
-        client = OpenAI(api_key=self.api_key)
+        client = make_openai_client(api_key=self.api_key)
         resp = client.chat.completions.create(
             model=LLM_MODEL, messages=messages, temperature=0.3,
             response_format={"type": "json_object"})

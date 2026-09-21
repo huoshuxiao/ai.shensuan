@@ -3,10 +3,12 @@
 
 import argparse
 import _bootstrap  # noqa: F401  必须先于项目模块导入
+from log_kit import setup_logging
 from monthly_review import generate_monthly_review
 
 
 def main():
+    setup_logging("monthly_review")
     parser = argparse.ArgumentParser()
     parser.add_argument("--days", type=int, default=20)
     parser.add_argument("--lang", type=str, default="zh")

@@ -4,12 +4,17 @@
 import concurrent.futures as cf
 import numpy as np
 import pandas as pd
-from config import MULTI_SOURCE
-from factor_dsl import safe_eval, compute_ic
+from config import MULTI_SOURCE, RDAGENT_USE_OFFICIAL_FALLBACK
+from factor_dsl import safe_eval, compute_ic, safe_spearman
 from factor_library import get_library
 
 
 def _run_official(pool):
+    if not RDAGENT_USE_OFFICIAL_FALLBACK:
+        # 显式关闭时直接跳过；开启时由 official_rdagent 前置体检
+        # 决定是否运行（依赖缺失只记 ℹ️，不再以异常降级）
+        print("    ℹ️ official 源已停用（RDAGENT_USE_OFFICIAL_FALLBACK=False）")
+        return []
     try:
         from official_rdagent import try_official_rdagent
         factors = try_official_rdagent()
@@ -65,8 +70,8 @@ def _run_genetic(pool):
 
 def _attach_impl(factors, pool, source):
     result = []
-    for item in factors:
-        expr = item.get("expr", "")
+    for raw in factors:
+        expr = raw.get("expr", "")
         if not expr:
             continue
         impl, ics = {}, []
@@ -83,10 +88,16 @@ def _attach_impl(factors, pool, source):
         if impl:
             mean_ic = float(np.mean(ics))
             std_ic = float(np.std(ics)) if len(ics) > 1 else 1.0
-            result.append({"name": item.get("name", f"{source}_{len(result)}"),
-                           "expr": expr, "mean_ic": mean_ic,
-                           "icir": mean_ic / (std_ic + 1e-9),
-                           "impl": impl, "source": source})
+            item = {"name": raw.get("name", f"{source}_{len(result)}"),
+                    "expr": expr, "mean_ic": mean_ic,
+                    "icir": mean_ic / (std_ic + 1e-9),
+                    "impl": impl, "source": source}
+            # 官方源的 LaTeX 原式随因子一起留存：报告里可核对
+            # 「翻译后的 DSL 表达式」与「RD-Agent 给出的定义」是否一致
+            formulation = raw.get("formulation")
+            if formulation:
+                item["formulation"] = formulation
+            result.append(item)
     return result
 
 
@@ -98,7 +109,7 @@ def _factor_correlation(f1, f2, ref_code):
     df = pd.concat([a, b], axis=1).dropna()
     if len(df) < 30:
         return 0.0
-    return abs(df.iloc[:, 0].corr(df.iloc[:, 1], method="spearman"))
+    return abs(safe_spearman(df.iloc[:, 0], df.iloc[:, 1]))
 
 
 def dedup_factors(factors, pool, threshold=None):

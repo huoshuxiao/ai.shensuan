@@ -93,9 +93,10 @@ class EvalMetrics:
         acc = EvalMetrics.check_accuracy(text, raw_data)
         cov = EvalMetrics.check_coverage(text, raw_data)
         act = EvalMetrics.check_actionability(text)
+        # 权重之和已为 100，命中率为 [0,1] 比例，直接得 0-100 分
         score = (acc["match_rate"] * 40 +
                  cov["coverage_rate"] * 30 +
-                 act["actionable_rate"] * 30) * 100
+                 act["actionable_rate"] * 30)
         return {"objective_score": round(score, 1),
                 "accuracy": acc, "coverage": cov,
                 "actionability": act}

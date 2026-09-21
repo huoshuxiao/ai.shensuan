@@ -6,12 +6,15 @@ import re
 import json
 import shutil
 from datetime import datetime
+from config import DATA_DIR, V1_ROOT
 
 
 class ConfigUpdater:
-    def __init__(self, config_path="config.py"):
+    def __init__(self,
+                 config_path=os.path.join(V1_ROOT, "src", "config",
+                                          "config.py")):
         self.path = config_path
-        self.backup_dir = "config_backups"
+        self.backup_dir = os.path.join(DATA_DIR, "config_backups")
         self.versions = []
         os.makedirs(self.backup_dir, exist_ok=True)
 

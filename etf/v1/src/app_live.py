@@ -4,6 +4,8 @@
 import os
 import pandas as pd
 import streamlit as st
+import _bootstrap  # noqa: F401  必须先于项目模块导入
+from config import LIVE_DATA_DIR
 
 st.set_page_config(page_title="实盘监控", layout="wide")
 st.title("📡 实盘监控看板")
@@ -16,9 +18,9 @@ def load_csv(path):
     return None
 
 
-orders = load_csv("live_data/live_orders.csv")
-attribution = load_csv("live_data/live_attribution.csv")
-risk_events = load_csv("live_data/live_risk_events.csv")
+orders = load_csv(f"{LIVE_DATA_DIR}/live_orders.csv")
+attribution = load_csv(f"{LIVE_DATA_DIR}/live_attribution.csv")
+risk_events = load_csv(f"{LIVE_DATA_DIR}/live_risk_events.csv")
 
 col1, col2, col3, col4 = st.columns(4)
 if attribution is not None and not attribution.empty:

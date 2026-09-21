@@ -8,11 +8,14 @@ import os
 import json
 import pandas as pd
 import numpy as np
+import _bootstrap  # noqa: F401  必须先于项目模块导入
+from log_kit import setup_logging
+from config import RESULTS_DIR
 
 
 def load_results(freq):
-    eq_path = f"equity_{freq}.csv"
-    trades_path = f"trades_{freq}.csv"
+    eq_path = f"{RESULTS_DIR}/equity_{freq}.csv"
+    trades_path = f"{RESULTS_DIR}/trades_{freq}.csv"
     if not os.path.exists(eq_path):
         return None
     eq = pd.read_csv(eq_path)
@@ -45,7 +48,7 @@ def compute_stats(eq_series, trades_df, freq):
 
 def load_daily_positions(freq):
     """从 signals_{freq}.csv 提取每日收盘持仓（当天最后一个非空 target_code）"""
-    path = f"signals_{freq}.csv"
+    path = f"{RESULTS_DIR}/signals_{freq}.csv"
     if not os.path.exists(path):
         return None
     s = pd.read_csv(path)
@@ -87,6 +90,7 @@ def holdings_similarity(pos_a, pos_b):
 
 
 def main():
+    setup_logging("compare_freq")
     print("=" * 60)
     print("  频率对比：日线 vs 分钟线")
     print("=" * 60)
@@ -112,9 +116,9 @@ def main():
 
     if results:
         df = pd.DataFrame(results)
-        df.to_csv("freq_comparison.csv", index=False,
-                  encoding="utf-8-sig")
-        print(f"\n  ✅ 对比已保存: freq_comparison.csv")
+        df.to_csv(f"{RESULTS_DIR}/freq_comparison.csv",
+                  index=False, encoding="utf-8-sig")
+        print(f"\n  ✅ 对比已保存: {RESULTS_DIR}/freq_comparison.csv")
 
     sim = None
     if "daily" in positions and "1min" in positions:
@@ -125,11 +129,12 @@ def main():
         for k, v in sim.items():
             if k != "不一致示例" and v is not None:
                 print(f"    {k}: {v}")
-        with open("holdings_similarity.json", "w",
+        with open(f"{RESULTS_DIR}/holdings_similarity.json", "w",
                   encoding="utf-8") as f:
             json.dump(sim, f, ensure_ascii=False, indent=2,
                       default=str)
-        print("  ✅ 已保存: holdings_similarity.json")
+        print("  ✅ 已保存: "
+              f"{RESULTS_DIR}/holdings_similarity.json")
     elif len(results) == 2:
         print("\n  ⚠️ 缺少 signals_daily.csv / signals_1min.csv，"
               "无法计算持仓相似度")

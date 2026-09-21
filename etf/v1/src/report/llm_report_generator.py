@@ -6,7 +6,8 @@ import json
 import re
 from datetime import datetime
 from tenacity import retry, stop_after_attempt, wait_exponential
-from config import LLM_MODEL, LLM_API_KEY_ENV, REPORT_DIR
+from config import LLM_MODEL, LLM_API_KEY_ENV, REPORT_DIR, LIVE_DATA_DIR
+from llm_client import (make_openai_client, endpoint_enabled)
 
 
 DAILY_PROMPT = """你是量化交易主管。根据实盘反馈数据，写一份给交易员看的每日报告。
@@ -30,13 +31,12 @@ DAILY_PROMPT = """你是量化交易主管。根据实盘反馈数据，写一�
 class LLMReportGenerator:
     def __init__(self):
         self.api_key = os.environ.get(LLM_API_KEY_ENV, "")
-        self.enabled = bool(self.api_key)
+        self.enabled = endpoint_enabled(self.api_key)
 
     @retry(stop=stop_after_attempt(3),
            wait=wait_exponential(multiplier=1, min=2, max=10))
     def _chat(self, messages, temperature=0.4):
-        from openai import OpenAI
-        client = OpenAI(api_key=self.api_key)
+        client = make_openai_client(api_key=self.api_key)
         resp = client.chat.completions.create(
             model=LLM_MODEL, messages=messages,
             temperature=temperature)
@@ -58,6 +58,17 @@ class LLMReportGenerator:
         with open(f"{REPORT_DIR}/report_daily.md", "w",
                   encoding="utf-8") as f:
             f.write(text)
+        # 带日期 JSON 快照：self_evaluator 按 report_daily_*.json 扫描，
+        # 并按同名 feedback_report_*.json 取原始数据做客观评分
+        today = datetime.now().strftime("%Y%m%d")
+        os.makedirs(LIVE_DATA_DIR, exist_ok=True)
+        with open(f"{LIVE_DATA_DIR}/report_daily_{today}.json", "w",
+                  encoding="utf-8") as f:
+            json.dump({"generated_at": datetime.now().isoformat(),
+                       "text": text}, f, ensure_ascii=False)
+        with open(f"{LIVE_DATA_DIR}/feedback_report_{today}.json", "w",
+                  encoding="utf-8") as f:
+            json.dump(report, f, ensure_ascii=False)
         return text
 
     def generate_summary(self, report):
@@ -75,7 +86,8 @@ class LLMReportGenerator:
                 "## ⚠️ 风险提示\n无")
 
 
-def generate_daily_report(report_path="live_data/feedback_report.json"):
+def generate_daily_report(
+        report_path=f"{LIVE_DATA_DIR}/feedback_report.json"):
     if not os.path.exists(report_path):
         return ""
     with open(report_path, "r", encoding="utf-8") as f:
@@ -83,7 +95,8 @@ def generate_daily_report(report_path="live_data/feedback_report.json"):
     return LLMReportGenerator().generate_daily(report)
 
 
-def generate_summary(report_path="live_data/feedback_report.json"):
+def generate_summary(
+        report_path=f"{LIVE_DATA_DIR}/feedback_report.json"):
     if not os.path.exists(report_path):
         return ""
     with open(report_path, "r", encoding="utf-8") as f:

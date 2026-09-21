@@ -5,7 +5,7 @@ import os
 import numpy as np
 import pandas as pd
 from datetime import datetime
-from config import DECAY_EXPLAIN
+from config import DECAY_EXPLAIN, RESULTS_DIR
 from factor_decay_predict import extract_ic_series
 from decay_explain import build_features, shap_explain
 
@@ -28,7 +28,7 @@ def compute_shap_at(factor, pool, timestamp=None):
 
 
 class SHAPTimelineTracker:
-    def __init__(self, path="shap_timeline.csv"):
+    def __init__(self, path=f"{RESULTS_DIR}/shap_timeline.csv"):
         self.path = path
         self.records = self._load()
 
@@ -112,6 +112,6 @@ def analyze_all_shap_trends(factors):
                      "n_falling": len(falling)})
     df = pd.DataFrame(rows)
     if not df.empty:
-        df.to_csv("shap_trends.csv", index=False,
+        df.to_csv(f"{RESULTS_DIR}/shap_trends.csv", index=False,
                   encoding="utf-8-sig")
     return df

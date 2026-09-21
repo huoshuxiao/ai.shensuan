@@ -9,13 +9,14 @@ import pandas as pd
 from tenacity import retry, stop_after_attempt, wait_exponential
 from config import (
     LLM_GENETIC_HYBRID as CFG, LLM_MODEL, LLM_API_KEY_ENV,
-    GENETIC_MULTI_OBJECTIVE,
+    GENETIC_MULTI_OBJECTIVE, RESULTS_DIR,
 )
 from factor_genetic import ExprNode, random_expr, mutate, crossover
 from genetic_multi_objective import (
     evaluate_multi_objective, fast_non_dominated_sort,
     crowding_distance,
 )
+from llm_client import make_openai_client, endpoint_enabled
 
 
 SEED_SYSTEM_PROMPT = """你是量化因子研究员。生成一批因子表达式作为遗传编程的"种子"。
@@ -49,13 +50,12 @@ FEEDBACK_SYSTEM_PROMPT = """你是量化因子研究员。遗传编程已进化�
 class LLMSeedGenerator:
     def __init__(self):
         self.api_key = os.environ.get(LLM_API_KEY_ENV, "")
-        self.enabled = bool(self.api_key)
+        self.enabled = endpoint_enabled(self.api_key)
 
     @retry(stop=stop_after_attempt(3),
            wait=wait_exponential(multiplier=1, min=2, max=10))
     def _chat(self, messages):
-        from openai import OpenAI
-        client = OpenAI(api_key=self.api_key)
+        client = make_openai_client(api_key=self.api_key)
         resp = client.chat.completions.create(
             model=LLM_MODEL, messages=messages, temperature=0.8,
             response_format={"type": "json_object"})
@@ -258,10 +258,10 @@ def llm_genetic_mine(pool, existing_factors=None):
     factors = hybrid.run()
     hist = hybrid.get_history_df()
     if not hist.empty:
-        hist.to_csv("hybrid_history.csv", index=False,
-                    encoding="utf-8-sig")
+        hist.to_csv(f"{RESULTS_DIR}/hybrid_history.csv",
+                    index=False, encoding="utf-8-sig")
     seeds = hybrid.get_seeds_df()
     if not seeds.empty:
-        seeds.to_csv("hybrid_llm_seeds.csv", index=False,
-                     encoding="utf-8-sig")
+        seeds.to_csv(f"{RESULTS_DIR}/hybrid_llm_seeds.csv",
+                     index=False, encoding="utf-8-sig")
     return factors

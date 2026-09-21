@@ -9,6 +9,7 @@ from collections import Counter
 from tenacity import retry, stop_after_attempt, wait_exponential
 from eval_prompts import get_eval_prompt
 from config import LIVE_DATA_DIR, REPORT_DIR
+from llm_client import (make_openai_client, endpoint_enabled)
 
 
 DEFAULT_MODELS = [
@@ -37,11 +38,10 @@ class MultiLLMVoter:
     @retry(stop=stop_after_attempt(2),
            wait=wait_exponential(multiplier=1, min=2, max=6))
     def _call_one(self, model, messages):
-        from openai import OpenAI
         kwargs = {"api_key": os.environ.get(model["env_key"])}
         if model.get("base_url"):
             kwargs["base_url"] = model["base_url"]
-        client = OpenAI(**kwargs)
+        client = make_openai_client(**kwargs)
         resp = client.chat.completions.create(
             model=model["name"], messages=messages, temperature=0.3,
             response_format={"type": "json_object"})

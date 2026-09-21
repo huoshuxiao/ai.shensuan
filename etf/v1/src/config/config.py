@@ -33,15 +33,43 @@ LOOKBACK_BARS = _get_lookback_bars(FREQ, LOOKBACK_DAYS)
 # ========== 目录 ==========
 # etf/v1 项目根目录（config.py 位于 etf/v1/src/config/ 下）
 V1_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# 研究管线/各模块的本地 LLM 与覆盖项统一从 etf/v1/.env 读取。
+# 此前研究侧不加载任何 .env，config 里的 ETF_LLM_* 只认已导出的 shell 变量，
+# etf/v1/.env 形同虚设；在此显式装载后它才是研究侧 LLM 的单一来源
+# （与 RD-Agent loop 用的 rdagent_output/.env[LITELLM_*] 各一套）。
+# override=False：已在 shell 导出的变量优先，便于临时覆盖。
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(V1_ROOT, ".env"))
+except Exception:
+    pass
+
+# 统一数据输出目录（所有运行产物/缓存/实盘记录），可用 ETF_DATA_DIR 覆盖
+DATA_DIR = os.environ.get("ETF_DATA_DIR", os.path.join(V1_ROOT, "data"))
+# 研究/回测产物（equity/trades/signals/因子分析/动画等）
+RESULTS_DIR = os.path.join(DATA_DIR, "results")
 # 报告输出目录（所有人类可读报告统一写到此处），可用 ETF_REPORT_DIR 覆盖
 REPORT_DIR = os.environ.get("ETF_REPORT_DIR",
                             os.path.join(V1_ROOT, "report"))
 # 实盘原始数据目录（live_orders/live_attribution/feedback_report.json 等输入）
-LIVE_DATA_DIR = "live_data"
+LIVE_DATA_DIR = os.path.join(DATA_DIR, "live")
+# 行情缓存目录
+CACHE_DIR = os.path.join(DATA_DIR, "cache")
+# 因子库目录
+LIBRARY_DIR = os.path.join(DATA_DIR, "library")
+# 日志目录（log_kit 双写目标），可用 ETF_LOG_DIR 覆盖
+LOG_DIR = os.environ.get("ETF_LOG_DIR", os.path.join(V1_ROOT, "log"))
+for _d in (DATA_DIR, RESULTS_DIR, REPORT_DIR, LIVE_DATA_DIR,
+           CACHE_DIR, LIBRARY_DIR, LOG_DIR):
+    os.makedirs(_d, exist_ok=True)
 
 # ========== 回测区间 ==========
-BACKTEST_START = "2010-01-01"
-BACKTEST_END   = "2024-12-31"
+# BACKTEST_END 未设置或为空时（此处或环境变量），自动取当天日期
+BACKTEST_START = os.environ.get("BACKTEST_START") or "2010-01-01"
+BACKTEST_END = os.environ.get("BACKTEST_END") or ""
+if not BACKTEST_END:
+    from datetime import date
+    BACKTEST_END = date.today().strftime("%Y-%m-%d")
 
 # ========== 资金 ==========
 INIT_CAPITAL = 10_000
@@ -54,11 +82,36 @@ MIN_COMMISSION = 0.1
 SLIPPAGE = 0.0005
 
 # ========== ETF 池 ==========
+# 东财/新浪接口均不可用时的兜底：常见宽基/行业 ETF（code, name）
+FALLBACK_UNIVERSE = [
+    ("510300", "沪深300ETF"), ("510500", "中证500ETF"),
+    ("510050", "上证50ETF"), ("159915", "创业板ETF"),
+    ("512100", "中证1000ETF"), ("588000", "科创50ETF"),
+    ("512880", "证券ETF"), ("512760", "芯片ETF"),
+    ("159928", "消费ETF"), ("512690", "酒ETF"),
+    ("513100", "纳指ETF"), ("513500", "标普500ETF"),
+    ("159941", "纳指ETF(深)"), ("518880", "黄金ETF"),
+    ("511990", "华宝添益"),
+]
+
 ETF_FILTER = {
-    "min_list_days": 252,
+    # 成立不满 1 年的 ETF 不入池（365 自然日）：新基金建仓期收益不代表策略有效域
+    "min_list_days": 365,
     "min_avg_amount": 5_000_000,
+    # 截面轮动池规模：每指数取"上市最早且流动性达标"的代表，再按成交额截断 Top N。
+    # 全市场(1000+)逐只拉日线不现实，且池内股票型 ETF 才是策略有效域
     "max_count": 20,
-    "exclude_keywords": ["货币", "短融", "同业存单", "现金"],
+    "exclude_keywords": ["货币", "短融", "同业存单", "现金",
+                         "日利", "添益", "添利", "活期", "理财"],
+    # 511=上交所债券/货币 ETF 段：价格近似债券，混入轮动是噪声
+    "exclude_prefixes": ["511"],
+}
+
+# ========== 行情数据源（按优先级降级） ==========
+# em=东方财富(akshare)  sina=新浪  tx=腾讯
+DATA_SOURCES = {
+    "daily": ["em", "sina", "tx"],
+    "intraday": ["em", "tx"],
 }
 
 # ========== 因子挖掘 ==========
@@ -92,7 +145,11 @@ PBO = {"enabled": True, "n_splits": 10,
 # ========== Walk-forward ==========
 WALK_FORWARD = {"enabled": True, "n_splits": 3,
                 "train_ratio": 0.7,
-                "embargo_bars": LOOKBACK_BARS // 4}
+                "embargo_bars": LOOKBACK_BARS // 4,
+                # 折内挖掘引擎：与主链同构，样本外验证才覆盖得到 GP/DSL 因子。
+                # registry=注册表基线，genetic=字符串 DSL 遗传编程（折内成本主力），
+                # multi_source=多源（含 RD-Agent/LLM，默认关闭：每折一次外部调用）
+                "fold_engines": ["registry", "genetic"]}
 
 # ========== 多源挖掘 ==========
 MULTI_SOURCE = {
@@ -110,6 +167,9 @@ MULTI_SOURCE = {
 GENETIC = {
     "enabled": True,
     "population_size": 30, "n_generations": 8,
+    # 最佳 |IC| 连续这么多代无提升即早停：搜索已收敛时
+    # 不再空转剩余世代的种群评估
+    "stagnation_generations": 3,
     "elite_ratio": 0.2, "mutation_rate": 0.3,
     "crossover_rate": 0.5, "tournament_size": 3,
     "max_expr_depth": 4, "min_ic_to_survive": 0.005,
@@ -131,6 +191,8 @@ GENETIC_MULTI_OBJECTIVE = {
     "enabled": True,
     "objectives": ["ic", "low_turnover", "low_corr"],
     "population_size": 40, "n_generations": 8,
+    # 同单目标 GP：最佳 |IC| 连续无提升即早停
+    "stagnation_generations": 3,
     "elite_ratio": 0.2, "mutation_rate": 0.3,
     "crossover_rate": 0.5, "tournament_size": 3,
     "max_expr_depth": 4, "pareto_front_size": 15,
@@ -224,7 +286,12 @@ FACTOR_ATTRIBUTION = {
     "enabled": True, "method": "shapley",
     "n_samples": 100 if FREQ != "daily" else 200,
     "min_contribution": 0.001,
-    "eval_window_bars": LOOKBACK_BARS * 100,
+    # 归因评估窗：只截最近 window 根 bar 重跑回测。日频 500 bar≈2 年；
+    # 原 LOOKBACK_BARS*100(=2000) 大于日频全样本(~1575)，截窗形同虚设
+    "eval_window_bars": 500 if FREQ == "daily" else LOOKBACK_BARS * 20,
+    # 归因因子数上限：Shapley 需枚举子集，实测 11 因子去重后仍 965 次
+    # 回测(5.5h)；按 |mean_ic| 取前 8，不同子集上界降到 2^8=256
+    "max_factors": 8,
     "top_n": 10,
 }
 
@@ -254,7 +321,7 @@ LLM_SHAP_EXPLAINER = {
     "include_full_importance": True,
     "max_tokens_in_prompt": 3000,
     "save_report": True,
-    "report_path": "llm_shap_report.md",
+    "report_path": os.path.join(REPORT_DIR, "llm_shap_report.md"),
     "language": "zh", "include_action_suggestion": True,
 }
 
@@ -302,6 +369,12 @@ STRATEGY_PBO = {
     "enabled": True, "n_splits": 8,
     "max_combinations": 2000,
     "pbo_threshold": 0.5, "min_equity_bars": 100,
+    # 配置族开关：True 时 PBO 用"真实回测过的风控参数组合"做 CSCV 变体，
+    # 覆盖参数选择偏差；False 退化为单一收益序列的降权伪变体（只测平滑敏感度）。
+    "use_config_family": True,
+    # OFAT（一次只动一维）配置族上限：全笛卡尔积 = Π|RISK_SEARCH_SPACE| 档，
+    # 逐档回测不现实，故按维度邻域截断到此数量。
+    "max_family_configs": 12,
 }
 
 # ========== 生命周期 ==========
@@ -340,13 +413,23 @@ RISK_LLM_MAX_ROUNDS = 4
 JOINT_LLM = {"enabled": True, "max_rounds": 5, "objective": "dsr"}
 
 # ========== 自动重挖 ==========
+# 跨运行状态（连续恶化计数 / 重挖轮数 / 冷却基准）落盘位置。
+# 必须持久化：触发器对象每次进程新建，纯内存状态会让
+# consecutive_rounds、cooldown_bars、max_remining_rounds 全部失效。
+REMINING_STATE_FILE = os.environ.get(
+    "ETF_REMINING_STATE_FILE",
+    os.path.join(CACHE_DIR, "remining_state.json"))
+
 AUTO_REMINING = {
     "enabled": True, "max_remining_rounds": 3,
     "cooldown_bars": LOOKBACK_BARS * 5,
     "min_decay_alerts": 2,
     "keep_old_factor_if_new_worse": True,
     "new_factor_ic_improve": 0.003,
-    "trigger_on": ["decay", "pbo_rising"],
+    # indicator = DSR/PBO 联动指标（trigger_logic.DualIndicatorTrigger）
+    "trigger_on": ["decay", "pbo_rising", "indicator"],
+    # 重挖时启用的引擎集合（同 WALK_FORWARD.fold_engines 取值）
+    "remining_engines": ["registry", "genetic"],
 }
 TRIGGER_LOGIC = {
     "enabled": True, "mode": "and",
@@ -369,26 +452,30 @@ PBO_TIMELINE = {
 
 # ========== 因子库 ==========
 FACTOR_LIBRARY = {
-    "enabled": True, "md_path": "factor_library.md",
-    "index_path": "factor_library_index.json",
+    "enabled": True,
+    "md_path": os.path.join(LIBRARY_DIR, "factor_library.md"),
+    "index_path": os.path.join(LIBRARY_DIR,
+                               "factor_library_index.json"),
     "max_md_size_mb": 10,
-    "archive_dir": "factor_library_archive",
+    "archive_dir": os.path.join(LIBRARY_DIR, "archive"),
     "top_n_in_summary": 20,
     "include_code": True, "include_stats": True,
 }
 FACTOR_LIBRARY_GIT = {
     "enabled": True, "auto_commit": True, "auto_push": False,
-    "commit_prefix": "[factor-lib]", "git_dir": ".",
-    "tracked_files": ["factor_library.md",
-                      "factor_library_index.json",
-                      "factor_library.csv"],
+    "commit_prefix": "[factor-lib]", "git_dir": V1_ROOT,
+    "tracked_files": [
+        os.path.join("data", "library", "factor_library.md"),
+        os.path.join("data", "library", "factor_library_index.json"),
+        os.path.join("data", "library", "factor_library.csv")],
     "commit_author": "RD-Agent",
     "commit_email": "rdagent@local", "max_history": 100,
 }
 
 # ========== RL 权重 ==========
 RL_WEIGHT = {"enabled": True, "alpha": 0.5,
-             "load_path": "rl_weight_bandit.pkl"}
+             "load_path": os.path.join(CACHE_DIR,
+                                       "rl_weight_bandit.pkl")}
 
 # ========== LLM 研究计划 ==========
 LLM_RESEARCH_PLANNER = {"enabled": True, "days": 3,
@@ -396,20 +483,24 @@ LLM_RESEARCH_PLANNER = {"enabled": True, "days": 3,
 
 # ========== 动画导出 ==========
 PARETO_ANIMATION = {
-    "enabled": True, "html_path": "pareto_animation.html",
-    "gif_path": "pareto_animation.gif",
+    "enabled": True,
+    "html_path": os.path.join(RESULTS_DIR, "pareto_animation.html"),
+    "gif_path": os.path.join(RESULTS_DIR, "pareto_animation.gif"),
     "max_generations": 10, "sample_per_gen": 40,
     "dimensions": 3, "color_by": "abs_ic",
     "auto_play": True, "frame_duration": 800,
-    "save_history": True, "history_path": "pareto_history.csv",
+    "save_history": True,
+    "history_path": os.path.join(RESULTS_DIR, "pareto_history.csv"),
 }
 ANIMATION_EXPORT = {
-    "enabled": True, "export_gif": True, "export_mp4": True,
+    # kaleido 静态导出依赖本机 Chrome/Chromium；此环境 snap chromium 启动即
+    # 退出（BrowserFailedError），关掉 GIF/MP4，HTML 动画不受影响
+    "enabled": True, "export_gif": False, "export_mp4": False,
     "gif_duration_ms": 700, "mp4_fps": 2,
     "width": 1200, "height": 800,
-    "gif_path": "pareto_animation.gif",
-    "mp4_path": "pareto_animation.mp4",
-    "frames_dir": "pareto_frames",
+    "gif_path": os.path.join(RESULTS_DIR, "pareto_animation.gif"),
+    "mp4_path": os.path.join(RESULTS_DIR, "pareto_animation.mp4"),
+    "frames_dir": os.path.join(RESULTS_DIR, "pareto_frames"),
     "keep_frames": False, "max_frames": 10,
 }
 ANIMATION_SHAP = {
@@ -420,10 +511,47 @@ ANIMATION_SHAP = {
 }
 
 # ========== RD-Agent ==========
-RDAGENT_BACKEND = "llm"
-RDAGENT_USE_OFFICIAL_FALLBACK = True
-LLM_MODEL = "gpt-4o-mini"
+# "official" = 先走微软 RD-Agent(Q) factor 循环（official_rdagent 内置
+# 前置体检：rdagent 包/conda/docker/pyqlib/LLM 端点），依赖齐备即真正
+# 运行并把逐项链路写进日志；缺失则 ℹ️ 记录原因并降级到本地 LLM 管线
+RDAGENT_BACKEND = os.environ.get("ETF_RDAGENT_BACKEND", "official")
+# 是否允许 official 源真正拉起 RD-Agent(Q) 循环。默认 True 保持既有行为；
+# 只想跑主线（回测/实盘/反馈）、不触发 ~1.5h 因子循环时，置
+# ETF_RDAGENT_OFFICIAL_FALLBACK=false 即可跳过 official 源、走 llm/simple/GP
+RDAGENT_USE_OFFICIAL_FALLBACK = os.environ.get(
+    "ETF_RDAGENT_OFFICIAL_FALLBACK", "true").lower() in ("1", "true", "yes")
+# 官方循环在独立 conda 环境的子进程中运行（rdagent/pyqlib 依赖树与
+# 管线进程隔离，避免双 Python 环境互相污染）
+RDAGENT_CONDA_ENV = os.environ.get("ETF_RDAGENT_ENV", "rdagent")
+# factor 循环子进程最长运行时长（秒）；超时即回收并记录
+RDAGENT_TIMEOUT_SEC = int(os.environ.get("ETF_RDAGENT_TIMEOUT", "7200"))
+# qlib 回测沙箱容器的资源注入（QLIB_DOCKER_* 由 rdagent 的 pydantic
+# 配置直接读取）：本机 GPU 仅 GTX 965M 2GB 不可用，关 GPU 走 CPU；
+# 默认 shm_size=16g 等于物理内存上限，容器起不来，压到 4g
+RDAGENT_QLIB_DOCKER_ENV = {
+    "QLIB_DOCKER_ENABLE_GPU": os.environ.get("ETF_RDAGENT_DOCKER_GPU", "false"),
+    "QLIB_DOCKER_SHM_SIZE": os.environ.get("ETF_RDAGENT_DOCKER_SHM", "4g"),
+    # 因子/模型工作区的 qrun 回测后端：rdagent 默认 "conda" 要求宿主
+    # 存在 rdagent4qlib 环境（多一份 3GB 环境且生成代码在本机执行）；
+    # 统一走已建好的 local_qlib 容器，隔离且可复现
+    "MODEL_CoSTEER_ENV_TYPE": os.environ.get("ETF_RDAGENT_EXEC_ENV", "docker"),
+    # 沙箱镜像的构建上下文（Dockerfile 所在目录）。rdagent 默认取自己
+    # site-packages 里的官方 CUDA 版，每次循环都无条件重编一层 GB 级镜像；
+    # 本机改用本地这份 slim CPU 版，且其中 ENV MLFLOW_ALLOW_FILE_STORE=true
+    # 是必需的——mlflow 3.x 封了 qlib 默认使用的 ./mlruns 文件后端，
+    # 容器内看不到宿主机变量，只能烤进镜像（置空则回退官方目录）
+    "QLIB_DOCKER_DOCKERFILE_FOLDER_PATH": os.environ.get(
+        "ETF_RDAGENT_DOCKERFILE_DIR",
+        f"{RESULTS_DIR}/rdagent_docker"),
+    # 容器内存上限：rdagent 默认 48g 远超本机 16G，容器 oom 时只会表现成
+    # 非零退出码（难归因），提前钳到宿主可用水位
+    "QLIB_DOCKER_MEM_LIMIT": os.environ.get("ETF_RDAGENT_DOCKER_MEM", "10g"),
+}
+LLM_MODEL = os.environ.get("ETF_LLM_MODEL", "gpt-4o-mini")
 LLM_API_KEY_ENV = "OPENAI_API_KEY"
+# 本地/自建 LLM 端点（Ollama: http://localhost:11434/v1、vLLM、LM Studio 等，
+# 均需 OpenAI 兼容接口）。留空走 OpenAI 官方；本地服务不校验 key，可缺省
+LLM_BASE_URL = os.environ.get("ETF_LLM_BASE_URL", "").strip()
 
 # ========== 多 LLM 生成 ==========
 MULTI_LLM_GEN = {
@@ -435,13 +563,15 @@ MULTI_LLM_GEN = {
 }
 
 # ========== 缓存 ==========
-CACHE_DIR = "data_cache"
-UNIVERSE_CACHE = "etf_universe_cache.csv"
-TRIAL_COUNTER_FILE = "trial_counter.json"
-PBO_RESULT_FILE = "pbo_result.json"
+UNIVERSE_CACHE = os.path.join(CACHE_DIR, "etf_universe_cache.csv")
+# 全市场 ETF 上市日期持久缓存 {code: "YYYY-MM-DD"}：按"最早上市"选代表
+# 需要先拿到所有候选的上市日期（逐只拉取），缓存后增量补拉
+ETF_LIST_DATE_CACHE = os.path.join(CACHE_DIR, "etf_list_dates.json")
+TRIAL_COUNTER_FILE = os.path.join(CACHE_DIR, "trial_counter.json")
+PBO_RESULT_FILE = os.path.join(RESULTS_DIR, "pbo_result.json")
 
 # ========== 看板 ==========
 DASHBOARD = {
     "title": "ETF 量化系统",
-    "output_dir": ".", "auto_refresh_seconds": 60,
+    "output_dir": RESULTS_DIR, "auto_refresh_seconds": 60,
 }

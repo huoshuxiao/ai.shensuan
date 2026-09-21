@@ -1,27 +1,52 @@
 # -*- coding: utf-8 -*-
 """自动重挖闭环"""
 
-import time
+import time  # noqa: F401
 import numpy as np
 import pandas as pd
 from config import AUTO_REMINING
+from remining_state import ReminingState
 
 
 class ReminingTrigger:
-    def __init__(self, params=None):
-        self.p = {**AUTO_REMINING, **(params or {})}
-        self.last_remining_bar = -1_000_000
-        self.remining_count = 0
-        self.history = []
+    """重挖节流与触发判定。
 
-    def should_remining(self, current_bar, decay_alerts,
-                        pbo_trend=None):
+    轮数/冷却基准落在 ReminingState 里跨运行保留：否则 max_remining_rounds
+    与 cooldown_bars 每轮归零，形同没有上限。要手工解锁就删掉
+    data/cache/remining_state.json 里对应频率的段落。
+    """
+
+    def __init__(self, params=None, state=None):
+        self.p = {**AUTO_REMINING, **(params or {})}
+        self.state = state if state is not None else ReminingState()
+
+    @property
+    def last_remining_bar(self) -> int:
+        return self.state.last_remining_bar
+
+    @property
+    def remining_count(self) -> int:
+        return self.state.remining_count
+
+    @property
+    def history(self) -> list:
+        return self.state.data.setdefault("remining_history", [])
+
+    def should_remining(self, current_bar, decay_alerts, pbo_trend=None,
+                        indicator=None):
+        """indicator = DualIndicatorTrigger.check() 的返回值。
+
+        重挖与否只在这里判定一次：把外部 DSR/PBO 结论作为一路触发源接入，
+        而不是让调用方自己判完再另起一套判据。"""
         if not self.p["enabled"]:
             return False, "重挖关闭", ""
         if self.remining_count >= self.p["max_remining_rounds"]:
-            return False, "已达最大重挖轮数", ""
+            return False, (f"已达最大重挖轮数 "
+                           f"({self.remining_count}/{self.p['max_remining_rounds']})"), ""
         if current_bar - self.last_remining_bar < self.p["cooldown_bars"]:
-            return False, "冷却中", ""
+            return False, (f"冷却中（距上次重挖 "
+                           f"{current_bar - self.last_remining_bar} bar "
+                           f"< {self.p['cooldown_bars']}）"), ""
         if "decay" in self.p["trigger_on"]:
             n = len([a for a in decay_alerts
                      if a.get("action") == "trigger_remining"])
@@ -30,14 +55,15 @@ class ReminingTrigger:
         if "pbo_rising" in self.p["trigger_on"] and pbo_trend:
             if pbo_trend.get("is_rising", False):
                 return True, "PBO 上升", "pbo_rising"
+        if "indicator" in self.p["trigger_on"] and (indicator or {}).get(
+                "triggered"):
+            return True, (indicator.get("reason")
+                          or "DSR/PBO 连续恶化"), "indicator"
         return False, "无触发条件", ""
 
     def mark_remining(self, bar, reason, ttype):
-        self.last_remining_bar = bar
-        self.remining_count += 1
-        self.history.append({"bar": bar, "reason": reason,
-                             "type": ttype,
-                             "round": self.remining_count})
+        self.state.mark_remining(bar, reason, ttype)
+        self.state.save()
 
 
 class FactorReplacer:
@@ -106,20 +132,22 @@ class FactorReplacer:
 
 
 class AutoReminingLoop:
-    def __init__(self, mine_fn, evaluate_fn, params=None):
+    def __init__(self, mine_fn, evaluate_fn, params=None, state=None):
         self.p = {**AUTO_REMINING, **(params or {})}
         self.mine_fn = mine_fn
         self.evaluate_fn = evaluate_fn
-        self.trigger = ReminingTrigger(params)
+        self.state = state if state is not None else ReminingState()
+        self.trigger = ReminingTrigger(params, state=self.state)
         self.replacer = FactorReplacer(params)
         self.log = []
 
     def run_once(self, current_bar, current_factors, pool,
-                 decay_alerts, pbo_trend=None):
+                 decay_alerts, pbo_trend=None, indicator=None):
         should, reason, ttype = self.trigger.should_remining(
-            current_bar, decay_alerts, pbo_trend)
+            current_bar, decay_alerts, pbo_trend, indicator=indicator)
         if not should:
-            return {"triggered": False, "reason": reason}
+            return {"triggered": False, "reason": reason,
+                    "remining_count": self.trigger.remining_count}
 
         print(f"\n  🔁 触发自动重挖 | bar={current_bar} | {reason}")
         metrics_before = self.evaluate_fn(current_factors)

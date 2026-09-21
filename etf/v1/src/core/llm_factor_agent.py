@@ -11,6 +11,9 @@ from config import (
     HYPOTHESIS_PER_LOOP, IC_THRESHOLD,
 )
 from factor_dsl import safe_eval, compute_ic
+from factor_naming import cn_name
+from llm_client import (make_openai_client, endpoint_enabled,
+                        describe_endpoint)
 
 
 SYSTEM_PROMPT = """你是量化因子研究员。生成分钟线 ETF 因子表达式。
@@ -36,13 +39,14 @@ SYSTEM_PROMPT = """你是量化因子研究员。生成分钟线 ETF 因子表�
 class LLMClient:
     def __init__(self):
         self.api_key = os.environ.get(LLM_API_KEY_ENV, "")
-        self.enabled = bool(self.api_key)
+        self.enabled = endpoint_enabled(self.api_key)
+        if self.enabled:
+            print(f"  LLM 端点: {describe_endpoint()}")
 
     @retry(stop=stop_after_attempt(3),
            wait=wait_exponential(multiplier=1, min=2, max=10))
     def chat(self, messages):
-        from openai import OpenAI
-        client = OpenAI(api_key=self.api_key)
+        client = make_openai_client(api_key=self.api_key)
         resp = client.chat.completions.create(
             model=LLM_MODEL, messages=messages, temperature=0.7,
             response_format={"type": "json_object"})
@@ -89,6 +93,7 @@ class LLMFactorAgent:
     def _evaluate(self, fd):
         name, expr = fd["name"], fd["expr"]
         ics, impl = [], {}
+        first_err = None
         for code, df in self.pool.items():
             try:
                 f = safe_eval(expr, df)
@@ -97,9 +102,14 @@ class LLMFactorAgent:
                 if not np.isnan(ic):
                     ics.append(ic)
                     impl[code] = {"factor": f, "ic": ic}
-            except Exception:
+            except Exception as e:
+                if first_err is None:
+                    first_err = e
                 continue
         if not ics:
+            if first_err is not None:
+                print(f"  ⚠️ {name} 全部标的求值失败: "
+                      f"{type(first_err).__name__}: {first_err}")
             return {"name": name, "mean_ic": 0.0, "icir": 0.0, "pass": False}
         mean_ic = float(np.mean(ics))
         std_ic = float(np.std(ics)) if len(ics) > 1 else 1.0
@@ -110,10 +120,14 @@ class LLMFactorAgent:
 
     def run(self):
         print("\n========== LLM 因子生成 Agent ==========")
+        loops = MAX_LOOPS
         if not self.llm.enabled:
-            print("  ℹ️ 未配置 LLM，使用内置模板")
-        for loop in range(MAX_LOOPS):
-            print(f"\n--- Loop {loop + 1}/{MAX_LOOPS} ---")
+            # 模板是确定性的：多轮循环只会逐字节重复同一批表达式，
+            # 无 LLM 时只跑一轮
+            print("  ℹ️ 未配置 LLM，使用内置模板（确定性，单次循环）")
+            loops = 1
+        for loop in range(loops):
+            print(f"\n--- Loop {loop + 1}/{loops} ---")
             feedback = ""
             if self.history:
                 avg = np.mean([h["ic"] for h in self.history])
@@ -122,7 +136,7 @@ class LLMFactorAgent:
                 r = self._evaluate(fd)
                 flag = "✅" if r["pass"] else "❌"
                 print(f"  {r['name']:15s} IC={r['mean_ic']:+.4f} "
-                      f"ICIR={r['icir']:+.3f} {flag}")
+                      f"ICIR={r['icir']:+.3f} {flag}  [{cn_name(r['name'], fd.get('expr', ''))}]")
                 self.history.append({"name": r["name"],
                                      "ic": r["mean_ic"],
                                      "expr": fd.get("expr", "")})

@@ -9,10 +9,13 @@ import numpy as np
 import re
 from datetime import datetime
 from tenacity import retry, stop_after_attempt, wait_exponential
-from config import (LLM_API_KEY_ENV, LLM_MODEL,
+from config import (LLM_API_KEY_ENV, LLM_MODEL, DATA_DIR,
                     LIVE_DATA_DIR, REPORT_DIR)
 from eval_prompts import get_eval_prompt
 from multi_llm_voter import MultiLLMVoter
+from llm_client import (make_openai_client, endpoint_enabled)
+
+BACKUP_DIR = os.path.join(DATA_DIR, "prompt_backups")
 
 
 class PromptABTest:
@@ -22,15 +25,14 @@ class PromptABTest:
         self.out = report_dir or REPORT_DIR
         self.language = language
         self.voter = MultiLLMVoter(language=language)
-        self.backup_dir = "prompt_backups"
+        self.backup_dir = BACKUP_DIR
         os.makedirs(self.backup_dir, exist_ok=True)
 
     @retry(stop=stop_after_attempt(2),
            wait=wait_exponential(multiplier=1, min=2, max=6))
     def _generate(self, prompt, raw_data):
-        from openai import OpenAI
         from report_templates import ReportTemplate
-        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+        client = make_openai_client()
         user = ReportTemplate.build_daily_prompt(raw_data)
         resp = client.chat.completions.create(
             model=LLM_MODEL,
@@ -48,11 +50,10 @@ class PromptABTest:
         scores_first, scores_second = [], []
         for model in self.voter.available:
             try:
-                from openai import OpenAI
                 kwargs = {"api_key": os.environ.get(model["env_key"])}
                 if model.get("base_url"):
                     kwargs["base_url"] = model["base_url"]
-                client = OpenAI(**kwargs)
+                client = make_openai_client(**kwargs)
                 r1 = self._score_one(client, model, system, first, raw_data)
                 r2 = self._score_one(client, model, system, second, raw_data)
                 scores_first.append(r1)
@@ -150,7 +151,7 @@ class PromptABTest:
 
     def apply_winner(self, winner_prompt):
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        src = "feedback/report_prompts.py"
+        src = "report/report_prompts.py"
         if os.path.exists(src):
             shutil.copy(src,
                         f"{self.backup_dir}/report_prompts_ab_{ts}.py")
@@ -170,11 +171,11 @@ def run_prompt_ab_test(prompt_a=None, prompt_b=None, n_samples=5):
         from report_prompts import SYSTEM_PROMPT_ZH
         prompt_a = SYSTEM_PROMPT_ZH
     if prompt_b is None:
-        backups = sorted([f for f in os.listdir("prompt_backups")
+        backups = sorted([f for f in os.listdir(BACKUP_DIR)
                           if f.startswith("report_prompts_")])
         if not backups:
             return {}
-        with open(f"prompt_backups/{backups[-1]}",
+        with open(f"{BACKUP_DIR}/{backups[-1]}",
                   "r", encoding="utf-8") as f:
             content = f.read()
         m = re.search(r'SYSTEM_PROMPT_ZH\s*=\s*"""(.*?)"""',
@@ -194,10 +195,10 @@ def auto_ab_test_and_apply(n_samples=5):
     winner = result["summary"]["overall_winner"]
     if winner == "B":
         print("\n  🎉 B 版胜出，自动应用...")
-        backups = sorted([f for f in os.listdir("prompt_backups")
+        backups = sorted([f for f in os.listdir(BACKUP_DIR)
                           if f.startswith("report_prompts_")])
         if backups:
-            with open(f"prompt_backups/{backups[-1]}",
+            with open(f"{BACKUP_DIR}/{backups[-1]}",
                       "r", encoding="utf-8") as f:
                 content = f.read()
             m = re.search(r'SYSTEM_PROMPT_ZH\s*=\s*"""(.*?)"""',

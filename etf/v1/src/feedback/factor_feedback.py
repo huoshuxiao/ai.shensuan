@@ -4,11 +4,14 @@
 import os
 import json
 import pandas as pd
+from config import (
+    LIVE_DATA_DIR, RESULTS_DIR, FACTOR_LIBRARY,
+)
 
 
 class FactorFeedback:
-    def __init__(self, live_data_dir="live_data",
-                 index_path="factor_library_index.json"):
+    def __init__(self, live_data_dir=LIVE_DATA_DIR,
+                 index_path=FACTOR_LIBRARY["index_path"]):
         self.dir = live_data_dir
         self.index_path = index_path
         self.results = {}
@@ -18,7 +21,7 @@ class FactorFeedback:
             return {}
         with open(self.index_path, "r", encoding="utf-8") as f:
             library = json.load(f)
-        decay_path = "factor_decay_predict.csv"
+        decay_path = f"{RESULTS_DIR}/factor_decay_predict.csv"
         decay = {}
         if os.path.exists(decay_path):
             df = pd.read_csv(decay_path)

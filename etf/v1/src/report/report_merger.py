@@ -4,6 +4,7 @@
 import os
 from tenacity import retry, stop_after_attempt, wait_exponential
 from generation_config import GENERATION_MODELS
+from llm_client import (make_openai_client, endpoint_enabled)
 
 
 class ReportMerger:
@@ -18,7 +19,6 @@ class ReportMerger:
     @retry(stop=stop_after_attempt(2),
            wait=wait_exponential(multiplier=1, min=2, max=6))
     def _llm_merge(self, reports, raw_data):
-        from openai import OpenAI
         system = """你是量化研究主管。综合多份日报草稿，生成最终日报。
 要求：提取最佳分析、去重合并、保持 4 段式结构、引用具体数字。"""
         drafts = []
@@ -30,7 +30,7 @@ class ReportMerger:
         kwargs = {"api_key": os.environ[self.model["env_key"]]}
         if self.model.get("base_url"):
             kwargs["base_url"] = self.model["base_url"]
-        client = OpenAI(**kwargs)
+        client = make_openai_client(**kwargs)
         resp = client.chat.completions.create(
             model=self.model["name"],
             messages=[{"role": "system", "content": system},

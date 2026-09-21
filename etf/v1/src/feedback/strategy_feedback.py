@@ -4,11 +4,13 @@
 import os
 import numpy as np
 import pandas as pd
+from config import LIVE_DATA_DIR, RESULTS_DIR
 
 
 class StrategyFeedback:
-    def __init__(self, live_attribution_path="live_data/live_attribution.csv",
-                 multi_summary_path="multi_summary.csv"):
+    def __init__(self,
+                 live_attribution_path=f"{LIVE_DATA_DIR}/live_attribution.csv",
+                 multi_summary_path=f"{RESULTS_DIR}/multi_summary.csv"):
         self.live_path = live_attribution_path
         self.summary_path = multi_summary_path
 

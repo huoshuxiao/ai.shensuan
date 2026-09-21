@@ -8,7 +8,8 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 from collections import OrderedDict
-from config import FACTOR_LIBRARY
+from config import FACTOR_LIBRARY, LIBRARY_DIR
+from factor_naming import cn_name, METRIC_GLOSSARY
 
 
 class FactorLibrary:
@@ -89,7 +90,9 @@ class FactorLibrary:
     def to_dataframe(self):
         rows = []
         for name, f in self.factors.items():
-            rows.append({"name": name, "expr": f.get("expr", ""),
+            rows.append({"name": name,
+                         "cn_name": cn_name(name, f.get("expr", "")),
+                         "expr": f.get("expr", ""),
                          "ic": round(f.get("ic", 0), 4),
                          "icir": round(f.get("icir", 0), 4),
                          "source": f.get("source", ""),
@@ -119,22 +122,33 @@ class FactorLibrary:
         lines.append("")
         lines.append(f"## 🏆 Top {top_n} 因子")
         lines.append("")
-        lines.append("| 排名 | 因子名 | IC | ICIR | 来源 | 状态 |")
-        lines.append("|------|--------|-----|------|------|------|")
+        lines.append("| 排名 | 因子名 | 中文名 | IC | ICIR | 来源 | 状态 |")
+        lines.append("|------|--------|--------|-----|------|------|------|")
         sorted_f = sorted(self.factors.items(),
                           key=lambda x: abs(x[1].get("ic", 0)),
                           reverse=True)[:top_n]
         for i, (name, f) in enumerate(sorted_f, 1):
-            lines.append(f"| {i} | `{name}` | {f.get('ic', 0):+.4f} | "
+            lines.append(f"| {i} | `{name}` | {cn_name(name, f.get('expr', ''))} | "
+                         f"{f.get('ic', 0):+.4f} | "
                          f"{f.get('icir', 0):+.3f} | "
                          f"{f.get('source', '')} | "
                          f"{f.get('status', '')} |")
         lines.append("")
+        lines.append("## 📈 指标说明")
+        lines.append("")
+        lines.append("| 指标 | 中文名 | 含义与参考口径 |")
+        lines.append("|------|--------|----------------|")
+        for key, label, desc in METRIC_GLOSSARY:
+            safe_desc = desc.replace("|", "\\|")
+            lines.append(f"| `{key}` | {label} | {safe_desc} |")
+        lines.append("")
         lines.append("## 📖 因子详情")
         lines.append("")
         for name, f in self.factors.items():
-            lines.append(f"### `{name}`")
+            cn = cn_name(name, f.get("expr", ""))
+            lines.append(f"### `{name}` · {cn}")
             lines.append("")
+            lines.append(f"- **中文名**: {cn}")
             lines.append(f"- **状态**: `{f.get('status', '')}`")
             lines.append(f"- **来源**: `{f.get('source', '')}`")
             lines.append(f"- **IC**: {f.get('ic', 0):+.4f}")
@@ -162,8 +176,8 @@ class FactorLibrary:
         self._save_index()
         df = self.to_dataframe()
         if not df.empty:
-            df.to_csv("factor_library.csv", index=False,
-                    encoding="utf-8-sig")
+            df.to_csv(f"{LIBRARY_DIR}/factor_library.csv",
+                      index=False, encoding="utf-8-sig")
         print(f"  💾 因子库已保存: {self.md_path} "
             f"({len(self.factors)} 因子)")
         try:
@@ -181,7 +195,8 @@ class FactorLibrary:
                      reverse=True)[:max_factors]
         lines = ["已知因子（避免重复）："]
         for name, f in top:
-            lines.append(f"  - {name}: IC={f.get('ic', 0):+.4f}")
+            lines.append(f"  - {name}（{cn_name(name, f.get('expr', ''))}）"
+                         f": IC={f.get('ic', 0):+.4f}")
         return "\n".join(lines)
 
 

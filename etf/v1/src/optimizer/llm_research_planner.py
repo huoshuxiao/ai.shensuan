@@ -5,7 +5,8 @@ import os
 import json
 from datetime import datetime
 from tenacity import retry, stop_after_attempt, wait_exponential
-from config import LLM_MODEL, LLM_API_KEY_ENV
+from config import LLM_MODEL, LLM_API_KEY_ENV, RESULTS_DIR
+from llm_client import (make_openai_client, endpoint_enabled)
 
 
 RESEARCH_PROMPT = """你是量化研究主管。根据团队当前状态，制定未来 {days} 天研究计划。
@@ -20,13 +21,12 @@ RESEARCH_PROMPT = """你是量化研究主管。根据团队当前状态，制�
 class LLMResearchPlanner:
     def __init__(self):
         self.api_key = os.environ.get(LLM_API_KEY_ENV, "")
-        self.enabled = bool(self.api_key)
+        self.enabled = endpoint_enabled(self.api_key)
 
     @retry(stop=stop_after_attempt(3),
            wait=wait_exponential(multiplier=1, min=2, max=10))
     def _chat(self, messages):
-        from openai import OpenAI
-        client = OpenAI(api_key=self.api_key)
+        client = make_openai_client(api_key=self.api_key)
         resp = client.chat.completions.create(
             model=LLM_MODEL, messages=messages, temperature=0.7,
             response_format={"type": "json_object"})
@@ -73,7 +73,8 @@ class LLMResearchPlanner:
                 "summary": "聚焦稳定性", "generated_at":
                 datetime.now().isoformat(), "days": days}
 
-    def save_plan(self, plan, path="research_plan.json"):
+    def save_plan(self, plan,
+                  path=f"{RESULTS_DIR}/research_plan.json"):
         with open(path, "w", encoding="utf-8") as f:
             json.dump(plan, f, ensure_ascii=False, indent=2)
         md_path = path.replace(".json", ".md")

@@ -4,6 +4,7 @@
 import numpy as np
 import pandas as pd
 from config import STRATEGY_LIFECYCLE, FACTOR_DECAY
+from factor_dsl import safe_spearman
 
 
 class StrategyLifecycleManager:
@@ -114,7 +115,7 @@ class FactorDecayMonitor:
             a, b = sub.iloc[:, 0], sub.iloc[:, 1]
             if a.std() < 1e-9 or b.std() < 1e-9:
                 continue
-            vals.append(a.corr(b, method="spearman"))
+            vals.append(safe_spearman(a, b))
             idx.append(df.index[i])
         return pd.Series(vals, index=idx)
 

@@ -8,6 +8,7 @@ from config import (
     SLIPPAGE, MIN_TRADE_AMOUNT, RISK_CONTROL,
 )
 from frequency_adapter import get_adapter
+from data_loader import PointInTimeData
 
 
 class DailyBacktester:
@@ -21,24 +22,26 @@ class DailyBacktester:
         self.universe = universe
         self.risk_params = risk_params or RISK_CONTROL
         self.adapter = get_adapter("daily")
+        # 全部取价走时点访问器，杜绝越界读到 date 之后的 bar
+        self.pit = PointInTimeData(pool)
 
     @staticmethod
     def _cost(amount):
+        """单边交易成本 = max(金额×佣金率, 最低佣金) + 金额×滑点。
+        滑点近似成交价冲击（买贵卖贱各半计入）"""
         return max(amount * COMMISSION_RATE, MIN_COMMISSION) + \
             amount * SLIPPAGE
 
     def _price(self, code, date, field="close"):
-        if code not in self.pool:
-            return None
-        df = self.pool[code]
-        if date not in df.index:
-            return None
-        v = df.loc[date, field]
-        return float(v) if not pd.isna(v) else None
+        """取某日某列价格；该 ETF 当日无 bar（停牌/未上市）返回 None"""
+        return self.pit.get_price(code, date, field)
 
     def run(self, signals: pd.DataFrame) -> dict:
-        """
-        signals: index=date, columns=['target_code']
+        """事件循环式日线回测（按时间顺序模拟，杜绝未来函数）。
+
+        signals: index=date, columns=['target_code']（空串=空仓）
+        每日流程：估值 -> 风控判定 -> 必要时卖出(T+1 限制) ->
+        空仓且允许时按仓位比例买入 -> 记录净值。单一持仓，全进全出。
         """
         cash = INIT_CAPITAL
         position = None
@@ -130,10 +133,14 @@ class DailyBacktester:
 
     @staticmethod
     def _is_t0(code):
-        # 日线场景下，跨境/债券/黄金 ETF 支持 T+0
+        # 日线场景下，跨境(513)/货币债券(511)/黄金(518) ETF 支持 T+0
+        # （T+0 品种当日买入可当日卖出，不受 buy_date==date 限制）
         return code.startswith(("513", "511", "518"))
 
     def _stats(self, equity_df, trades_df):
+        """绩效统计。夏普 = 年化收益/年化波动（adapter 按频率折算）；
+        最大回撤 dd_t = eq_t / cummax(eq)_t - 1 取最小值；
+        胜率按 BUY/SELL 逐笔配对（卖价 > 买价记为赢）。"""
         if equity_df.empty:
             return {}
         eq = equity_df["equity"]
@@ -157,7 +164,11 @@ class DailyBacktester:
                            if sells.loc[i, "price"] > buys.loc[i, "price"])
                 win_rate = wins / n
 
+        def _d(ts):
+            return ts.date() if hasattr(ts, "date") else str(ts)[:10]
         return {
+            "回测区间": f"{_d(eq.index[0])} ~ {_d(eq.index[-1])} "
+                      f"({n_bars} bars)",
             "初始资金": round(eq.iloc[0], 2),
             "最终资金": round(eq.iloc[-1], 2),
             "总收益率": f"{total_ret * 100:.2f}%",
@@ -173,7 +184,8 @@ class DailyBacktester:
 
 
 class DailyRiskController:
-    """日线风控（比分钟线简化）"""
+    """日线风控（比分钟线简化）。规则按优先级短路返回：
+    熔断冷却 > 日止损 > 回撤熔断 > 交易间隔 > 当日次数上限。"""
 
     def __init__(self, params=None):
         self.p = {**RISK_CONTROL, **(params or {})}
@@ -188,6 +200,7 @@ class DailyRiskController:
         self.daily_start_equity = None
 
     def on_new_day(self, ts, equity):
+        """跨日重置当日计数器，并以开盘时点净值做日内止损基准"""
         day = pd.Timestamp(ts).date()
         if day != self.current_day:
             self.current_day = day
@@ -195,6 +208,11 @@ class DailyRiskController:
             self.daily_start_equity = equity
 
     def can_trade(self, ts, bar_idx, equity):
+        """返回 (是否允许开/加仓, 拒绝原因)。
+        日止损：equity/当日起始净值 - 1 <= daily_stop_loss；
+        回撤熔断：equity/历史峰值 - 1 <= max_drawdown_stop 时
+        冻结交易 cooldown_days 个自然日；
+        注意止损/熔断触发时外层引擎会反向强制卖出。"""
         if self.cooldown_until and pd.Timestamp(ts) < self.cooldown_until:
             return False, "熔断冷却"
         if self.daily_start_equity and self.daily_start_equity > 0:
@@ -219,6 +237,9 @@ class DailyRiskController:
         self.last_trade_bar_idx = bar_idx
 
     def adjust_position_ratio(self, equity):
+        """回撤越深仓位越轻的线性缩放：
+        ratio = single_position_max · (1 + dd·5)，限幅 [0.2, 上限]
+        （dd=-20% 时降到 0 倍→触发下限 2 成仓硬底）。"""
         if self.peak_equity <= 0:
             return self.p["single_position_max"]
         dd = equity / self.peak_equity - 1

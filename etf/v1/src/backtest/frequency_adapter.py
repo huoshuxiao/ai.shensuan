@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""频率适配器：统一不同频率的参数换算"""
+"""频率适配器：统一不同频率的参数换算
+
+核心约定：所有统计量内部按 bar 计算，年化统一用
+年化收益 = (1+R_total)^(bars_per_year/n_bars) - 1，
+年化波动 = σ_bar · sqrt(bars_per_year)，夏普同理乘 sqrt(bars_per_year)。"""
 
 from config import FREQ, FREQ_MAP, LOOKBACK_DAYS
 

@@ -8,6 +8,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from config import JOINT_LLM, ORTHOGONAL, RISK_CONTROL, \
     LLM_MODEL, LLM_API_KEY_ENV
 from factor_orthogonal import orthogonalize_factors
+from llm_client import (make_openai_client, endpoint_enabled)
 
 
 JOINT_SYSTEM_PROMPT = """你是量化策略优化专家。同时优化两组参数：
@@ -31,14 +32,13 @@ JOINT_SYSTEM_PROMPT = """你是量化策略优化专家。同时优化两组参�
 class LLMJointOptimizer:
     def __init__(self):
         self.api_key = os.environ.get(LLM_API_KEY_ENV, "")
-        self.enabled = bool(self.api_key)
+        self.enabled = endpoint_enabled(self.api_key)
         self.history = []
 
     @retry(stop=stop_after_attempt(3),
            wait=wait_exponential(multiplier=1, min=2, max=10))
     def _chat(self, messages):
-        from openai import OpenAI
-        client = OpenAI(api_key=self.api_key)
+        client = make_openai_client(api_key=self.api_key)
         resp = client.chat.completions.create(
             model=LLM_MODEL, messages=messages, temperature=0.3,
             response_format={"type": "json_object"})

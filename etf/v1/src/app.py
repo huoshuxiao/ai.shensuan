@@ -3,11 +3,14 @@
 
 import os
 import json
+import _bootstrap  # noqa: F401  必须先于项目模块导入
 import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from config import RESULTS_DIR
+from factor_naming import cn_name, METRIC_GLOSSARY
 
 st.set_page_config(page_title="ETF 量化看板", layout="wide")
 st.title("📊 ETF 量化系统看板")
@@ -31,10 +34,10 @@ def _held_mask(signals):
     return code.notna() & ~code.isin(["", "nan", "None"])
 
 
-equity_df = load_csv("equity.csv")
-trades_df = load_csv("trades.csv")
-dsr_df = load_csv("dsr.csv")
-signals_df = load_csv("signals.csv")
+equity_df = load_csv(f"{RESULTS_DIR}/equity.csv")
+trades_df = load_csv(f"{RESULTS_DIR}/trades.csv")
+dsr_df = load_csv(f"{RESULTS_DIR}/dsr.csv")
+signals_df = load_csv(f"{RESULTS_DIR}/signals.csv")
 
 col1, col2, col3, col4, col5, col6, col7, col8 = st.columns(8)
 if equity_df is not None and not equity_df.empty:
@@ -123,7 +126,7 @@ with tabs[3]:
             st.info("全程空仓")
 
 with tabs[4]:
-    coords = load_csv("factor_clusters.csv")
+    coords = load_csv(f"{RESULTS_DIR}/factor_clusters.csv")
     if coords is not None and not coords.empty:
         fig = go.Figure()
         for cid in sorted(coords["cluster"].unique()):
@@ -131,28 +134,41 @@ with tabs[4]:
             fig.add_trace(go.Scatter(
                 x=sub["x"], y=sub["y"], mode="markers+text",
                 marker=dict(size=10, color=f"hsl({(cid * 45) % 360}, 70%, 50%)"),
-                text=sub["name"], textposition="top center",
+                text=sub["name"].map(cn_name), textposition="top center",
                 name=f"簇{cid}"))
         fig.update_layout(title="因子空间", height=600)
         st.plotly_chart(fig, use_container_width=True)
 
 with tabs[5]:
-    attr = load_csv("factor_attribution.csv")
+    attr = load_csv(f"{RESULTS_DIR}/factor_attribution.csv")
     if attr is not None and not attr.empty:
         col = "shapley" if "shapley" in attr.columns else "contribution"
         if col in attr.columns:
             top = attr.head(15)
             fig = go.Figure(go.Bar(
-                x=top["factor"], y=top[col],
+                x=top["factor"].map(cn_name), y=top[col],
+                customdata=top["factor"],
+                hovertemplate="%{x}<br>原名: %{customdata}<br>%{y:+.4f}<extra></extra>",
                 marker_color=["green" if v > 0 else "red"
                               for v in top[col]]))
             fig.update_layout(title="因子贡献", height=400)
             st.plotly_chart(fig, use_container_width=True)
+        if "factor" in attr.columns:
+            attr.insert(1, "中文名", attr["factor"].map(cn_name))
         st.dataframe(attr, use_container_width=True)
+        with st.expander("📖 指标口径说明"):
+            st.markdown(
+                "| 指标 | 中文名 | 含义与参考口径 |\n|---|---|---|\n"
+                + "\n".join(f"| `{k}` | {l} | {d.replace('|', chr(92) + '|')} |"
+                            for k, l, d in METRIC_GLOSSARY))
 
 with tabs[6]:
-    decay = load_csv("factor_decay.csv")
-    pred = load_csv("factor_decay_predict.csv")
+    decay = load_csv(f"{RESULTS_DIR}/factor_decay.csv")
+    pred = load_csv(f"{RESULTS_DIR}/factor_decay_predict.csv")
+    for df in (decay, pred):
+        if df is not None and "factor" in df.columns \
+                and "中文名" not in df.columns:
+            df.insert(1, "中文名", df["factor"].map(cn_name))
     if decay is not None and not decay.empty:
         st.dataframe(decay, use_container_width=True)
     if pred is not None and not pred.empty:
@@ -160,8 +176,8 @@ with tabs[6]:
         st.dataframe(pred, use_container_width=True)
 
 with tabs[7]:
-    mogp = load_csv("mogp_pareto_front.csv")
-    hist = load_csv("mogp_history.csv")
+    mogp = load_csv(f"{RESULTS_DIR}/mogp_pareto_front.csv")
+    hist = load_csv(f"{RESULTS_DIR}/mogp_history.csv")
     if hist is not None and not hist.empty:
         fig = go.Figure(go.Scatter(
             x=hist["generation"], y=hist["best_ic"],
@@ -172,7 +188,7 @@ with tabs[7]:
         st.dataframe(mogp, use_container_width=True)
 
 with tabs[8]:
-    hist = load_csv("factor_git_history.csv")
+    hist = load_csv(f"{RESULTS_DIR}/factor_git_history.csv")
     if hist is not None and not hist.empty:
         st.dataframe(hist, use_container_width=True)
     else:
@@ -181,8 +197,8 @@ with tabs[8]:
 with tabs[9]:
     st.subheader("📊 日线 vs 分钟线对比")
 
-    daily_eq = load_csv("equity_daily.csv")
-    minute_eq = load_csv("equity_1min.csv")
+    daily_eq = load_csv(f"{RESULTS_DIR}/equity_daily.csv")
+    minute_eq = load_csv(f"{RESULTS_DIR}/equity_1min.csv")
 
     if daily_eq is not None or minute_eq is not None:
         fig = go.Figure()
@@ -206,13 +222,13 @@ with tabs[9]:
                           hovermode="x unified")
         st.plotly_chart(fig, use_container_width=True)
 
-        comp = load_csv("freq_comparison.csv")
+        comp = load_csv(f"{RESULTS_DIR}/freq_comparison.csv")
         if comp is not None:
             st.subheader("指标对比")
             st.dataframe(comp, use_container_width=True)
 
         st.subheader("🎯 持仓相似度（每日收盘仓位：日线 vs 分钟线）")
-        sim = load_json("holdings_similarity.json")
+        sim = load_json(f"{RESULTS_DIR}/holdings_similarity.json")
         if sim:
             def _pct(v):
                 return "N/A" if v is None else f"{v * 100:.2f}%"

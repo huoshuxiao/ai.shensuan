@@ -1,12 +1,18 @@
 # -*- coding: utf-8 -*-
-"""因子聚类"""
+"""因子聚类
+
+挖掘出的大量因子按取值相似性聚成簇，每簇只保留 |IC| 最高的代表，
+在正交化之前先做一轮"家族去重"，减轻共线性并给 GP 提供种子。"""
 
 import numpy as np
 import pandas as pd
-from config import FACTOR_CLUSTERING
+from config import FACTOR_CLUSTERING, RESULTS_DIR
+from factor_dsl import spearman_corr_matrix
 
 
 def compute_similarity_matrix(factors, ref_code):
+    """因子两两 Spearman 相关矩阵（用参考标的的时间序列作代理，
+    比截面拼接快且稳定）"""
     data = {}
     for f in factors:
         if ref_code in f.get("impl", {}):
@@ -14,10 +20,12 @@ def compute_similarity_matrix(factors, ref_code):
     if not data:
         return pd.DataFrame()
     df = pd.DataFrame(data).dropna(how="all")
-    return df.corr(method="spearman")
+    return spearman_corr_matrix(df)
 
 
 def _cluster_hierarchical(sim, threshold=0.6):
+    """层次聚类（平均链接）：距离 d = 1 - |相关系数|，
+    在距离轴切 t = 1 - threshold 高度 => |corr| > threshold 的归同簇。"""
     from scipy.cluster.hierarchy import linkage, fcluster
     from scipy.spatial.distance import squareform
     dist = 1 - sim.abs().values
@@ -30,6 +38,7 @@ def _cluster_hierarchical(sim, threshold=0.6):
 
 
 def _cluster_kmeans(sim, n_clusters=8):
+    """KMeans 直接对相关矩阵的行向量聚类（以相关模式为特征）。"""
     from sklearn.cluster import KMeans
     n = min(n_clusters, len(sim.columns))
     model = KMeans(n_clusters=n, random_state=42, n_init=10)
@@ -38,6 +47,7 @@ def _cluster_kmeans(sim, n_clusters=8):
 
 
 def _pick_representatives(clusters, factors, mode="highest_ic"):
+    """每簇选代表：|mean_ic| 最大者（mode 目前仅实现 highest_ic）。"""
     factor_ic = {f["name"]: abs(f.get("mean_ic", 0)) for f in factors}
     groups = {}
     for name, cid in clusters.items():
@@ -49,6 +59,8 @@ def _pick_representatives(clusters, factors, mode="highest_ic"):
 
 
 def _reduce_dim(sim, method="tsne", perplexity=5):
+    """相关矩阵 -> 2D 可视化坐标。TSNE 用相似度距离嵌入
+    （样本极少时 perplexity 需收缩到 n-1 以内）。"""
     X = sim.values
     n = X.shape[0]
     if n < 3:
@@ -63,6 +75,9 @@ def _reduce_dim(sim, method="tsne", perplexity=5):
 
 
 def cluster_factors(factors, pool):
+    """入口：相似矩阵 -> 聚类(method) -> 选代表 -> 降维坐标。
+    返回 {clusters, representatives, similarity, coords(DataFrame),
+    n_clusters}；因子 <3 个或未启用时返回 {}。"""
     cfg = FACTOR_CLUSTERING
     print("\n========== 因子聚类 ==========")
     if not cfg["enabled"] or len(factors) < 3:
@@ -107,7 +122,7 @@ def dedup_by_cluster(factors, clustering):
     return kept
 
 
-def save_clustering(clustering, out_dir="."):
+def save_clustering(clustering, out_dir=RESULTS_DIR):
     if not clustering:
         return
     clustering["coords"].to_csv(f"{out_dir}/factor_clusters.csv",

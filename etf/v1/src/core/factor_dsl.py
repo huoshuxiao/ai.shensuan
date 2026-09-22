@@ -20,7 +20,10 @@ FACTOR_DSL = {
     "high":   lambda df: df["high"],           # 最高价
     "low":    lambda df: df["low"],            # 最低价
     "volume": lambda df: df["volume"],         # 成交量
-    "returns": lambda df: df["close"].pct_change(),   # 日收益率 r_t = P_t/P_{t-1} - 1
+    # fill_method=None：默认 'pad' 会先把停牌 NaN 填成前值再算收益，
+    # 造出「复牌日 0% 收益 + 次日跳空」的假收益序列（A 股全市场样本里
+    # 停牌很常见）。无缺口的数据（ETF 日线）两种写法结果完全一致。
+    "returns": lambda df: df["close"].pct_change(fill_method=None),   # 日收益率 r_t = P_t/P_{t-1} - 1
     # ---- 价格类窗口算子（作用于 close） ----
     "ma":     lambda df, n: df["close"].rolling(int(n)).mean(),    # 简单移动平均
     "std":    lambda df, n: df["close"].rolling(int(n)).std(),     # 价格窗口标准差
@@ -56,7 +59,7 @@ def safe_eval(expr: str, df: pd.DataFrame) -> pd.Series:
     env = {"df": df, "np": np, "pd": pd, **FACTOR_DSL,
            "open": df["open"], "high": df["high"], "low": df["low"],
            "close": df["close"], "volume": df["volume"],
-           "returns": df["close"].pct_change()}
+           "returns": df["close"].pct_change(fill_method=None)}
     try:
         result = eval(expr, {"__builtins__": {}}, env)
         if isinstance(result, pd.Series):

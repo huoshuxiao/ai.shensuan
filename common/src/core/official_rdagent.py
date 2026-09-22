@@ -12,7 +12,8 @@ import shlex
 import time
 import shutil
 import subprocess
-from config import (RESULTS_DIR, RDAGENT_CONDA_ENV, RDAGENT_TIMEOUT_SEC,
+from config import (RDAGENT_OUTPUT_DIR, RDAGENT_CONDA_ENV,
+                    RDAGENT_TIMEOUT_SEC,
                     RDAGENT_QLIB_DOCKER_ENV, RDAGENT_QLIB_PROVIDER)
 
 # conda 未进 PATH 时的常见安装位
@@ -169,13 +170,24 @@ def rdagent_preflight(output_dir=None):
     if ok:
         ok, detail = _sandbox_image_ready()
         checks.append(("qlib 沙箱镜像", ok, detail))
-    data_ok = os.path.isdir(RDAGENT_QLIB_PROVIDER)
+    # 光判目录存在不够：这份 bin 要真有 calendars/day.txt 才算可开数据，
+    # 且 rdagent 的 QTDockerEnv.prepare 会拿挂载根拼 <mount>/qlib_data/cn_data
+    # 做存在性检查，缺了就在容器里联网重拉（本机拉不动，等于回测挂）。
+    # 末交易日一并打印：跑 RD-Agent 前先确认数据是不是最新的
+    day_txt = os.path.join(RDAGENT_QLIB_PROVIDER, "calendars", "day.txt")
+    data_end = ""
+    if os.path.isfile(day_txt):
+        with open(day_txt) as fh:
+            lines = [ln.strip() for ln in fh if ln.strip()]
+        data_end = lines[-1] if lines else ""
+    data_ok = bool(data_end)
     checks.append(("qlib 行情数据", data_ok,
-                   RDAGENT_QLIB_PROVIDER if data_ok else
-                   f"{RDAGENT_QLIB_PROVIDER} 不存在（可 ln -s 指向已有 qlib_data）"))
+                   f"{RDAGENT_QLIB_PROVIDER} (末交易日 {data_end})" if data_ok
+                   else f"{day_txt} 缺失：需把本线 qlib bin 放到 "
+                        f"{RDAGENT_QLIB_PROVIDER}（见 config 的 RDAGENT_QLIB_PROVIDER）"))
     from llm_client import llm_available, describe_endpoint
-    env_file = os.path.join(output_dir if output_dir else
-                            f"{RESULTS_DIR}/rdagent_output", ".env")
+    env_file = os.path.join(output_dir if output_dir
+                            else RDAGENT_OUTPUT_DIR, ".env")
     llm_ok = llm_available() or os.path.exists(env_file)
     llm_detail = (describe_endpoint() if llm_available()
                   else f"管线端点未配置；已用 RD-Agent 自身 {env_file}")
@@ -186,7 +198,7 @@ def rdagent_preflight(output_dir=None):
 _PREFLIGHT = None  # 进程级缓存：walk-forward 逐折重入时不重复刷检查表
 
 
-def try_official_rdagent(output_dir=f"{RESULTS_DIR}/rdagent_output"):
+def try_official_rdagent(output_dir=RDAGENT_OUTPUT_DIR):
     global _PREFLIGHT
     checks = rdagent_preflight(output_dir)
     if (_PREFLIGHT is None

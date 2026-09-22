@@ -22,6 +22,7 @@ IC_THRESHOLD / GENETIC_OPERATORS / DECAY_PREDICT / AUTO_REMINING 的取值要用
 它们，故也在此生成（其中 akshare_* 字段只对 ETF 线有意义，股票线忽略即可）。
 """
 
+import json
 import os
 
 
@@ -397,16 +398,29 @@ def build(line_root, env_prefix="ETF_", freq_default="daily", market="etf"):
     # <PREFIX>RDAGENT_OFFICIAL_FALLBACK=false 即可跳过 official 源
     d["RDAGENT_USE_OFFICIAL_FALLBACK"] = env(
         "RDAGENT_OFFICIAL_FALLBACK", "true").lower() in ("1", "true", "yes")
+    # 官方循环的产物/工作目录。factor 循环子进程的 CWD 就切在这里，而 rdagent
+    # 的 .env、提示词 CWD 覆盖（scenarios/qlib/prompts.yaml）、因子源数据
+    # git_ignore_folder/ 全按 CWD 相对路径解析 —— 所以两条线必须各有一份，
+    # 共用会让 ETF 线读到股票线预生成的 daily_pv.h5。
+    d["RDAGENT_OUTPUT_DIR"] = env(
+        "RDAGENT_OUTPUT_DIR", os.path.join(d["RESULTS_DIR"], "rdagent_output"))
     # 官方循环在独立 conda 环境的子进程中运行（rdagent/pyqlib 依赖树与
     # 管线进程隔离，避免双 Python 环境互相污染）
     d["RDAGENT_CONDA_ENV"] = env("RDAGENT_ENV", "rdagent")
-    # qlib 行情数据根：目前只被 official_rdagent 的前置体检读（判存在性并写进
-    # 日志）。真正决定 running 阶段回测读哪份数据的是 rdagent 自己的
-    # provider_uri（默认 ~/.qlib/qlib_data/cn_data，随沙箱挂载进容器）；
-    # ETF 线要换数据源时两处必须一起改，否则会拿 A 股个股去回测 ETF 因子
-    d["RDAGENT_QLIB_PROVIDER"] = env(
+    # qlib 行情数据根：物理落位在**本线自己的** data/qlib/qlib_data/cn_data，
+    # 两条线各自一份 bin，不再共用宿主的 ~/.qlib（A 股个股数据曾串到 ETF 线）。
+    # 为什么必须保留 qlib_data/cn_data 这两级尾巴：rdagent 的 QTDockerEnv.prepare
+    # 拿挂载目录拼 <mount>/qlib_data/cn_data 做存在性检查，缺了就在容器里联网
+    # 重拉数据；而容器侧真正开数据的 provider_uri 在官方模板里是写死的
+    # /root/.qlib/qlib_data/cn_data（无 env 可改），所以只能搬宿主挂载点、
+    # 内部两级结构原样保留。它同时被 official_rdagent 的前置体检读（判存在性）。
+    _qlib_provider = env(
         "RDAGENT_QLIB_PROVIDER",
-        os.path.expanduser("~/.qlib/qlib_data/cn_data"))
+        os.path.join(os.path.abspath(d["DATA_DIR"]),
+                     "qlib", "qlib_data", "cn_data"))
+    d["RDAGENT_QLIB_PROVIDER"] = _qlib_provider
+    # 挂载点 = provider_uri 往上两级（由构造保证二者永远一致，改一边不会漏改）
+    _qlib_mount = os.path.dirname(os.path.dirname(_qlib_provider))
     # factor 循环子进程最长运行时长（秒）；超时即回收并记录
     d["RDAGENT_TIMEOUT_SEC"] = int(env("RDAGENT_TIMEOUT", "7200"))
     # qlib 回测沙箱容器的资源注入（QLIB_DOCKER_* 由 rdagent 的 pydantic
@@ -431,6 +445,15 @@ def build(line_root, env_prefix="ETF_", freq_default="daily", market="etf"):
         # 容器内存上限：rdagent 默认 48g 远超本机 16G，容器 oom 时只会表现成
         # 非零退出码（难归因），提前钳到宿主可用水位
         "QLIB_DOCKER_MEM_LIMIT": env("RDAGENT_DOCKER_MEM", "10g"),
+        # 数据挂载：rdagent 默认把宿主 ~/.qlib 挂进容器，两条线就会共用同一份
+        # A 股 bin（ETF 线曾拿到个股数据）。这里改挂本线的 data/qlib，容器内
+        # 仍绑 /root/.qlib/ 以对上模板里写死的 provider_uri。
+        # 值是 Dict[str, Dict[str, str]]，pydantic 从环境变量按 JSON 解析；
+        # QTDockerEnv.prepare 只取 next(iter(keys())) 当数据根做检查，所以
+        # 必须且只能有一个条目
+        "QLIB_DOCKER_EXTRA_VOLUMES": env(
+            "RDAGENT_DOCKER_VOLUMES",
+            json.dumps({_qlib_mount: {"bind": "/root/.qlib/", "mode": "rw"}})),
     }
     d["LLM_MODEL"] = env("LLM_MODEL", "gpt-4o-mini")
     d["LLM_API_KEY_ENV"] = "OPENAI_API_KEY"

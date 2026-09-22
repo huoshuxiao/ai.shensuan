@@ -12,7 +12,7 @@
 | conda | ✅ 26.7.1 | `~/miniconda3/condabin/conda`，专用环境 `rdagent`（Python 3.10.21） |
 | rdagent 包 | ⚠️ 0.8.0 | 经 `pip --user` 落在 `~/.local/lib/python3.10/site-packages`，与系统 python3.10 **共享 user-site**（冲突根源）；需求文档目标版本为 **v1.6.0**，存在版本落差 |
 | pyqlib | ✅ 0.9.7 | 已装入 `rdagent` 环境 site-packages（今日完成） |
-| qlib 行情数据 | ✅ | `~/.qlib/qlib_data/qlib_bin`（calendars/features/instruments 齐备），已建符号链接 `cn_data → qlib_bin` 以满足 RD-Agent(Q) 硬编码路径 |
+| qlib 行情数据 | ✅ | **09-22 落位到各线自有目录**：股票线 `stock/v1/data/qlib/qlib_data/cn_data`（社区包 `chenditc/investment_data`，末交易日 2026-09-22），ETF 线 `etf/v1/data/qlib/qlib_data/cn_data`（本线缓存 dump 自建）。容器挂载根 = `<线>/v1/data/qlib`，`qlib_data/cn_data` 两级尾巴是 rdagent 模板写死的，只能整体保留；旧的 `~/.qlib/qlib_data/qlib_bin` 已停用（未删） |
 | docker | ⚠️ | 二进制与守护进程就绪（`/usr/bin/docker`，dockerd active），但当前用户不在 `docker` 组 → socket permission denied |
 | LLM 端点 | ❌ | 无 API key、未装 ollama；RD-Agent(Q) 假设生成环节无驱动源 |
 
@@ -37,7 +37,8 @@ ai.shensuan.git/                    # 项目根
 │  ├─ config/
 │  │  └─ data_config.py             # CACHE_DIR/DATA_ROOT/BACKTEST_START 等数据类配置拆出
 │  ├─ cache/                        # 日线 CSV、etf_universe_cache.csv、etf_list_dates.json
-│  └─ raw/qlib -> ~/.qlib/qlib_data  # qlib 行情（符号链接，不搬实体）
+│  └─ qlib/qlib_data/cn_data/        #   qlib 行情 bin（09-22 实为**各线一份实体**，
+│                                    #   不再是符号链接：容器只认 /root/.qlib/qlib_data/cn_data）
 ├─ etf/v1/                          # 研究/实盘/反馈管线，import data 层
 └─ docs/                            # 计划与规范类文档
 ```

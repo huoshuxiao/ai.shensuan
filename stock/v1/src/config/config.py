@@ -28,10 +28,9 @@ from config_base import build  # noqa: E402
 globals().update(build(V1_ROOT, env_prefix="STOCK_", freq_default="daily",
                        market="ashare"))
 
-# ========== RD-Agent(Q) 工作区 ==========
-# 官方循环的 cwd、.env（模型与模板覆盖开关）、回收产物 factors.json 都在这下面。
-# 驱动只认这一个目录，ETF 线将来跑自己的循环时用同名的 etf 侧目录，互不覆写
-RDAGENT_OUTPUT_DIR = os.path.join(RESULTS_DIR, "rdagent_output")
+# ========== 股票线专属数据路径 ==========
+# RD-Agent 工作区目录 RDAGENT_OUTPUT_DIR 已由 config_base 按本线 RESULTS_DIR
+# 生成（两线同名不同值，循环的 cwd/.env/源数据都在它下面，互不覆写）
 # 因子实现与 A 股截面评估共用的源数据（qlib 社区包 A 股全市场日线）
 ASHARE_DAILY_H5 = os.environ.get(
     "STOCK_DAILY_H5",

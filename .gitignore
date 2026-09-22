@@ -222,3 +222,7 @@ etf/v1/data/*.*
 etf/v1/data/*/*.*
 etf/v1/log/*.*
 etf/v1/report/*.*
+
+# qlib 行情 bin：两条线各一份（GB 级、数万小文件），只能从上游 release /
+# dump_bin 重建，一旦 git add 会把整棵树吞进版本库
+*/v1/data/qlib/

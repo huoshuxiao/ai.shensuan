@@ -63,7 +63,9 @@ ETF_FILTER = {
     "min_list_days": 365,
     "min_avg_amount": 5_000_000,
     # 截面轮动池规模：每指数取"上市最早且流动性达标"的代表，再按成交额截断 Top N。
-    # 全市场(1000+)逐只拉日线不现实，且池内股票型 ETF 才是策略有效域
+    # 这里刻意保持小池：轮动策略要的是可交易、低相关的少数标的，全市场 1.6 千只
+    # 里一半以上是同指数的重复份额，放进轮动是噪声。RD-Agent 那侧不受此约束
+    # （截面回归要的是样本量），它读 data/universe_all/ 的全市场池
     "max_count": 20,
     "exclude_keywords": ["货币", "短融", "同业存单", "现金",
                          "日利", "添益", "添利", "活期", "理财"],
@@ -78,11 +80,12 @@ DATA_SOURCES = {
     "intraday": ["em", "tx"],
 }
 
-# ========== RD-Agent(Q)（ETF 线临时停用 official 源） ==========
-# 分树后本线的 official 源读的仍是 A 股 cn_data（daily_pv.h5 是个股面板），
-# 跑一轮会把个股因子混进 ETF 因子库、且 IC 口径不可比。ETF 自建的
-# daily_pv.h5 就绪前默认关闭，挖掘只走 llm/simple/genetic 三个本地源；
-# 仍留 ETF_RDAGENT_OFFICIAL_FALLBACK=true 作逃生口（数据到位后删掉本段）
+# ========== RD-Agent(Q)（ETF 线 official 源默认关闭） ==========
+# 本线已有自己的 qlib bin（data/qlib/qlib_data/cn_data）、daily_pv.h5 与工作区，
+# 数据隔离经实测成立，但 09-22 那轮 coding 未收敛（7B 丢 MultiIndex 层级、
+# CoSTEER_MAX_LOOP=4 耗尽）导致 running 被跳过、回收定义带不到官方 IC，故默认
+# 仍关；要连主线一起跑用 ETF_RDAGENT_OFFICIAL_FALLBACK=true 临时打开。
+# 取舍与补证路径见用户使用手册 §10.1
 RDAGENT_USE_OFFICIAL_FALLBACK = os.environ.get(
     "ETF_RDAGENT_OFFICIAL_FALLBACK", "false").lower() in ("1", "true", "yes")
 
@@ -201,6 +204,11 @@ MULTI_LLM_GEN = {
 
 # ========== 缓存 ==========
 UNIVERSE_CACHE = os.path.join(CACHE_DIR, "etf_universe_cache.csv")
+# 全市场 ETF 日线（约 1.6 千只，剔货币/债/理财后）：只喂 dump_qlib_bin.py 与
+# RD-Agent(Q) 循环，主线轮动池仍是上面的 max_count 截断池，两者互不读取
+UNIVERSE_ALL_DIR = os.environ.get(
+    "ETF_UNIVERSE_ALL_DIR", os.path.join(os.path.dirname(CACHE_DIR),
+                                         "universe_all"))
 # 全市场 ETF 上市日期持久缓存 {code: "YYYY-MM-DD"}：按"最早上市"选代表
 # 需要先拿到所有候选的上市日期（逐只拉取），缓存后增量补拉
 ETF_LIST_DATE_CACHE = os.path.join(CACHE_DIR, "etf_list_dates.json")

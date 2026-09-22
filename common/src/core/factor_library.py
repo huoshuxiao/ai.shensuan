@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 from collections import OrderedDict
-from config import FACTOR_LIBRARY, LIBRARY_DIR
+from config import FACTOR_LIBRARY, LIBRARY_DIR, MARKET
 from factor_naming import cn_name, METRIC_GLOSSARY
 
 
@@ -48,6 +48,7 @@ class FactorLibrary:
             f["last_seen"] = now
             f["status"] = status
             f["update_count"] = f.get("update_count", 0) + 1
+            f["market"] = f.get("market", MARKET)
             if extra:
                 f.update(extra)
         else:
@@ -57,6 +58,9 @@ class FactorLibrary:
                 "first_seen": now, "last_seen": now, "update_count": 1,
                 "ic_history": [{"time": now, "ic": float(ic),
                                  "icir": float(icir)}],
+                # market 标的是「这条 IC 在哪个截面上算的」：ETF 与 A 股个股
+                # 的 IC 不可横比，分线之后仍要留这一列防混用
+                "market": MARKET,
                 **(extra or {})}
 
     def batch_upsert(self, factors, source, status="active"):
@@ -96,6 +100,7 @@ class FactorLibrary:
                          "ic": round(f.get("ic", 0), 4),
                          "icir": round(f.get("icir", 0), 4),
                          "source": f.get("source", ""),
+                         "market": f.get("market", ""),
                          "status": f.get("status", ""),
                          "first_seen": f.get("first_seen", ""),
                          "last_seen": f.get("last_seen", ""),
@@ -119,6 +124,7 @@ class FactorLibrary:
             s = f.get("source", "unknown")
             sources[s] = sources.get(s, 0) + 1
         lines.append(f"- 来源分布: {sources}")
+        lines.append(f"- 截面口径(market): `{MARKET}` —— IC 只在同口径内可比")
         lines.append("")
         lines.append(f"## 🏆 Top {top_n} 因子")
         lines.append("")
@@ -151,6 +157,7 @@ class FactorLibrary:
             lines.append(f"- **中文名**: {cn}")
             lines.append(f"- **状态**: `{f.get('status', '')}`")
             lines.append(f"- **来源**: `{f.get('source', '')}`")
+            lines.append(f"- **截面口径**: `{f.get('market', MARKET)}`")
             lines.append(f"- **IC**: {f.get('ic', 0):+.4f}")
             lines.append(f"- **ICIR**: {f.get('icir', 0):+.3f}")
             lines.append(f"- **首次发现**: {f.get('first_seen', '')}")

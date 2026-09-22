@@ -13,7 +13,7 @@ import time
 import shutil
 import subprocess
 from config import (RESULTS_DIR, RDAGENT_CONDA_ENV, RDAGENT_TIMEOUT_SEC,
-                    RDAGENT_QLIB_DOCKER_ENV)
+                    RDAGENT_QLIB_DOCKER_ENV, RDAGENT_QLIB_PROVIDER)
 
 # conda 未进 PATH 时的常见安装位
 _CONDA_CANDIDATES = [
@@ -24,7 +24,6 @@ _CONDA_CANDIDATES = [
     "/opt/conda/bin/conda",
 ]
 
-_QLIB_DATA = os.path.expanduser("~/.qlib/qlib_data/cn_data")
 
 # 环境解释器不得看到 ~/.local 的 user-site（那里是系统 python3.10 的
 # 管线依赖，与 rdagent 依赖树版本冲突），一切以环境内 site-packages 为准
@@ -170,10 +169,10 @@ def rdagent_preflight(output_dir=None):
     if ok:
         ok, detail = _sandbox_image_ready()
         checks.append(("qlib 沙箱镜像", ok, detail))
-    data_ok = os.path.isdir(_QLIB_DATA)
+    data_ok = os.path.isdir(RDAGENT_QLIB_PROVIDER)
     checks.append(("qlib 行情数据", data_ok,
-                   _QLIB_DATA if data_ok else
-                   f"{_QLIB_DATA} 不存在（可 ln -s 指向已有 qlib_data）"))
+                   RDAGENT_QLIB_PROVIDER if data_ok else
+                   f"{RDAGENT_QLIB_PROVIDER} 不存在（可 ln -s 指向已有 qlib_data）"))
     from llm_client import llm_available, describe_endpoint
     env_file = os.path.join(output_dir if output_dir else
                             f"{RESULTS_DIR}/rdagent_output", ".env")

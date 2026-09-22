@@ -7,7 +7,7 @@
 
 两套 IC 口径并列输出，因为它们回答的不是同一个问题：
 1) 主线时序口径  mean_t IC(F_t, r_{t+1})，逐只标的各算一条再取均值
-   （core.factor_dsl.compute_ic，Spearman）。与遗传编程 / LLM / 官方源在
+   （common/src/core/factor_dsl.compute_ic，Spearman）。与遗传编程 / LLM / 官方源在
    _attach_impl 里的算法完全一致，可直接与 ETF 管线的在库因子横向比。
 2) 截面口径      逐日截面上的 IC = corr_cs(F_{t,i}, r_{t+1,i})：
    - Pearson 版 = qlib 报表里的 IC，用于对齐 RD-Agent 沙箱报出的 0.029；
@@ -29,24 +29,18 @@ import time
 import numpy as np
 import pandas as pd
 
-from config import RESULTS_DIR
+from config import (RDAGENT_OUTPUT_DIR, ASHARE_DAILY_H5,
+                    ASHARE_EVAL_START, ASHARE_EVAL_END, ASHARE_MIN_OBS,
+                    ASHARE_MIN_CS, ASHARE_SAMPLE, ASHARE_EVAL_OUT)
 from factor_dsl import safe_eval, compute_ic
 
-# ========== 可覆盖参数（本机 16G 内存上限，默认值按全市场 6000+ 只估） ==========
-H5_PATH = os.environ.get(
-    "ASHARE_H5",
-    os.path.join(RESULTS_DIR, "rdagent_output", "git_ignore_folder",
-                 "factor_implementation_source_data", "daily_pv.h5"))
+# 参数全部走股票线 config（STOCK_* 环境变量可覆盖，见 stock/v1/src/config/config.py）
+H5_PATH = ASHARE_DAILY_H5
 FACTORS_JSON = os.environ.get(
-    "ASHARE_FACTORS",
-    os.path.join(RESULTS_DIR, "rdagent_output", "factors.json"))
-START = os.environ.get("ASHARE_START", "2010-01-01")
-END = os.environ.get("ASHARE_END", "")            # 空 = 数据尽头
-MIN_OBS = int(os.environ.get("ASHARE_MIN_OBS", "250"))   # 单标的最少交易日
-MIN_CS = int(os.environ.get("ASHARE_MIN_CS", "100"))     # 单日截面最少样本，少于此不计该日
-SAMPLE = int(os.environ.get("ASHARE_SAMPLE", "0"))       # >0 只取前 N 只，冒烟测试用
-OUT_CSV = os.environ.get("ASHARE_OUT",
-                         os.path.join(RESULTS_DIR, "ashare_factor_eval.csv"))
+    "STOCK_FACTORS", os.path.join(RDAGENT_OUTPUT_DIR, "factors.json"))
+START, END = ASHARE_EVAL_START, ASHARE_EVAL_END
+MIN_OBS, MIN_CS, SAMPLE = ASHARE_MIN_OBS, ASHARE_MIN_CS, ASHARE_SAMPLE
+OUT_CSV = ASHARE_EVAL_OUT
 
 RAW_COLS = ["open", "high", "low", "close", "volume"]
 

@@ -66,6 +66,13 @@ def _expr_from_task(task):
         else _DSL_BY_NAME[op](n)
 
 
+_METRIC_KEYS = {
+    # 本管线口径 -> qlib 回测指标名
+    "mean_ic": ("IC",),
+    "icir": ("ICIR",),
+    "rank_ic": ("Rank IC",),
+    "rank_icir": ("Rank ICIR",),
+}
 _METRIC_RE = {
     # qlib 的指标输出既可能是 "IC = 0.03" 也可能是表格行 "IC     0.03"
     "mean_ic": re.compile(r"(?<![A-Za-z_])IC\s*(?:=|:)?\s*(-?[\d.]+)"),
@@ -73,12 +80,33 @@ _METRIC_RE = {
 }
 
 
-def _metrics_from_result(result_str):
-    metrics = {}
+def _metrics_from_result(result):
+    """从 running 步产物取回测指标
+
+    qlib 的指标挂在 experiment.result 上（pandas Series，键就是 IC/ICIR/
+    Rank IC/Rank ICIR），而 str(experiment) 里没有这些数字 —— 早先只对字符串
+    跑正则，09-22 那轮 running 真出了 IC=0.029 仍被回收成 0.0。故先按对象取，
+    取不到再退回字符串正则（running 抛异常时会话里只剩一段文本）。"""
+    out = {k: 0.0 for k in _METRIC_KEYS}
+    res = getattr(result, "result", None)
+    if res is not None and hasattr(res, "get"):
+        for key, qlib_names in _METRIC_KEYS.items():
+            for name in qlib_names:
+                try:
+                    val = res.get(name)
+                except Exception:
+                    val = None
+                if val is not None:
+                    out[key] = float(val)
+                    break
+        if any(out.values()):
+            return out
+    text = result if isinstance(result, str) else str(result)
     for key, pat in _METRIC_RE.items():
-        m = pat.search(result_str or "")
-        metrics[key] = float(m.group(1)) if m else 0.0
-    return metrics
+        m = pat.search(text or "")
+        if m:
+            out[key] = float(m.group(1))
+    return out
 
 
 def _harvest_from_sessions(out_dir):
@@ -116,9 +144,14 @@ def _harvest_from_sessions(out_dir):
         exp = step_out.get("coding")
         result = step_out.get("running")
         if exp is None or not hasattr(exp, "sub_tasks"):
-            continue
-        metrics = _metrics_from_result(
-            result if isinstance(result, str) else str(result))
+            # coding 全部演化失败时该步是 None，但假设阶段（direct_exp_gen
+            # .exp_gen）已经给出任务定义（factor_name + LaTeX 原式）。管线
+            # 侧要的是「定义」不是那份坏 pandas，故回退到原始任务照样回收。
+            gen = step_out.get("direct_exp_gen")
+            exp = gen.get("exp_gen") if isinstance(gen, dict) else None
+            if exp is None or not hasattr(exp, "sub_tasks"):
+                continue
+        metrics = _metrics_from_result(result)
         workspaces = getattr(exp, "sub_workspace_list", [])
         for i, task in enumerate(exp.sub_tasks):
             code = ""
@@ -159,6 +192,27 @@ def _harvest_latest_factors(out_dir):
                             and it.get("name") not in seen:
                         found.append(it)
                         seen.add(it.get("name"))
+    # 每轮只回收当轮会话的因子，直接覆写会把历轮攒下的定义一起抹掉
+    # （09-22 连续两轮把 12 个覆成 2 个）。同名以本轮为主，只把本轮缺失
+    # 的字段（如沙箱实测过的 code、IC 指标）从旧条目补回来。
+    prev_path = os.path.join(out_dir, "factors.json")
+    if os.path.exists(prev_path):
+        try:
+            with open(prev_path, "r", encoding="utf-8") as f:
+                prev = json.load(f)
+        except Exception:
+            prev = []
+        for old in prev if isinstance(prev, list) else []:
+            if not isinstance(old, dict) or not old.get("name"):
+                continue
+            mine = next((x for x in found if x.get("name") == old["name"]), None)
+            if mine is None:
+                found.append(old)
+                seen.add(old["name"])
+            else:
+                for k, v in old.items():
+                    if v and not mine.get(k):
+                        mine[k] = v
     if found:
         with open(os.path.join(out_dir, "factors.json"), "w",
                   encoding="utf-8") as f:

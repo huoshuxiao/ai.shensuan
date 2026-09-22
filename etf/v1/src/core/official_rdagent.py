@@ -258,8 +258,12 @@ def _recover_factors(output_dir):
                 factors.append({
                     "name": item.get("name", f"official_{i}"),
                     "expr": item.get("expr", item.get("expression", "")),
-                    "mean_ic": item.get("IC", item.get("ic", 0.0)),
-                    "icir": item.get("ICIR", item.get("icir", 0.0)),
+                    # 驱动侧写的是 mean_ic/icir，历史文件里也叫过 IC/ic，
+                    # 三种键名都读一遍，否则真跑出来的 IC 会被静默当成 0
+                    "mean_ic": item.get("mean_ic", item.get("IC",
+                               item.get("ic", 0.0))),
+                    "icir": item.get("icir", item.get("ICIR",
+                          item.get("rank_icir", 0.0))),
                     # LaTeX 原式：驱动侧翻译为管线 DSL 后的核对凭据，
                     # 随因子一路带到因子库/报告，供人工复核语义
                     "formulation": item.get("formulation", ""),

@@ -1,0 +1,40 @@
+# CWD 层提示词覆盖：只覆盖 qlib_factor_interface 一键，其余键回落包内原文
+# （生效原理与键名说明见 ../prompts.yaml 顶部注释；本文件对应
+#  rdagent/scenarios/qlib/experiment/prompts.yaml）。
+#
+# 治的病（09-22 11:11 轮，第一次跑到 running 却没出 IC）：
+# 官方原文只说「result 的 index 是 datetime+instrument、单列名是因子名」，
+# 不给写法。7B 于是写出了
+#     pd.DataFrame(series, columns=['10-day SMA of Volume'])
+# 这在 pandas 2.x 里是**按列名做选择**：Series 名叫 volume，选不中就给回一个
+# 0 行的表，随后 result_df.index = df.index 抛
+#     ValueError: Length mismatch: Expected axis has 0 elements, new values have 15148258
+# 一个因子炸，整个实验包的 running 就全部作废（process_factor_data 找不到可合并的
+# 因子数据），于是又拿不到 IC。已在真数据上复现并验证下面的写法可用。
+# 另一个不报错但语义错误、模型同样常犯的坑：直接在 (datetime, instrument) 上
+# rolling，窗口会跨股票混算 —— 代码能跑通、因子值却是错的，主线拿到的 IC 无意义。
+qlib_factor_interface: |-
+  Your python code should follow the interface to better interact with the user's system.
+  Your python code should contain the following part: the import part, the function part, and the main part. You should write a main function name: "calculate_{function_name}" and call this function in "if __name__ == __main__" part. Don't write any try-except block in your python code. The user will catch the exception message and provide the feedback to you.
+  User will write your python code into a python file and execute the file directly with "python {your_file_name}.py". You should calculate the factor values and save the result into a HDF5(H5) file named "result.h5" in the same directory as your python file. The result file is a HDF5(H5) file containing a pandas dataframe. The index of the dataframe is the "datetime" and "instrument", and the single column name is the factor name,and the value is the factor value. The result file should be saved in the same directory as your python file.
+
+  Follow this exact recipe to build the result, it is the only form known to work:
+  ```Python
+  df = pd.read_hdf("daily_pv.h5", key="data").sort_index()
+  # rolling MUST be per instrument: a plain df[col].rolling(n) on the
+  # (datetime, instrument) index mixes different stocks inside one window
+  window = 5                              # put the factor's window here
+  values = df["close"].groupby(level="instrument", sort=False).rolling(window).mean().droplevel(0)
+  result = values.to_frame("<the factor name>").reindex(df.index)   # keeps datetime+instrument index
+  result.to_hdf("result.h5", key="data")
+  ```
+  Hard rules:
+  - Name the single result column with `Series.to_frame("<factor name>")` (or
+    `pd.DataFrame({"<factor name>": values})`).
+  - NEVER write `pd.DataFrame(a_series, columns=["some name"])`: in pandas 2.x `columns=`
+    selects by name, so if it does not equal the Series name you silently get 0 rows and
+    the code dies later on the index assignment.
+  - NEVER reassign `result.index = df.index`; use `.reindex(df.index)` as in the recipe.
+  - Do not reset_index() and then relabel the columns positionally.
+  - The result must keep exactly the two index levels datetime, instrument and exactly one
+    column. Leading NaN for the warm-up window of each instrument is expected, keep them.

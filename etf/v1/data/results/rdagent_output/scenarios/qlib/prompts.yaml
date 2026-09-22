@@ -1,0 +1,98 @@
+# 本地 LLM 适配用提示词覆盖（不修改 site-packages）
+#
+# 生效原理：rdagent/utils/agent/tpl.py 的 load_content 按「进程 CWD 相对路径 →
+# RD-Agent 包内默认」的顺序取模板，且文件缺失键（KeyError）会继续回落到包内，
+# 所以本文件只需放要改的那几个键，其余仍用官方原文。
+# factor 循环子进程的 CWD 就是本目录 rdagent_output/，故 scenarios/qlib/prompts.yaml
+# 恰好覆盖 rdagent/scenarios/qlib/prompts.yaml。
+# 键名与使用处：factor_proposal.py:44 用 factor_hypothesis_specification，
+# factor_proposal.py:68 用 factor_experiment_output_format。
+#
+# 治的病：09-22 那轮 coder:7b 提出的唯一因子是 MA_5 = Σ F_{t-i}/5，把「因子值」
+# 当成输入序列做滑窗。本数据集只有 OHLCV，没有「因子值」这一列，于是实现 10/10
+# 失败、回收的 LaTeX 也翻不出管线 DSL（expr 为空）→ 对主线净贡献 0。
+
+factor_hypothesis_specification: |-
+  1. **Available raw data is OHLCV ONLY:**
+    - The only input series you may use are the raw price/volume fields of each instrument: $open, $high, $low, $close (a.k.a. Price) and $volume.
+    - You MUST NOT treat an already-computed factor, a model prediction, or any "factor value" series as an input. There is no such column in the dataset; a hypothesis built on it can never be implemented. In particular, expressions like F_{t-i} or "moving average of the factor" are forbidden — the input of every factor must be one of the five raw fields above.
+    - Do not propose machine-learning, multi-dimensional or data-source factors (no alternative data, no model outputs are available here).
+  2. **Simple and effective factors first:**
+    - Prefer one-window transforms of a single raw field: rolling mean / std / max / min / volume-weighted average / simple day-over-day ratio of Price or Volume.
+    - Concisely explain why these factors are expected to work.
+    - Avoid complex or combined factors initially.
+  3. **EXACTLY 2 factors per generation (hard cap):**
+    - Output precisely 2 factor keys in the JSON object. Not 1, not 3, never 12.
+      This machine is compute-limited: a factor experiment only reaches backtest
+      ("running") after EVERY factor in it has been implemented, so the number of
+      factors per generation multiplies the whole wall time.
+    - Prefer taking 2 names verbatim from the CANDIDATE LIST below (they were drafted
+      by a previous generation and never backtested), so the pipeline can consume them
+      immediately; only invent a new name if none fits, and stay inside the naming rule.
+    - All must be computable from the raw fields above. Cover different raw fields and
+      different windows rather than repeating one template.
+  CANDIDATE LIST (already drafted, never backtested yet — pick 2):
+    - 5-day SMA of Price
+    - 10-day SMA of Price
+    - 20-day SMA of Price
+    - 5-day STD of Price
+    - 10-day STD of Price
+    - 20-day STD of Price
+    - 5-day SMA of Volume
+    - 10-day SMA of Volume
+    - 20-day SMA of Volume
+    - 5-day STD of Volume
+    - 10-day STD of Volume
+    - 20-day STD of Volume
+  4. **Gradual complexity:**
+    - Only after simpler factors have been tested may you combine two raw fields (e.g. price over volume), still without using any computed factor as input.
+  5. **New directions and optimizations:**
+    - If multiple consecutive iterations fail to produce factors surpassing SOTA, switch direction and start again from simple factors of a different raw field.
+  6. Note
+    - Highlight that factors surpassing SOTA are included in the library to avoid re-implementation.
+    - No matter how many factors you plan to generate, only reply with one set of hypothesis and reason. The hypothesis can include the proposal of multiple factors at the same time.
+
+factor_experiment_output_format: |-
+  The output should follow JSON format. The schema is as follows:
+  {
+      "factor name 1": {
+          "description": "description of factor 1, start with its type, e.g. [Momentum Factor]",
+          "formulation": "latex formulation of factor 1",
+          "variables": {
+              "variable or function name 1": "description of variable or function 1",
+              "variable or function name 2": "description of variable or function 2"
+          }
+      },
+      "factor name 2": {
+          "description": "description of factor 2, start with its type, e.g. [Machine Learning based Factor]",
+          "formulation": "latex formulation of factor 2",
+          "variables": {
+              "variable or function name 1": "description of variable or function 1",
+              "variable or function name 2": "description of variable or function 2"
+          }
+      }
+      # Don't add ellipsis (...) or any filler text that might cause JSON parsing errors here!
+  }
+
+  HARD NAMING RULE for every factor key ("factor name N") — it MUST be exactly:
+      <N>-day <OP> of <Column>
+  where <N> is a positive integer window and <OP> and <Column> come from these closed lists only:
+      <OP>     ∈ SMA | STD | MAX | MIN | VWAP
+      <Column> ∈ Price | Volume
+  Examples of valid names: "5-day SMA of Price", "20-day STD of Volume", "10-day VWAP of Price".
+  Invalid and therefore forbidden: "EMA"/"exponentially weighted" (no such operator downstream),
+  "Momentum"/"Ratio"/"Factor of Factor"/any name without an explicit day window and an explicit
+  Price-or-Volume column, and any formulation whose input is a computed factor instead of a raw field.
+  In "formulation", write the input as the raw field itself (e.g. P_{t-i} for Price, V_{t-i} for
+  Volume) and declare in "variables" that P = $close / Price and V = $volume.
+
+# 同一类官方示例缺陷：schema 示例最后一项带尾逗号。这一键被
+# scenarios/qlib/proposal/factor_proposal.py:43 用于生成因子假设，正是产因子的
+# 那一环，模型照抄格式就会让 JSONParser 四策略全灭（本轮侥幸解析成功，属概率性）。
+# 与包内原文逐字一致，仅删除示例里的尾逗号。
+factor_hypothesis_output_format: |-
+  The output should follow JSON format. The schema is as follows:
+  {
+  "hypothesis": "The new hypothesis generated based on the information provided. Limit in two or three sentences.",
+  "reason": "The reason why you generate this hypothesis. It should be comprehensive and logical. It should cover the other keys below and extend them. Limit in two or three sentences."
+  }

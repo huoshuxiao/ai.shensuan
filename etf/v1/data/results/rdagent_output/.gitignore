@@ -1,0 +1,9 @@
+# RD-Agent 工作目录：默认全部是可再生的中间产物（源码数据、日志、pickle 会话
+# 合计 >1GB），一旦 git add . 会把它们整片吞进版本库。故反向白名单：只放行
+# 需要留档的三类文件，其余一律忽略。
+/*
+!_tpl/
+!scenarios/
+!factors.json
+!.env.example
+!.gitignore

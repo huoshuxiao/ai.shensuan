@@ -1,0 +1,102 @@
+[
+  {
+    "name": "5-day SMA of Price",
+    "expr": "ma(df,5)",
+    "formulation": "P_{t-5} = \\frac{1}{5} \\sum_{i=0}^{4} P_{t-i}",
+    "code": "import pandas as pd\n\n\ndef calculate_5_day_sma_of_price():\n    df = pd.read_hdf('daily_pv.h5', key='data').sort_index()\n    window = 5  # put the factor's window here\n    values = df['close'].groupby(level='instrument', sort=False).rolling(window).mean().droplevel(0)\n    result = values.to_frame('5-day SMA of Price').reindex(df.index)  # keeps datetime+instrument index\n    result.to_hdf('result.h5', key='data')\n\nif __name__ == '__main__':\n    calculate_5_day_sma_of_price()",
+    "mean_ic": 0.0291443488697986,
+    "icir": 0.2355147952286589,
+    "rank_ic": 0.0313488414174154,
+    "rank_icir": 0.2500662985810787
+  },
+  {
+    "name": "10-day SMA of Volume",
+    "expr": "ts_mean(volume,10)",
+    "formulation": "V_{t-10} = \\frac{1}{10} \\sum_{i=0}^{9} V_{t-i}",
+    "code": "import pandas as pd\n\ndf = pd.read_hdf('daily_pv.h5', key='data').sort_index()\n\nwindow = 10  # put the factor's window here\nvalues = df['volume'].groupby(level='instrument', sort=False).rolling(window).mean().droplevel(0)\nresult = values.to_frame('10-day SMA of Volume').reindex(df.index)  # keeps datetime+instrument index\nresult.to_hdf('result.h5', key='data')",
+    "mean_ic": 0.0291443488697986,
+    "icir": 0.2355147952286589,
+    "rank_ic": 0.0313488414174154,
+    "rank_icir": 0.2500662985810787
+  },
+  {
+    "name": "10-day SMA of Price",
+    "expr": "ma(df,10)",
+    "formulation": "P_{t-i} = \\frac{1}{10} \\sum_{j=0}^{9} P_{t-j}",
+    "code": "",
+    "mean_ic": 0.0,
+    "icir": 0.0
+  },
+  {
+    "name": "20-day SMA of Price",
+    "expr": "ma(df,20)",
+    "formulation": "P_{t-i} = \\frac{1}{20} \\sum_{j=0}^{19} P_{t-j}",
+    "code": "",
+    "mean_ic": 0.0,
+    "icir": 0.0
+  },
+  {
+    "name": "5-day STD of Price",
+    "expr": "std(df,5)",
+    "formulation": "\\sigma_{t-i} = \\sqrt{\\frac{1}{5} \\sum_{j=0}^{4} (P_{t-j} - P_{t-i})^2}",
+    "code": "",
+    "mean_ic": 0.0,
+    "icir": 0.0
+  },
+  {
+    "name": "10-day STD of Price",
+    "expr": "std(df,10)",
+    "formulation": "\\sigma_{t-i} = \\sqrt{\\frac{1}{10} \\sum_{j=0}^{9} (P_{t-j} - P_{t-i})^2}",
+    "code": "",
+    "mean_ic": 0.0,
+    "icir": 0.0
+  },
+  {
+    "name": "20-day STD of Price",
+    "expr": "std(df,20)",
+    "formulation": "\\sigma_{t-i} = \\sqrt{\\frac{1}{20} \\sum_{j=0}^{19} (P_{t-j} - P_{t-i})^2}",
+    "code": "",
+    "mean_ic": 0.0,
+    "icir": 0.0
+  },
+  {
+    "name": "5-day SMA of Volume",
+    "expr": "ts_mean(volume,5)",
+    "formulation": "V_{t-i} = \\frac{1}{5} \\sum_{j=0}^{4} V_{t-j}",
+    "code": "",
+    "mean_ic": 0.0,
+    "icir": 0.0
+  },
+  {
+    "name": "20-day SMA of Volume",
+    "expr": "ts_mean(volume,20)",
+    "formulation": "V_{t-i} = \\frac{1}{20} \\sum_{j=0}^{19} V_{t-j}",
+    "code": "",
+    "mean_ic": 0.0,
+    "icir": 0.0
+  },
+  {
+    "name": "5-day STD of Volume",
+    "expr": "ts_std(volume,5)",
+    "formulation": "\\sigma_{t-i} = \\sqrt{\\frac{1}{5} \\sum_{j=0}^{4} (V_{t-j} - V_{t-i})^2}",
+    "code": "",
+    "mean_ic": 0.0,
+    "icir": 0.0
+  },
+  {
+    "name": "10-day STD of Volume",
+    "expr": "ts_std(volume,10)",
+    "formulation": "\\sigma_{t-i} = \\sqrt{\\frac{1}{10} \\sum_{j=0}^{9} (V_{t-j} - V_{t-i})^2}",
+    "code": "",
+    "mean_ic": 0.0,
+    "icir": 0.0
+  },
+  {
+    "name": "20-day STD of Volume",
+    "expr": "ts_std(volume,20)",
+    "formulation": "\\sigma_{t-i} = \\sqrt{\\frac{1}{20} \\sum_{j=0}^{19} (V_{t-j} - V_{t-i})^2}",
+    "code": "",
+    "mean_ic": 0.0,
+    "icir": 0.0
+  }
+]

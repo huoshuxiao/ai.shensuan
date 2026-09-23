@@ -57,3 +57,25 @@ SLIPPAGE = 0.001
 # 印花税只在卖出侧计（2023-08 起 0.05%；此处按卖出费率单列，
 # 供将来股票线自己做净收益回测时使用，ETF 线无此项）
 STAMP_TAX_RATE_SELL = 0.0005
+
+# ========== 组合层验证参数（run_ashare_portfolio_eval.py） ==========
+# 起点 2015 而非 2010：截面评估用的面板含 5677 只（含已退市），但 2010-2014
+# 的可交易池与今日结构差异过大（板指/创业板早期样本稀薄），组合层结论按
+# 「近十年」给；同期还含 2015 流动性危机与 2016 熔断，是有用的压力段
+ASHARE_PORT_START = os.environ.get("STOCK_PORT_START", "2015-01-01")
+ASHARE_PORT_END = os.environ.get("STOCK_PORT_END", "")           # 空 = 数据尽头
+# 因子窗口最长 20 日 + 成交额均值 20 日，切盘前多留这么多日历日做暖机
+ASHARE_PORT_WARMUP_DAYS = int(os.environ.get("STOCK_PORT_WARMUP", "120"))
+ASHARE_PORT_TOP_N = [int(x) for x in
+                     os.environ.get("STOCK_PORT_TOP_N", "50,100,200").split(",")]
+ASHARE_PORT_HOLD = int(os.environ.get("STOCK_PORT_HOLD", "5"))   # 调仓周期（交易日）
+ASHARE_PORT_MIN_AMOUNT = float(os.environ.get("STOCK_PORT_MIN_AMOUNT", "2e7"))
+ASHARE_PORT_MIN_LISTED = int(os.environ.get("STOCK_PORT_MIN_LISTED", "60"))
+# 单边综合费率 15bp = 佣金万2.5 + 印花税万5按卖出摊半(万2.5) + 滑点万10。
+# 印花税 2023-08-28 才从 0.1% 减半到 0.05%，样本大头在旧税率下，故不按新税率取
+ASHARE_PORT_COST_ONE_WAY = float(os.environ.get("STOCK_PORT_COST", "0.0015"))
+ASHARE_PORT_LIMIT_UP = float(os.environ.get("STOCK_PORT_LIMIT_UP", "0.095"))
+ASHARE_PORT_QUINTILES = int(os.environ.get("STOCK_PORT_QUINTILES", "5"))
+# 输出路径可覆写：冒烟轮写到 /tmp，免得把正式结论盖掉（同 ASHARE_EVAL_OUT 的约定）
+ASHARE_PORT_OUT = os.environ.get(
+    "STOCK_PORT_OUT", os.path.join(RESULTS_DIR, "ashare_portfolio_eval.csv"))

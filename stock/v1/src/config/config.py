@@ -50,6 +50,21 @@ ASHARE_EVAL_OUT = os.environ.get(
 # stock/v1/data/results/ashare_factor_eval.csv 盖掉了（旧写法不接受 env 覆写，
 # 已 git 还原）。以后冒烟一律带 STOCK_EVAL_OUT=/tmp/...。
 
+# ========== 判重预检参数（run_ashare_redundancy_check.py） ==========
+# 0.99 不是本地阈值，是 rdagent 写死的：scenarios/qlib/developer/factor_runner.py
+# 的 deduplicate_new_factors 把「与任一 SOTA 因子的逐日截面相关均值 >= 0.99」的
+# 新因子整列丢掉，全丢完就抛 FactorEmptyError → 日志里表现为 Skip loop，一轮白烧。
+ASHARE_RED_BAR = float(os.environ.get("STOCK_RED_BAR", "0.99"))
+# 起点 2015 同组合层：判重要的是「新因子进了 SOTA 会不会被丢」，而 SOTA 面板
+# 是拼接后的宽表，2010-2014 早段大量标的未上市会让逐日截面稀、相关虚高
+ASHARE_RED_START = os.environ.get("STOCK_RED_START", "2015-01-01")
+ASHARE_RED_END = os.environ.get("STOCK_RED_END", "")
+ASHARE_RED_OUT = os.environ.get(
+    "STOCK_RED_OUT", os.path.join(RESULTS_DIR, "ashare_redundancy_check.csv"))
+ASHARE_RED_DETAIL = os.environ.get(
+    "STOCK_RED_DETAIL",
+    os.path.join(RESULTS_DIR, "ashare_redundancy_detail.csv"))
+
 # ========== 交易规则与费率（A 股个股，与 ETF 明显不同） ==========
 # T+1：当日买入不可当日卖出；整手 100 股
 T_PLUS_ONE = True

@@ -1,0 +1,1 @@
+[{"name":"[自校验] 重复提交在库 SMA(Volume,20)","expr":"ts_mean(volume,20)"},{"name":"[自校验] 同族换窗口 SMA(Volume,15)","expr":"ts_mean(volume,15)"}]

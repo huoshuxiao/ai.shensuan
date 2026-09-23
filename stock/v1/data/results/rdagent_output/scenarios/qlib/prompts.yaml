@@ -49,15 +49,29 @@ factor_hypothesis_specification: |-
     A spelled-out operator is THE SAME factor as its abbreviated token and is equally tested:
     "Momentum" = MOM, "Simple Moving Average" = SMA, "Standard Deviation" = STD, "Maximum"/"Minimum"
     = MAX/MIN. Renaming a tested factor by writing its operator in words does not make it new.
+    - MAX/MIN of Volume at any window. Measured 09-23 by stock/v1/src/run_ashare_redundancy_check.py
+      (full market, 5658 stocks, 2015-01-05~2026-09-22, 2830 valid days). The number is the mean
+      daily cross-sectional Pearson against the closest factor already in the library — the exact
+      metric rdagent's deduplicate_new_factors compares against its 0.99 bar:
+        MAX(Volume,20) 0.984 vs STD(Volume,20)   MAX(Volume,5) 0.981 vs SMA(Volume,5)
+        MIN(Volume,5)  0.969 vs SMA(Volume,10)   MIN(Volume,20) 0.943 vs SMA(Volume,20)
+      None of them trips the bar (resubmitting a library factor verbatim scores 1.000 and does),
+      but three of the four are the volume-level cluster wearing a different operator, so their IC
+      is already predetermined by the SMA/STD of Volume on record. MIN(Volume,20) is the one end
+      still worth a round: the quiet-day minimum is where 地量 lives, and it is the only non-ratio
+      name left that is not a re-skin of something measured.
   CANDIDATE LIST (already drafted, never backtested yet — pick 2, listed most
-  informative first; every remaining item is a de-leveled construction, i.e. it divides
-  out the price or volume level, which is the only direction left that is not yet measured):
-    - 5-day STD of Volume over 20-day STD of Volume
-    - 5-day SMA of Price over 20-day SMA of Price
-    - 20-day STD of Price over 20-day SMA of Price
+  informative first). The number after each name is its measured redundancy against the
+  library (see above), so the ratios are the genuinely independent ones:
+    - 20-day MIN of Volume                          (0.943)
+    - 5-day SMA of Price over 20-day SMA of Price   (0.821)
+    - 5-day STD of Volume over 20-day STD of Volume (0.602)
+    - 20-day STD of Price over 20-day SMA of Price  (0.374)
   At most ONE of the two may be a ratio name (the "... over ..." pattern): a ratio
   needs two windows plus a division and fails implementation more often, which would
-  lose the whole experiment's backtest.
+  lose the whole experiment's backtest. The list is left with only ONE non-ratio name, so
+  the other pick must be a ratio — do NOT invent a non-ratio name to fill the slot; an
+  invented single-field name is almost always a tested factor wearing another operator.
   4. **Gradual complexity:**
     - Combined factors are now unlocked (all single-field level/volatility factors
       above have been backtested), but only in the exact ratio form allowed by the

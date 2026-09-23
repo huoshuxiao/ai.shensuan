@@ -1,0 +1,8 @@
+name,expr,pearson_max,nearest_lib,pearson_signed,pearson_second,spearman_max,bar,verdict
+[对照] 20-day MAX of Volume,volume.rolling(20).max(),0.983629039007284,20-day STD of Volume,0.983629039007284,0.9604843800098354,0.989900024517454,0.99,危险区(同簇)
+[对照] 5-day MAX of Volume,volume.rolling(5).max(),0.9814648049727205,5-day SMA of Volume,0.9814648049727205,0.9516536943696475,0.9862226447487326,0.99,危险区(同簇)
+5-day MIN of Volume,volume.rolling(5).min(),0.9688891744540844,10-day SMA of Volume,0.9688891744540844,0.968852474167867,0.9686661720646353,0.99,危险区(同簇)
+20-day MIN of Volume,volume.rolling(20).min(),0.9431538037114875,20-day SMA of Volume,0.9431538037114875,0.8991475902264415,0.9354700539601861,0.99,可提名
+5-day SMA of Price over 20-day SMA of Price,"ma(df,5)/ma(df,20)",0.8211428620131516,20-day Momentum of Price,0.8211428620131516,0.5023759803518335,0.81206878524702,0.99,可提名
+5-day STD of Volume over 20-day STD of Volume,"ts_std(volume,5)/ts_std(volume,20)",0.6019645476168988,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,0.6019645476168988,0.35732289093058667,0.6997587421258156,0.99,可提名
+20-day STD of Price over 20-day SMA of Price,"std(df,20)/ma(df,20)",0.37409108496949844,20-day Momentum of Price,0.37409108496949844,0.2663561367191499,0.5303770329206925,0.99,可提名

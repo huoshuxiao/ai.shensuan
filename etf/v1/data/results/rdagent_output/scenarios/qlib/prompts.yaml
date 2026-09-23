@@ -1,4 +1,4 @@
-# 本地 LLM 适配用提示词覆盖（不修改 site-packages）
+# 本地 LLM 适配用提示词覆盖（不修改 site-packages）—— **ETF 线副本**
 #
 # 生效原理：rdagent/utils/agent/tpl.py 的 load_content 按「进程 CWD 相对路径 →
 # RD-Agent 包内默认」的顺序取模板，且文件缺失键（KeyError）会继续回落到包内，
@@ -7,6 +7,12 @@
 # 恰好覆盖 rdagent/scenarios/qlib/prompts.yaml。
 # 键名与使用处：factor_proposal.py:44 用 factor_hypothesis_specification，
 # factor_proposal.py:68 用 factor_experiment_output_format。
+#
+# 与股票线那份同源（stock/v1/data/results/rdagent_output/scenarios/qlib/prompts.yaml），
+# 正文逐字同步：约束的是「只能用原始 OHLCV 做输入 + 因子命名可翻译成管线 DSL」，
+# 与截面是 A 股个股还是 ETF 无关，所以**改一处必改两处**（09-23 扩宽命名文法时已按此同步）。
+# 比较两条线的 IC 数值没有意义（本线 RD-Agent 侧池子 09-22 已从 20 只扩到 871 只全市场 ETF，
+# 但截面仍比股票线薄一个量级），靠因子库的 market 字段隔离。
 #
 # 治的病：09-22 那轮 coder:7b 提出的唯一因子是 MA_5 = Σ F_{t-i}/5，把「因子值」
 # 当成输入序列做滑窗。本数据集只有 OHLCV，没有「因子值」这一列，于是实现 10/10

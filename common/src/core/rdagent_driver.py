@@ -38,19 +38,24 @@ _WINDOW_RE = re.compile(r"(\d+)\s*[-_ ]?\s*(?:day|d)", re.I)
 _COLUMN_RE = re.compile(r"\b(volume|vol|close|price|open|high|low)\b", re.I)
 _OP_RE = re.compile(
     r"\b(SMA|Simple Moving Average|EMA|VWAP|STD|Standard Deviation|"
-    r"MAX|Maximum|MIN|Minimum)\b", re.I)
+    r"MAX|Maximum|MIN|Minimum|MOM|Momentum)\b", re.I)
 _OP_ALIAS = {"simple moving average": "SMA", "standard deviation": "STD",
-             "ema": "EMA", "maximum": "MAX", "minimum": "MIN"}
+             "ema": "EMA", "maximum": "MAX", "minimum": "MIN",
+             "momentum": "MOM"}
+# 复合名（两式相除）。名字里带 over / divided by 即按比值拆成两个单字段名分别翻译
+_RATIO_RE = re.compile(r"^(.+?)\s+(?:over|divided by)\s+(.+)$", re.I)
 
 
-def _expr_from_task(task):
-    name = (getattr(task, "factor_name", "") or "").strip()
+def _translate_simple(name):
+    """单字段因子名 → DSL 表达式；三元组解析不出即回传空串交人工复核"""
     key = name.upper().replace(" ", "_")
     if key in _DSL_BY_NAME:
         return _DSL_BY_NAME[key](name.split("_")[0])
-    m = re.match(r"^(\d+)_day_(SMA|STD|MAX|MIN|VWAP)$", key, re.I)
-    if m and m.group(2) in _DSL_BY_NAME:
-        return _DSL_BY_NAME[m.group(2)](m.group(1))
+    m = re.match(r"^(\d+)_day_(SMA|STD|MAX|MIN|VWAP|MOM)$", key, re.I)
+    if m and (m.group(2) in _DSL_BY_NAME or m.group(2) == "MOM"):
+        # 紧凑名不带作用列，按 Price 口径（与 ma/std/max/min 的 df 口径一致）
+        return (f"close/delay(close,{m.group(1)})-1" if m.group(2) == "MOM"
+                else _DSL_BY_NAME[m.group(2)](m.group(1)))
     # 自然语言名：三元组都解析出来才翻译，否则宁可回传空串交人工复核
     w, c, o = _WINDOW_RE.search(name), _COLUMN_RE.search(name), _OP_RE.search(name)
     if not (w and c and o):
@@ -62,8 +67,25 @@ def _expr_from_task(task):
         return ""                      # DSL 无指数加权算子，不硬凑
     if op == "VWAP":
         return _DSL_BY_NAME["VWAP"](n)
+    if op == "MOM":
+        # N 日动量 = P_t / P_{t-N} - 1（DSL 无现成算子，用 delay 组合）
+        return f"{col}/delay({col},{n})-1"
     return f"{_GENERIC_OPS[op]}({col},{n})" if col != "close" \
         else _DSL_BY_NAME[op](n)
+
+
+def _expr_from_task(task):
+    name = (getattr(task, "factor_name", "") or "").strip()
+    # 复合名必须先判：单字段路径会抓名字里**第一个**窗口/列/算子，
+    # 把「5-day SMA of Volume over 20-day SMA of Volume」静默翻译成
+    # `ts_mean(volume,5)` —— 名字与表达式不同源是回收链路最坏的错（会拿着
+    # 量能水平的 IC 去解释一个比值因子）。任一前半翻译不出就整体回空。
+    m = _RATIO_RE.match(name)
+    if m:
+        num, den = _translate_simple(m.group(1)), _translate_simple(m.group(2))
+        return f"({num})/({den})" if num and den else ""
+    return _translate_simple(name)
+
 
 
 _METRIC_KEYS = {
@@ -237,13 +259,24 @@ def main():
 
     from rdagent.app.qlib_rd_loop.factor import main as factor_main
     print(f"[driver] rdagent factor 循环启动 loop_n={args.loops}")
+    rc = 0
     try:
         factor_main(loop_n=args.loops)
     except Exception:
         traceback.print_exc()
-        raise SystemExit(1)
-    _harvest_latest_factors(args.out)
-    print("[driver] 完成")
+        rc = 1
+    finally:
+        # 崩溃轮也要收：循环死在 coding/running 之后时会话 pickle 里已经有
+        # 因子定义，而 except 里直接 SystemExit 会把回收整步跳过 —— 09-22 03:52
+        # 与 09-23 13:51 两轮都死在 final_decision_evaluator 的空响应上，
+        # 各白烧 ~25min LLM 时间颗粒无收。回收本身按名合并，不覆写历轮定义。
+        try:
+            _harvest_latest_factors(args.out)
+        except Exception:
+            traceback.print_exc()
+            print("[driver] 回收步骤自身失败（不改变上面的退出码）")
+    print("[driver] 完成" if rc == 0 else "[driver] 循环报错退出，产物已尽量回收")
+    raise SystemExit(rc)
 
 
 if __name__ == "__main__":

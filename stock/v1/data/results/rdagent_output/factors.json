@@ -1,9 +1,49 @@
 [
   {
+    "name": "5-day MOM of Volume",
+    "expr": "volume/delay(volume,5)-1",
+    "formulation": "V_t / V_{t-5} - 1",
+    "code": "import pandas as pd\n\ndef calculate_5_day_MOM_of_Volume():\n    df = pd.read_hdf('daily_pv.h5', key='data').sort_index()\n    # rolling MUST be per instrument: a plain df[col].rolling(n) on the\n    # (datetime, instrument) index mixes different stocks inside one window\n    window = 5                              # put the factor's window here\n    values = df['volume'].groupby(level='instrument', sort=False).rolling(window).apply(lambda x: x[-1] / x[0] - 1).droplevel(0)\n    result = values.to_frame('5_day_MOM_of_Volume').reindex(df.index)   # keeps datetime+instrument index\n    result = result.reset_index().set_index(['datetime', 'instrument'])\n    result.to_hdf('result.h5', key='data')\n\nif __name__ == '__main__':\n    calculate_5_day_MOM_of_Volume()",
+    "mean_ic": 0.0286558205019578,
+    "icir": 0.2306741358565686,
+    "rank_ic": 0.0305107933376155,
+    "rank_icir": 0.245339027568246
+  },
+  {
+    "name": "20-day MIN of Price",
+    "expr": "min(df,20)",
+    "formulation": "min(P_{t-20}, P_{t-19}, ..., P_{t-1})",
+    "code": "import pandas as pd\n\ndef calculate_20day_min_price():\n    df = pd.read_hdf('daily_pv.h5', key='data').sort_index()\n    window = 20  # put the factor's window here\n    values = df['close'].groupby(level='instrument', sort=False).rolling(window).min().droplevel(0)\n    result = values.to_frame('20-day MIN of Price').reindex(df.index)  # keeps datetime+instrument index\n    result.to_hdf('result.h5', key='data')\n\nif __name__ == '__main__':\n    calculate_20day_min_price()",
+    "mean_ic": 0.0286558205019578,
+    "icir": 0.2306741358565686,
+    "rank_ic": 0.0305107933376155,
+    "rank_icir": 0.245339027568246
+  },
+  {
+    "name": "5-day MOM of Price",
+    "expr": "close/delay(close,5)-1",
+    "formulation": "P_{t} / P_{t-5} - 1",
+    "code": "",
+    "mean_ic": 0.0,
+    "icir": 0.0,
+    "rank_ic": 0.0,
+    "rank_icir": 0.0
+  },
+  {
+    "name": "20-day MOM of Volume",
+    "expr": "volume/delay(volume,20)-1",
+    "formulation": "V_{t} / V_{t-20} - 1",
+    "code": "",
+    "mean_ic": 0.0,
+    "icir": 0.0,
+    "rank_ic": 0.0,
+    "rank_icir": 0.0
+  },
+  {
     "name": "5-day SMA of Price",
     "expr": "ma(df,5)",
     "formulation": "P_{t-5} = \\frac{1}{5} \\sum_{i=0}^{4} P_{t-i}",
-    "code": "import pandas as pd\n\n\ndef calculate_5_day_sma_of_price():\n    df = pd.read_hdf('daily_pv.h5', key='data').sort_index()\n    window = 5  # put the factor's window here\n    values = df['close'].groupby(level='instrument', sort=False).rolling(window).mean().droplevel(0)\n    result = values.to_frame('5-day SMA of Price').reindex(df.index)  # keeps datetime+instrument index\n    result.to_hdf('result.h5', key='data')\n\nif __name__ == '__main__':\n    calculate_5_day_sma_of_price()",
+    "code": "import pandas as pd\n\ndef calculate_5_day_sma_of_price():\n    df = pd.read_hdf(\"daily_pv.h5\", key=\"data\").sort_index()\n    # rolling MUST be per instrument: a plain df[col].rolling(n) on the\n    # (datetime, instrument) index mixes different stocks inside one window\n    window = 5                              # put the factor's window here\n    values = df[\"close\"].groupby(level=\"instrument\", sort=False).rolling(window).mean().droplevel(0)\n    result = values.to_frame(\"5-day SMA of Price\").reindex(df.index)   # keeps datetime+instrument index\n    result.to_hdf(\"result.h5\", key=\"data\")\n\nif __name__ == \"__main__\":\n    calculate_5_day_sma_of_price()",
     "mean_ic": 0.0291443488697986,
     "icir": 0.2355147952286589,
     "rank_ic": 0.0313488414174154,
@@ -13,7 +53,7 @@
     "name": "10-day SMA of Volume",
     "expr": "ts_mean(volume,10)",
     "formulation": "V_{t-10} = \\frac{1}{10} \\sum_{i=0}^{9} V_{t-i}",
-    "code": "import pandas as pd\n\ndf = pd.read_hdf('daily_pv.h5', key='data').sort_index()\n\nwindow = 10  # put the factor's window here\nvalues = df['volume'].groupby(level='instrument', sort=False).rolling(window).mean().droplevel(0)\nresult = values.to_frame('10-day SMA of Volume').reindex(df.index)  # keeps datetime+instrument index\nresult.to_hdf('result.h5', key='data')",
+    "code": "import pandas as pd\n\ndef calculate_10day_sma_volume():\n    df = pd.read_hdf('daily_pv.h5', key='data').sort_index()\n    window = 10                              # put the factor's window here\n    values = df['volume'].groupby(level='instrument', sort=False).rolling(window).mean().droplevel(0)\n    result = values.to_frame('10-day SMA of Volume').reindex(df.index)   # keeps datetime+instrument index\n    result.to_hdf('result.h5', key='data')\n\nif __name__ == '__main__':\n    calculate_10day_sma_volume()",
     "mean_ic": 0.0291443488697986,
     "icir": 0.2355147952286589,
     "rank_ic": 0.0313488414174154,

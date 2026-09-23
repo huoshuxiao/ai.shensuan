@@ -1,0 +1,32 @@
+[
+  {
+    "name": "5-day SMA of Price",
+    "expr": "ma(df,5)",
+    "formulation": "P_{t-5} = \\frac{1}{5} \\sum_{i=0}^{4} P_{t-i}",
+    "code": "import pandas as pd\n\ndef calculate_5DaySMAOfPrice():\n    df = pd.read_hdf(\"daily_pv.h5\", key=\"data\").sort_index()\n    # rolling MUST be per instrument: a plain df[col].rolling(n) on the\n    # (datetime, instrument) index mixes different stocks inside one window\n    window = 5                              # put the factor's window here\n    values = df[\"close\"].groupby(level=\"instrument\", sort=False).rolling(window).mean().droplevel(0)\n    result = values.to_frame(\"5DaySMAOfPrice\").reindex(df.index)   # keeps datetime+instrument index\n    result.to_hdf(\"result.h5\", key=\"data\")\n\nif __name__ == \"__main__\":\n    calculate_5DaySMAOfPrice()",
+    "mean_ic": 0.0084699322877141,
+    "icir": 0.0385484725394689,
+    "rank_ic": 0.0039545867734875,
+    "rank_icir": 0.0171935023690178
+  },
+  {
+    "name": "10-day SMA of Volume",
+    "expr": "ts_mean(volume,10)",
+    "formulation": "V_{t-10} = \\frac{1}{10} \\sum_{i=0}^{9} V_{t-i}",
+    "code": "import pandas as pd\n\ndef calculate_10day_sma_volume():\n    df = pd.read_hdf('daily_pv.h5', key='data').sort_index()\n    window = 10  # put the factor's window here\n    values = df['volume'].groupby(level='instrument', sort=False).rolling(window).mean().droplevel(0)\n    result = values.to_frame('10_day_sma_of_volume').reindex(df.index)  # keeps datetime+instrument index\n    result.to_hdf('result.h5', key='data')\n\nif __name__ == '__main__':\n    calculate_10day_sma_volume()",
+    "mean_ic": 0.0084699322877141,
+    "icir": 0.0385484725394689,
+    "rank_ic": 0.0039545867734875,
+    "rank_icir": 0.0171935023690178
+  },
+  {
+    "name": "5-day STD of Volume",
+    "expr": "ts_std(volume,5)",
+    "formulation": "V_{t-5} = \\sqrt{\\frac{1}{5} \\sum_{i=0}^{4} (V_{t-i} - \\bar{V}_{t-5})^2}",
+    "code": "",
+    "mean_ic": 0.0,
+    "icir": 0.0,
+    "rank_ic": 0.0,
+    "rank_icir": 0.0
+  }
+]

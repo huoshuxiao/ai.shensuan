@@ -44,7 +44,11 @@ ASHARE_EVAL_END = os.environ.get("STOCK_EVAL_END", "")        # 空 = 数据尽�
 ASHARE_MIN_OBS = int(os.environ.get("STOCK_MIN_OBS", "250"))  # 单标的最少交易日
 ASHARE_MIN_CS = int(os.environ.get("STOCK_MIN_CS", "100"))    # 单日截面最少样本
 ASHARE_SAMPLE = int(os.environ.get("STOCK_SAMPLE", "0"))     # >0 只取前 N 只（冒烟）
-ASHARE_EVAL_OUT = os.path.join(RESULTS_DIR, "ashare_factor_eval.csv")
+ASHARE_EVAL_OUT = os.environ.get(
+    "STOCK_EVAL_OUT", os.path.join(RESULTS_DIR, "ashare_factor_eval.csv"))
+# 冒烟轮必须能改写落点：09-23 一次 STOCK_SAMPLE=80 的冒烟把全市场结论
+# stock/v1/data/results/ashare_factor_eval.csv 盖掉了（旧写法不接受 env 覆写，
+# 已 git 还原）。以后冒烟一律带 STOCK_EVAL_OUT=/tmp/...。
 
 # ========== 交易规则与费率（A 股个股，与 ETF 明显不同） ==========
 # T+1：当日买入不可当日卖出；整手 100 股

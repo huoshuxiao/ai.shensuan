@@ -39,20 +39,22 @@ factor_hypothesis_specification: |-
     - 5-day MOM of Price, 20-day MOM of Volume（09-23 已回收定义，尚无 IC）
     - 5-day MOM of Volume, 20-day MIN of Price（09-23 stkwide2 轮已回收，实验级 IC 0.028656）
     - 20-day MOM of Price, 5-day SMA of Volume over 20-day SMA of Volume（09-23 stkvec 轮已回收，实验级 IC 0.032376）
+    - 5-day VWAP of Price, 5/20-day MAX of Price（09-23 stkprod 轮已回收并全市场评估：
+      RankIC -0.0146~-0.0159，与 5/10/20-day SMA of Price 的 -0.0126~-0.0153 是同一个量）
+    THE WHOLE PRICE-LEVEL FAMILY IS ONE FACTOR, at any window and with any of SMA / VWAP / MAX /
+    MIN: on the full A-share panel they all sit at RankIC -0.013~-0.016 and their tradable long
+    legs are indistinguishable to the second decimal (same turnover, same excess). Proposing a
+    new window or a new way of averaging the price adds no information — pick a different raw
+    field or a different family instead.
     A spelled-out operator is THE SAME factor as its abbreviated token and is equally tested:
     "Momentum" = MOM, "Simple Moving Average" = SMA, "Standard Deviation" = STD, "Maximum"/"Minimum"
     = MAX/MIN. Renaming a tested factor by writing its operator in words does not make it new.
   CANDIDATE LIST (already drafted, never backtested yet — pick 2, listed most
-  informative first; the first two groups carry information the library does not
-  have yet, the last group only re-parametrizes price level):
+  informative first; every remaining item is a de-leveled construction, i.e. it divides
+  out the price or volume level, which is the only direction left that is not yet measured):
     - 5-day STD of Volume over 20-day STD of Volume
     - 5-day SMA of Price over 20-day SMA of Price
     - 20-day STD of Price over 20-day SMA of Price
-    - 5-day MAX of Price
-    - 20-day MAX of Price
-    - 5-day MIN of Price
-    - 5-day VWAP of Price
-    - 20-day VWAP of Price
   At most ONE of the two may be a ratio name (the "... over ..." pattern): a ratio
   needs two windows plus a division and fails implementation more often, which would
   lose the whole experiment's backtest.

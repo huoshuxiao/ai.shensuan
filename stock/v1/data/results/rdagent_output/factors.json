@@ -1,5 +1,35 @@
 [
   {
+    "name": "5-day VWAP of Price",
+    "expr": "ts_sum(volume*close,5)/ts_sum(volume,5)",
+    "formulation": "VWAP_t = \\frac{\\sum_{i=1}^{5} P_{t-i} V_{t-i}}{\\sum_{i=1}^{5} V_{t-i}}",
+    "code": "import pandas as pd\n\ndef calculate_5_day_VWAP_of_Price():\n    df = pd.read_hdf(\"daily_pv.h5\", key=\"data\").sort_index()\n    window = 5  # 5-day VWAP\n    P = df['close']\n    V = df['volume']\n    values = (P * V).groupby(level='instrument', sort=False).rolling(window).sum().div(V.groupby(level='instrument', sort=False).rolling(window).sum()).droplevel(0)\n    result = values.to_frame('5-day VWAP of Price').reindex(df.index)\n    result.to_hdf(\"result.h5\", key=\"data\")\n\nif __name__ == '__main__':\n    calculate_5_day_VWAP_of_Price()",
+    "mean_ic": 0.02877526963361,
+    "icir": 0.2358561794849757,
+    "rank_ic": 0.0305680966229813,
+    "rank_icir": 0.2474988687937713
+  },
+  {
+    "name": "20-day MAX of Price",
+    "expr": "max(df,20)",
+    "formulation": "MAX_t = \\max_{i=1}^{20} P_{t-i}",
+    "code": "import pandas as pd\n\ndef calculate_20_day_MAX_of_Price():\n    df = pd.read_hdf('daily_pv.h5', key='data').sort_index()\n    window = 20                              # put the factor's window here\n    values = df['close'].groupby(level='instrument', sort=False).rolling(window).max().droplevel(0)\n    result = values.to_frame('20-day MAX of price ').reindex(df.index)   # keeps datetime+instrument index\n    result.to_hdf('result.h5', key='data')\n\nif __name__ == '__main__':\n    calculate_20_day_MAX_of_Price()",
+    "mean_ic": 0.02877526963361,
+    "icir": 0.2358561794849757,
+    "rank_ic": 0.0305680966229813,
+    "rank_icir": 0.2474988687937713
+  },
+  {
+    "name": "5-day MAX of Price",
+    "expr": "max(df,5)",
+    "formulation": "MAX_t = \\max_{i=1}^{5} P_{t-i}",
+    "code": "import pandas as pd\n\ndef calculate_5_day_MAX_of_Price():\n    df = pd.read_hdf('daily_pv.h5', key='data').sort_index()\n    window = 5  # put the factor's window here\n    values = df['close'].groupby(level='instrument', sort=False).rolling(window).max().droplevel(0)\n    result = values.to_frame('5-day MAX of Price').reindex(df.index)  # keeps datetime+instrument index\n    result.to_hdf('result.h5', key='data')\n\nif __name__ == '__main__':\n    calculate_5_day_MAX_of_Price()",
+    "mean_ic": 0.0,
+    "icir": 0.0,
+    "rank_ic": 0.0,
+    "rank_icir": 0.0
+  },
+  {
     "name": "20-day Momentum of Price",
     "expr": "close/delay(close,20)-1",
     "formulation": "P_t / P_{t-20} - 1",

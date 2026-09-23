@@ -67,8 +67,24 @@ SIGNALS = [
     ("量能波动 STD(Volume,20)", "ts_std(volume,20)", "被验"),
     ("量能水平 SMA(Volume,5)", "ts_mean(volume,5)", "被验"),
     ("量能水平 SMA(Volume,10)", "ts_mean(volume,10)", "被验"),
+    # 09-23 加入：量能族的另两种构造（动量、短长均量比）。它们在 factors.json 里
+    # 是 RD-Agent 回收来的新构造，同日全市场截面才第一次给出可比读数 ——
+    # RankIC -0.0430/-0.0472/-0.0378、RankICIR -0.46/-0.47/-0.36，量级已接近
+    # STD(Volume,5)（-0.0570/-0.599）但与之不是同一件事（一个是波动、一个是变化率、
+    # 一个是自身比值）。是否值得并进取决于本层的超额与单调性，不看截面 IC。
+    ("量能动量 MOM(Volume,5)", "volume/delay(volume,5)-1", "被验"),
+    ("量能动量 MOM(Volume,20)", "volume/delay(volume,20)-1", "被验"),
+    ("量能比 SMA(Vol,5)/SMA(Vol,20)",
+     "(ts_mean(volume,5))/(ts_mean(volume,20))", "被验"),
     ("对照·价格水平 MA(Price,5)", "ma(df,5)", "对照"),
     ("对照·相对量能波动", "ts_std(volume,5)/ts_mean(volume,20)", "对照"),
+    # 09-23 新回收的三个价格族因子**不送多头**：全市场截面 RankIC 只有
+    # -0.0146 ~ -0.0159，与对照 ma(df,5) 的 -0.0153 几乎同值同号，即它们带来的
+    # 只是同一个「低价股效应」的又一层皮（VWAP ≈ 均价、MAX ≈ 区间高点，都是价格
+    # 水平）。列为对照留在此处，是为了让「不进取向」这个结论有可查的证据。
+    ("对照·VWAP(Price,5)", "ts_sum(volume*close,5)/ts_sum(volume,5)", "对照"),
+    ("对照·MAX(Price,5)", "max(df,5)", "对照"),
+    ("对照·MAX(Price,20)", "max(df,20)", "对照"),
 ]
 
 

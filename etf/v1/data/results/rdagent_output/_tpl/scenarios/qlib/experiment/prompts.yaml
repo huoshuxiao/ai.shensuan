@@ -32,6 +32,14 @@
 #    `groupby(level='instrument').rolling(w).apply(lambda x: x[-1]/x[0]-1)` 算 5-day MOM of
 #    Volume，在 12.15M 行全市场面板上单核磨了 15+ 分钟（宿主 factor.py 进程，非容器），
 #    running 步因此 29 分钟；日志字节长期不动容易被误判成卡死。
+#
+# 09-23 晚第 4 处补（stkprod_0923 轮实测）：原来那句「列名不等就是 format failure，
+#    format checker 会拿去比对」是**假的** —— 包内根本没有列名校验（全库搜不到那句
+#    "column named" 措辞，它只是裁判模型的自述）。该轮 `20-day MAX of Price` 的 factor.py
+#    被裁判改成 to_frame('20-day MAX of price ')（小写 p + 尾随空格），coder 照改了，
+#    回测与回收都没受影响（result.h5 按位置读，factors.json 的名字取任务侧 factor_name），
+#    所以真正的风险不是管线断裂，而是「裁判自己抄错名字」。下面据此把规则改成：
+#    列名要逐字等于**任务里给的**因子名；评审若要求改名，不得从评审文本里抄名字。
 qlib_factor_interface: |-
   Your python code should follow the interface to better interact with the user's system.
   Your python code should contain the following part: the import part, the function part, and the main part. You should write a main function name: "calculate_{function_name}" and call this function in the main guard if __name__ == "__main__": (note the quotes around __main__). Don't write any try-except block in your python code. The user will catch the exception message and provide the feedback to you.
@@ -79,10 +87,16 @@ qlib_factor_interface: |-
       `g.shift(n)` / `rolling(n).mean()` / `rolling(n).std()` are all vectorized; use them.
   - Name the single result column with `Series.to_frame("<factor name>")` (or
     `pd.DataFrame({"<factor name>": values})`). The string must be the factor name **verbatim**:
-    same words, same hyphens, same capitalisation. Never substitute an underscored or lowercased
-    variant of it (writing `5_day_SMA_volume_over_20_day_SMA_volume` for a factor named
-    "5-day SMA of Volume over 20-day SMA of Volume" is a format failure, even though the numbers
-    are right) — the format checker compares the column name with the requested factor name.
+    same words, same hyphens, same capitalisation, no trailing space. Never substitute an
+    underscored or lowercased variant of it (writing `5_day_SMA_volume_over_20_day_SMA_volume`
+    for a factor named "5-day SMA of Volume over 20-day SMA of Volume" misses the point — the
+    factor name is how the factor library and the research report key this column).
+  - Nothing in the pipeline actually enforces that string: result.h5 is consumed positionally,
+    and the only reader of the name is another language model, which can mis-transcribe it. On
+    09-23 a reviewer told the coder to rename "20-day MAX of Price" to `'20-day MAX of price '`
+    (lowercase p, trailing space) and the coder obeyed it. So when a review asks you to change
+    the column name, do NOT copy the name from the review — re-read the factor name given in
+    your own task and copy from there; where the two disagree, the task wins.
   - NEVER write `pd.DataFrame(a_series, columns=["some name"])`: in pandas 2.x `columns=`
     selects by name, so if it does not equal the Series name you silently get 0 rows and
     the code dies later on the index assignment.

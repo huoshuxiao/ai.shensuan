@@ -192,9 +192,33 @@ def _harvest_from_sessions(out_dir):
     return found
 
 
+def _better(a, b):
+    """同名因子的胜出判据：先看出过实盘指标，再看沙箱 code 长度"""
+    def score(x):
+        has_metric = bool(x.get("mean_ic")) or bool(x.get("rank_ic"))
+        return (has_metric, len(x.get("code") or ""))
+    return a if score(a) >= score(b) else b
+
+
+def _dedup_by_name(items):
+    """同名只留一条：会话 pickle 按 loop 逐 step 累加，2 loops 批次会把同一个
+    因子回收两次（09-23 stkprod 的 `5-day VWAP of Price`）。不去重会让下游
+    按 name 建的表自相覆盖，评估脚本还会把第二条判成「不可求值」。"""
+    merged = {}
+    order = []
+    for it in items:
+        name = it.get("name")
+        if name in merged:
+            merged[name] = _better(merged[name], it)
+        else:
+            merged[name] = it
+            order.append(name)
+    return [merged[n] for n in order]
+
+
 def _harvest_latest_factors(out_dir):
     """优先读会话 pickle，退回扫描 JSON 类产物"""
-    found = _harvest_from_sessions(out_dir)
+    found = _dedup_by_name(_harvest_from_sessions(out_dir))
     seen = {f["name"] for f in found}
     for root, _dirs, files in os.walk(out_dir):
         for fn in files:

@@ -1,13 +1,26 @@
 {
   "freq": "daily",
-  "n_factors": 5,
+  "n_factors": 10,
   "factor_weights": {
-    "volatility_20": 0.2,
-    "momentum_20": 0.2,
-    "reversal_5": 0.2,
-    "momentum_10": 0.2,
-    "volume_ratio_20": 0.2
+    "gp_0": 0.1,
+    "mogp_0": 0.1,
+    "mogp_1": 0.1,
+    "gp_1": 0.1,
+    "mogp_2": 0.1,
+    "gp_3": 0.1,
+    "gp_4": 0.1,
+    "hybrid_1": 0.1,
+    "volume_ratio_20": 0.1,
+    "mogp_6": 0.1
   },
-  "n_trials": 8,
+  "risk_params": {
+    "daily_stop_loss": -0.03,
+    "max_drawdown_stop": -0.1,
+    "cooldown_days": 3,
+    "single_position_max": 0.95,
+    "min_bars_between_trades": 1,
+    "max_trades_per_day": 1
+  },
+  "n_trials": 38,
   "bars_per_year": 252
 }

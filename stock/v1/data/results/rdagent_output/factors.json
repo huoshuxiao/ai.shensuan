@@ -1,5 +1,25 @@
 [
   {
+    "name": "20-day Momentum of Price",
+    "expr": "close/delay(close,20)-1",
+    "formulation": "P_t / P_{t-20} - 1",
+    "code": "import pandas as pd\n\ndef calculate_20day_momentum_of_price():\n    df = pd.read_hdf('daily_pv.h5', key='data').sort_index()\n    window = 20  # put the factor's window here\n    g = df['close'].groupby(level='instrument', sort=False)\n    values = df['close'] / g.shift(window) - 1  # a Series, same index as df\n    result = values.to_frame('20-day Momentum of Price').reindex(df.index)  # keeps datetime+instrument index\n    result.to_hdf('result.h5', key='data')\n\nif __name__ == '__main__':\n    calculate_20day_momentum_of_price()",
+    "mean_ic": 0.0323757829092662,
+    "icir": 0.2641673090030313,
+    "rank_ic": 0.0341366481243735,
+    "rank_icir": 0.2774941107314762
+  },
+  {
+    "name": "5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume",
+    "expr": "(ts_mean(volume,5))/(ts_mean(volume,20))",
+    "formulation": "V_t / V_{t-20} / (V_{t-5} / V_{t-25})",
+    "code": "import pandas as pd\n\ndef calculate_5_day_SMA_volume_over_20_day_SMA_volume():\n    df = pd.read_hdf('daily_pv.h5', key='data').sort_index()\n    window_short = 5\n    window_long = 20\n    # Calculate 5-day SMA of volume\n    short_sma = df['volume'].groupby(level='instrument', sort=False).rolling(window_short).mean().droplevel(0)\n    # Calculate 20-day SMA of volume\n    long_sma = df['volume'].groupby(level='instrument', sort=False).rolling(window_long).mean().droplevel(0)\n    # Calculate the ratio of 5-day SMA to 20-day SMA\n    values = short_sma / long_sma\n    result = values.to_frame('5_day_SMA_volume_over_20_day_SMA_volume').reindex(df.index)\n    result.to_hdf('result.h5', key='data')\n\nif __name__ == '__main__':\n    calculate_5_day_SMA_volume_over_20_day_SMA_volume()",
+    "mean_ic": 0.0323757829092662,
+    "icir": 0.2641673090030313,
+    "rank_ic": 0.0341366481243735,
+    "rank_icir": 0.2774941107314762
+  },
+  {
     "name": "5-day MOM of Volume",
     "expr": "volume/delay(volume,5)-1",
     "formulation": "V_t / V_{t-5} - 1",

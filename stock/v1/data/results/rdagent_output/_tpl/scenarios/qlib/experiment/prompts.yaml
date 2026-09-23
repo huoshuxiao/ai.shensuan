@@ -78,7 +78,11 @@ qlib_factor_interface: |-
         then `values = num / den`
       `g.shift(n)` / `rolling(n).mean()` / `rolling(n).std()` are all vectorized; use them.
   - Name the single result column with `Series.to_frame("<factor name>")` (or
-    `pd.DataFrame({"<factor name>": values})`).
+    `pd.DataFrame({"<factor name>": values})`). The string must be the factor name **verbatim**:
+    same words, same hyphens, same capitalisation. Never substitute an underscored or lowercased
+    variant of it (writing `5_day_SMA_volume_over_20_day_SMA_volume` for a factor named
+    "5-day SMA of Volume over 20-day SMA of Volume" is a format failure, even though the numbers
+    are right) — the format checker compares the column name with the requested factor name.
   - NEVER write `pd.DataFrame(a_series, columns=["some name"])`: in pandas 2.x `columns=`
     selects by name, so if it does not equal the Series name you silently get 0 rows and
     the code dies later on the index assignment.

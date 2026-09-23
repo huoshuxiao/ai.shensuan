@@ -38,11 +38,13 @@ factor_hypothesis_specification: |-
     - 5/10/20-day SMA of Volume, 5/10/20-day STD of Volume
     - 5-day MOM of Price, 20-day MOM of Volume（09-23 已回收定义，尚无 IC）
     - 5-day MOM of Volume, 20-day MIN of Price（09-23 stkwide2 轮已回收，实验级 IC 0.028656）
+    - 20-day MOM of Price, 5-day SMA of Volume over 20-day SMA of Volume（09-23 stkvec 轮已回收，实验级 IC 0.032376）
+    A spelled-out operator is THE SAME factor as its abbreviated token and is equally tested:
+    "Momentum" = MOM, "Simple Moving Average" = SMA, "Standard Deviation" = STD, "Maximum"/"Minimum"
+    = MAX/MIN. Renaming a tested factor by writing its operator in words does not make it new.
   CANDIDATE LIST (already drafted, never backtested yet — pick 2, listed most
   informative first; the first two groups carry information the library does not
   have yet, the last group only re-parametrizes price level):
-    - 20-day MOM of Price
-    - 5-day SMA of Volume over 20-day SMA of Volume
     - 5-day STD of Volume over 20-day STD of Volume
     - 5-day SMA of Price over 20-day SMA of Price
     - 20-day STD of Price over 20-day SMA of Price
@@ -101,6 +103,10 @@ factor_experiment_output_format: |-
   Invalid and therefore forbidden: "EMA"/"exponentially weighted" (no such operator downstream),
   "Momentum"/"Ratio"/"Factor of Factor"/any name without an explicit day window and an explicit
   Price-or-Volume column, and any formulation whose input is a computed factor instead of a raw field.
+  Write the operator ONLY as one of the six uppercase tokens above. Spelling it out — "20-day
+  Momentum of Price", "5-day Simple Moving Average of Volume over ..." — breaks the pipeline: the
+  name you output becomes the result column name and is matched verbatim downstream, so a
+  synonymous-but-different string is a duplicate factor that the library cannot recognise.
   In "formulation", write the input as the raw field itself (e.g. P_{t-i} for Price, V_{t-i} for
   Volume) and declare in "variables" that P = $close / Price and V = $volume.
 

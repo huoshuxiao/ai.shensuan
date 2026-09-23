@@ -419,6 +419,15 @@ def build(line_root, env_prefix="ETF_", freq_default="daily", market="etf"):
         os.path.join(os.path.abspath(d["DATA_DIR"]),
                      "qlib", "qlib_data", "cn_data"))
     d["RDAGENT_QLIB_PROVIDER"] = _qlib_provider
+    # 本线喂给 dump_qlib_bin 的行情源目录（akshare 日线 csv 所在）。体检用它
+    # 判 qlib bin 与 daily_pv.h5 是否落后于行情——这两步重建目前只能手跑，
+    # 忘了就会让循环在旧面板上编码（白烧一轮 LLM 时间）。股票线的数据来自社区
+    # 全市场包、没有本地 csv 源，故留空即跳过新鲜度比对。
+    d["RDAGENT_SOURCE_DIR"] = env("RDAGENT_SOURCE_DIR", "")
+    # coding 阶段 CoSTEER 演化轮数（critic 反馈逐轮累积）。rdagent 读同名环境
+    # 变量，注入驱动子进程后**优先于**工作区 .env（load_dotenv 默认不覆盖已有
+    # 变量），留空表示沿用 .env 里的值。
+    d["RDAGENT_COSTEER_MAX_LOOP"] = env("RDAGENT_COSTEER_MAX_LOOP", "").strip()
     # 挂载点 = provider_uri 往上两级（由构造保证二者永远一致，改一边不会漏改）
     _qlib_mount = os.path.dirname(os.path.dirname(_qlib_provider))
     # factor 循环子进程最长运行时长（秒）；超时即回收并记录

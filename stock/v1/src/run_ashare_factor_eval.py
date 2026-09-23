@@ -33,6 +33,7 @@ from config import (RDAGENT_OUTPUT_DIR, ASHARE_DAILY_H5,
                     ASHARE_EVAL_START, ASHARE_EVAL_END, ASHARE_MIN_OBS,
                     ASHARE_MIN_CS, ASHARE_SAMPLE, ASHARE_EVAL_OUT)
 from factor_dsl import safe_eval, compute_ic
+from ashare_screen import guard_ret
 
 # 参数全部走股票线 config（STOCK_* 环境变量可覆盖，见 stock/v1/src/config/config.py）
 H5_PATH = ASHARE_DAILY_H5
@@ -42,7 +43,8 @@ START, END = ASHARE_EVAL_START, ASHARE_EVAL_END
 MIN_OBS, MIN_CS, SAMPLE = ASHARE_MIN_OBS, ASHARE_MIN_CS, ASHARE_SAMPLE
 OUT_CSV = ASHARE_EVAL_OUT
 
-RAW_COLS = ["open", "high", "low", "close", "volume"]
+# factor 只为收益护栏服务（盘面收益 = 复权收益 ÷ factor 的对看基准），不进任何表达式
+RAW_COLS = ["open", "high", "low", "close", "volume", "factor"]
 
 
 def _is_index(code: str) -> bool:
@@ -125,14 +127,22 @@ def daily_cross_ic(factor_long, fwd_long, min_cs):
             pd.Series(dict(out_s)).sort_index())
 
 
+def guarded_ret(p):
+    """单只票的复权日收益，过 $factor 假台阶护栏（判据与实测来路见 ashare_screen.guard_ret）"""
+    cl = p["close"].astype("float64")
+    return guard_ret(cl.pct_change(fill_method=None),
+                     (cl / p["factor"].astype("float64")).pct_change(fill_method=None))
+
+
 def evaluate(pool, tasks):
     """对每个因子表达式做两套口径的评估，返回指标行列表"""
     # 前向收益 = 次日收盘收益 r_{t+1} = P_{t+1}/P_t - 1，与 _attach_impl 同式
-    # （fill_method=None 关掉 pad 填充，否则停牌缺口会变成假收益）
-    fwd_long = pd.concat(
-        {c: p["close"].astype("float64").pct_change(fill_method=None).shift(-1)
-         for c, p in pool.items()},
-        names=["instrument", "datetime"]).swaplevel().sort_index()
+    # （fill_method=None 关掉 pad 填充，否则停牌缺口会变成假收益）。
+    # 每只票只算一次：截面标签与逐票时序 IC 用同一条收益，且省下按表达式重复
+    # pct_change 的 21 倍开销。
+    ret_by_code = {c: guarded_ret(p).shift(-1) for c, p in pool.items()}
+    fwd_long = pd.concat(ret_by_code, names=["instrument", "datetime"]) \
+        .swaplevel().sort_index()
 
     # 逐标的求值：一次遍历标的、内部跑完全部表达式（标的数远小于表达式数，
     # 这样 groupby 切片只做一遍）
@@ -149,7 +159,7 @@ def evaluate(pool, tasks):
             if f.isna().all():
                 continue
             acc[t["name"]][code] = f
-            ic = compute_ic(f, df["close"].pct_change(fill_method=None).shift(-1))
+            ic = compute_ic(f, ret_by_code[code])
             if not np.isnan(ic):
                 ts_ic[t["name"]].append(ic)
 

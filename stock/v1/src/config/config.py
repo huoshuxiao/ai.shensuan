@@ -98,3 +98,27 @@ ASHARE_PORT_QUINTILES = int(os.environ.get("STOCK_PORT_QUINTILES", "5"))
 # 输出路径可覆写：冒烟轮写到 /tmp，免得把正式结论盖掉（同 ASHARE_EVAL_OUT 的约定）
 ASHARE_PORT_OUT = os.environ.get(
     "STOCK_PORT_OUT", os.path.join(RESULTS_DIR, "ashare_portfolio_eval.csv"))
+
+# ========== 筛选层参数（strategy/ashare_screen.py，两入口共用） ==========
+# 闸门三参数（次新/容量/涨停）故意沿用上面的 ASHARE_PORT_* 名字：它们诞生于组合层，
+# 日频信号与回测必须共用一份，改名或另立一套就会出现「回测里能过、实盘名单里没有」
+ASHARE_SCREEN_QUANTILE = float(os.environ.get("STOCK_SCREEN_QUANTILE", "0.8"))
+# 启用哪几条量能构造（level/volatility/momentum/ratio），默认全开取并集剔除
+ASHARE_SCREEN_RULES = os.environ.get(
+    "STOCK_SCREEN_RULES", "level,volatility,momentum,ratio")
+# ②b 日频信号名单的落盘目录（不进 RESULTS_DIR 根，免得和一次性研究产物混在一起）
+ASHARE_SIGNAL_DIR = os.environ.get(
+    "STOCK_SIGNAL_DIR", os.path.join(RESULTS_DIR, "daily_signal"))
+
+# ========== 手动成交账本（②c run_ashare_position.py） ==========
+# 成交由人工录入到 CSV，系统只读不写账本；放在 LIVE_DATA_DIR 而不是 RESULTS_DIR，
+# 因为它是**用户数据**（丢了就没了），而 results/ 全是可重算的研究产物
+ASHARE_FILLS_CSV = os.environ.get(
+    "STOCK_FILLS_CSV", os.path.join(LIVE_DATA_DIR, "manual_fills.csv"))
+ASHARE_POSITION_OUT = os.environ.get(
+    "STOCK_POSITION_OUT", os.path.join(LIVE_DATA_DIR, "positions.csv"))
+ASHARE_ACCOUNT_OUT = os.environ.get(
+    "STOCK_ACCOUNT_OUT", os.path.join(LIVE_DATA_DIR, "account.csv"))
+# 录入价与当日盘面收盘价的偏离超过这个比例就报警（创业板/科创板限 20%，留 1% 容差，
+# 只抓「代码打错 / 价格小数点点错」这类录入事故，不做投资决策判断）
+ASHARE_FILL_PRICE_TOL = float(os.environ.get("STOCK_FILL_PRICE_TOL", "0.21"))

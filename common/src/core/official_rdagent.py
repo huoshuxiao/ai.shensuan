@@ -12,9 +12,10 @@ import shlex
 import time
 import shutil
 import subprocess
-from config import (RDAGENT_OUTPUT_DIR, RDAGENT_CONDA_ENV,
-                    RDAGENT_TIMEOUT_SEC,
-                    RDAGENT_QLIB_DOCKER_ENV, RDAGENT_QLIB_PROVIDER)
+from config import (RDAGENT_OUTPUT_DIR, RDAGENT_CONDA_ENV, DATA_DIR,
+                    RDAGENT_TIMEOUT_SEC, RDAGENT_SOURCE_DIR,
+                    RDAGENT_COSTEER_MAX_LOOP, RDAGENT_QLIB_DOCKER_ENV,
+                    RDAGENT_QLIB_PROVIDER)
 
 # conda 未进 PATH 时的常见安装位
 _CONDA_CANDIDATES = [
@@ -30,9 +31,23 @@ _CONDA_CANDIDATES = [
 # 管线依赖，与 rdagent 依赖树版本冲突），一切以环境内 site-packages 为准
 _ENV_ISOLATED = {**os.environ, "PYTHONNOUSERSITE": "1"}
 
-# 沙箱容器资源参数只影响 factor 循环本体，随驱动子进程一起注入
-# （rdagent 侧 QlibDockerConf 用 QLIB_DOCKER_ 前缀读环境变量）
-_ENV_DRIVER = {**_ENV_ISOLATED, **RDAGENT_QLIB_DOCKER_ENV}
+def _driver_env():
+    """驱动子进程环境：沙箱容器参数 + 可选的 coding 演化轮数。
+
+    容器参数只影响 factor 循环本体（rdagent 侧 QlibDockerConf 用 QLIB_DOCKER_
+    前缀读环境变量）。CoSTEER_MAX_LOOP 同批发出去：rdagent_driver 用
+    load_dotenv(".env") 且默认不覆盖已有环境变量，所以在父进程这里给值就
+    压过工作区 .env 那份手改值（ETF 线用它把轮数从 4 提到 8）；配置留空则
+    不注入，沿用 .env，避免凭空盖住本地设置。
+    """
+    env = {**_ENV_ISOLATED, **RDAGENT_QLIB_DOCKER_ENV}
+    loops = str(RDAGENT_COSTEER_MAX_LOOP).strip()
+    if loops.isdigit():
+        env["CoSTEER_MAX_LOOP"] = loops
+    return env
+
+
+_ENV_DRIVER = _driver_env()
 
 
 def _find_conda():
@@ -138,6 +153,79 @@ def _sandbox_image_ready():
         return False, f"镜像查询失败: {type(e).__name__}: {e}"
 
 
+def _fmt_mtime(p):
+    """文件 mtime → 'YYYY-MM-DD HH:MM'，供检查表里比对时间先后"""
+    try:
+        return time.strftime("%Y-%m-%d %H:%M",
+                             time.localtime(os.path.getmtime(p)))
+    except OSError:
+        return "缺失"
+
+
+def _newest_source_mtime(src_dir, suffix="_daily.csv"):
+    """行情源目录里最新一份日线 csv 的 (mtime, 文件名)；无匹配则 (0, "")"""
+    newest, name = 0.0, ""
+    for root, _dirs, files in os.walk(src_dir):
+        for fn in files:
+            if not fn.endswith(suffix):
+                continue
+            try:
+                m = os.path.getmtime(os.path.join(root, fn))
+            except OSError:
+                continue
+            if m > newest:
+                newest, name = m, fn
+    return newest, name
+
+
+def _rdagent_data_checks(output_dir):
+    """qlib bin 与 coding 源数据面板是否落后于本线行情源目录。
+
+    两道重建（`dump_qlib_bin.py` 造 bin、`pregen_source_data.py` 造
+    `daily_pv.h5`）目前都只能手跑，忘了就会让官方循环在旧面板上编码、
+    白烧一轮 LLM 时间（本机一轮 ≈50min）。判据用 mtime 而不是读 h5 的末
+    日期：股票线那份面板 752MB，整读一次要几十秒，而循环真正关心的只是
+    「行情是否在数据产物之后又更新过」；`pregen_source_data.py` 自身另有
+    一道「h5 末日期 >= bin 日历末交易日」的内容比对，两道不互相替代。
+
+    本线没有本地行情源目录（股票线用社区全市场包）时整组跳过。"""
+    src = RDAGENT_SOURCE_DIR
+    if not src or not os.path.isdir(src):
+        return []
+    newest, newest_file = _newest_source_mtime(src)
+    if not newest:
+        return [("RD-Agent 数据新鲜度", True,
+                 f"{src} 无日线 csv 缓存，跳过比对")]
+    # DATA_DIR = <line>/v1/data，其上一层就是本线 v1 根
+    v1_root = os.path.dirname(os.path.abspath(DATA_DIR))
+    day_txt = os.path.join(RDAGENT_QLIB_PROVIDER, "calendars", "day.txt")
+    out_dir = output_dir or RDAGENT_OUTPUT_DIR
+    h5 = os.path.join(out_dir, "git_ignore_folder",
+                      "factor_implementation_source_data", "daily_pv.h5")
+    dump_py = os.path.join(v1_root, "src", "data", "dump_qlib_bin.py")
+    pregen_py = os.path.abspath(os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "..", "rdagent_docker", "pregen_source_data.py"))
+    src_stamp = time.strftime("%Y-%m-%d %H:%M", time.localtime(newest))
+    stale = f"行情缓存更新于 {src_stamp}（{newest_file}），晚于它"
+
+    checks = []
+    bin_ok = os.path.exists(day_txt) and os.path.getmtime(day_txt) >= newest
+    checks.append((
+        "qlib bin 新鲜度", bin_ok,
+        f"末次 dump {_fmt_mtime(day_txt)}" if bin_ok else
+        f"bin 落后（{_fmt_mtime(day_txt)}，{stale}）；先跑 "
+        f"/usr/bin/python3.10 {dump_py}"))
+    h5_ok = os.path.exists(h5) and os.path.getmtime(h5) >= newest
+    checks.append((
+        "源数据面板 daily_pv.h5", h5_ok,
+        f"末次生成 {_fmt_mtime(h5)}" if h5_ok else
+        f"面板落后（{_fmt_mtime(h5)}，{stale}）；先跑 "
+        f"QLIB_PROVIDER_URI={RDAGENT_QLIB_PROVIDER} conda run -n "
+        f"{RDAGENT_CONDA_ENV} python {pregen_py} {out_dir}"))
+    return checks
+
+
 def rdagent_preflight(output_dir=None):
     """RD-Agent(Q) 官方 factor 循环的逐项前置检查。
 
@@ -185,6 +273,9 @@ def rdagent_preflight(output_dir=None):
                    f"{RDAGENT_QLIB_PROVIDER} (末交易日 {data_end})" if data_ok
                    else f"{day_txt} 缺失：需把本线 qlib bin 放到 "
                         f"{RDAGENT_QLIB_PROVIDER}（见 config 的 RDAGENT_QLIB_PROVIDER）"))
+    # 数据"存在"不等于"可用"：行情缓存刷新过而 bin/面板没重建时，循环会在
+    # 旧面板上编码，故再比一道 mtime（本线无本地行情源时自动跳过）
+    checks += _rdagent_data_checks(output_dir)
     from llm_client import llm_available, describe_endpoint
     env_file = os.path.join(output_dir if output_dir
                             else RDAGENT_OUTPUT_DIR, ".env")
@@ -228,13 +319,27 @@ def try_official_rdagent(output_dir=RDAGENT_OUTPUT_DIR):
     print(f"  ▶️ RD-Agent(Q) 子进程启动: {' '.join(cmd)}")
     print(f"     （工作目录 {output_dir}，超时上限 "
           f"{RDAGENT_TIMEOUT_SEC}s，产物实时回显如下）")
+    if "CoSTEER_MAX_LOOP" in _ENV_DRIVER:
+        print(f"     coding 演化轮数 CoSTEER_MAX_LOOP="
+              f"{_ENV_DRIVER['CoSTEER_MAX_LOOP']}（由本仓库配置注入，"
+              f"优先于工作区 .env）")
+
+    def harvest(reason):
+        """循环没走通时也要把既有产物交回主线
+
+        驱动子进程在 finally 里做回收（崩溃轮也会写 factors.json），所以
+        超时/非零退出/根本没拉起来这三种情况下，factors.json 里往往仍有历轮
+        攒下的定义与官方 IC。早先这里直接 return None，等于把已烧掉的 LLM
+        时间整份丢掉，也是 ETF 线因子库里 0 条 official 的直接原因之一。"""
+        print(f"  ⚠️ {reason}；尝试回收既有产物（驱动崩溃轮也会写 factors.json）")
+        return _recover_factors(output_dir)
+
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True,
                                 cwd=output_dir, env=_ENV_DRIVER)
     except Exception as e:
-        print(f"  ⚠️ 子进程拉起失败: {type(e).__name__}: {e}")
-        return None
+        return harvest(f"子进程拉起失败: {type(e).__name__}: {e}")
     start, timed_out = time.time(), False
     for line in proc.stdout:
         print("    [RD-Agent] " + line.rstrip())
@@ -244,11 +349,9 @@ def try_official_rdagent(output_dir=RDAGENT_OUTPUT_DIR):
             break
     proc.wait()
     if timed_out:
-        print(f"  ⚠️ 超时 {RDAGENT_TIMEOUT_SEC}s 已终止，保留部分产物")
-        return None
+        return harvest(f"超时 {RDAGENT_TIMEOUT_SEC}s 已终止")
     if proc.returncode != 0:
-        print(f"  ⚠️ factor 循环退出码 {proc.returncode}")
-        return None
+        return harvest(f"factor 循环退出码 {proc.returncode}")
     print("  ✅ RD-Agent(Q) factor 循环执行完毕，回收产物...")
     return _recover_factors(output_dir)
 
@@ -279,7 +382,8 @@ def _recover_factors(output_dir):
                     # 随因子一路带到因子库/报告，供人工复核语义
                     "formulation": item.get("formulation", ""),
                 })
-            print(f"  ✅ 官方产出 {len(factors)} 个因子（{path}）")
+            print(f"  ✅ 官方产出 {len(factors)} 个因子（{path}，"
+                  f"落盘于 {_fmt_mtime(path)}）")
             return factors
     print("  ⚠️ 循环完成但未在产出目录找到 factors.json/result.json，"
           "详见子进程日志与 rdagent 会话目录")

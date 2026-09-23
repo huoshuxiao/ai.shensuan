@@ -15,9 +15,10 @@ _SRC = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.dirname(os.path.dirname(os.path.dirname(_SRC)))
 _COMMON = os.path.join(_REPO, "common", "src")
 
-# 本线目前只有 config（研究线：RD-Agent 产因子 + A 股截面评估，
-# 策略/回测/实盘暂时复用 ETF 线，等股票线要独立回测时再在此加目录）
-_OWN = ("config",)
+# 本线自有目录：config（参数）与 strategy（筛选层，日频信号与组合层回测共用）。
+# 子目录本身进 sys.path，所以里面的模块一律裸名导入（`from ashare_screen import …`），
+# 与 etf 线同一套约定；策略/回测/实盘的其余部分仍复用 ETF 线
+_OWN = ("config", "strategy")
 # 共享内核：整个 common/src 也挂上，log_kit / config_base 等根级模块在此解析
 _SHARED = ("", "core", "optimizer", "feedback", "report", "view")
 

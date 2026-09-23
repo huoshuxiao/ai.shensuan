@@ -42,19 +42,18 @@ import time
 import numpy as np
 import pandas as pd
 
-from config import (RDAGENT_OUTPUT_DIR, ASHARE_DAILY_H5,
-                    ASHARE_PORT_START, ASHARE_PORT_END,
-                    ASHARE_PORT_WARMUP_DAYS, ASHARE_PORT_TOP_N,
-                    ASHARE_PORT_HOLD, ASHARE_PORT_MIN_AMOUNT,
-                    ASHARE_PORT_MIN_LISTED, ASHARE_PORT_COST_ONE_WAY,
-                    ASHARE_PORT_LIMIT_UP, ASHARE_PORT_QUINTILES, ASHARE_SAMPLE,
-                    ASHARE_PORT_OUT)
-from factor_dsl import safe_eval
+from config import (RDAGENT_OUTPUT_DIR, ASHARE_PORT_START,
+                    ASHARE_PORT_MIN_AMOUNT, ASHARE_PORT_MIN_LISTED,
+                    ASHARE_PORT_COST_ONE_WAY,
+                    ASHARE_PORT_QUINTILES, ASHARE_PORT_TOP_N,
+                    ASHARE_PORT_HOLD, ASHARE_PORT_OUT)
+# 数据装载 / 派生宽表 / 因子求值 / 可交易闸门整段搬到 strategy/ashare_screen.py，
+# 与日频信号入口共用同一份实现：闸门口径出现第二种写法，回测结论就作废了
+from ashare_screen import (BENCH, build_matrices, factor_matrices, load_panel,
+                           tradable_mask)
 
 FACTORS_JSON = os.environ.get(
     "STOCK_FACTORS", os.path.join(RDAGENT_OUTPUT_DIR, "factors.json"))
-RAW_COLS = ["open", "high", "low", "close", "volume"]
-BENCH = "SH000300"
 TRADING_DAYS = 252
 
 # (标签, 表达式, 说明)。全部做多低分侧（对应截面 IC<0）。
@@ -88,95 +87,6 @@ SIGNALS = [
 ]
 
 
-def load_panel():
-    """读源数据转宽表，返回 (个股 open/close/volume 宽表, 基准开盘价序列)"""
-    print(f"[数据] 读取 {ASHARE_DAILY_H5}（约 0.8GB）...")
-    t0 = time.time()
-    raw = pd.read_hdf(ASHARE_DAILY_H5, key="data")
-    cols = {c.lstrip("$"): c for c in raw.columns}
-    df = raw[[cols[c] for c in RAW_COLS]]
-    df.columns = RAW_COLS
-    del raw
-
-    dt = df.index.get_level_values("datetime")
-    # 暖机窗口切在 START 之前，保证 START 首日就有满窗因子与 20 日均额
-    lo = pd.Timestamp(ASHARE_PORT_START) - pd.Timedelta(days=ASHARE_PORT_WARMUP_DAYS)
-    sl = dt >= lo
-    if ASHARE_PORT_END:
-        sl &= dt <= pd.Timestamp(ASHARE_PORT_END)
-    df = df.loc[sl]
-
-    inst = np.asarray(df.index.get_level_values("instrument"))
-    # 指数按 qlib 代码规则识别：沪市 SH000xxx、深市 SZ399xxx（与截面评估同一判据）
-    is_idx = np.array([(s[:2] == "SH" and s[2:].startswith("000"))
-                       or (s[:2] == "SZ" and s[2:].startswith("399")) for s in inst])
-    stocks = sorted(set(inst[~is_idx]))
-    if ASHARE_SAMPLE > 0:
-        # 等间隔抽样而非「前 N 只」：代码排序下前 300 只全是北交所（BJ4xxxxx），
-        # 拿它冒烟会让流动性闸门整段清零，误判成脚本没跑起来
-        step = max(1, len(stocks) // ASHARE_SAMPLE)
-        stocks = stocks[::step][:ASHARE_SAMPLE]
-    bench_open = (df.loc[inst == BENCH, "open"].droplevel("instrument").sort_index()
-                  if (inst == BENCH).any() else pd.Series(dtype="float32"))
-    df = df.loc[~is_idx]
-    print(f"[数据] {df.shape[0]:,} 行 / {time.time() - t0:.0f}s，个股 {len(stocks)} 只，"
-          f"基准 {BENCH} {'有' if len(bench_open) else '无'}行情")
-
-    wide = {}
-    for f in ("open", "close", "volume"):
-        m = df[f].unstack("instrument")
-        wide[f] = m.reindex(columns=stocks).astype("float32")
-        del m
-    del df
-    return wide, bench_open
-
-
-def build_matrices(wide):
-    """派生宽表：开盘到开盘收益（含 0 填充版）、已有行情天数、20 日均成交额（元）
-
-    qlib cn_data 的 $volume 单位是**手**（1 手 = 100 股），故 close·volume 要 ×100
-    才是人民币成交额。已用两只票核过单位：茅台 2026-09-22 close 304.93 × vol 1.01e5
-    ×100 = 30.8 亿元、浦发 6.14 × 7.84e5 ×100 = 4.8 亿元，均与实际日成交额同级；
-    不乘 100 会把全市场成交额压低两个数量级、流动性闸门形同虚设。"""
-    op, cl, vol = wide["open"], wide["close"], wide["volume"]
-    # fill_method=None：停牌缺口不前值填充，缺口收益落在复牌首日（对持有人即应得）
-    ret = op.astype("float64").pct_change(fill_method=None).astype("float32")
-    return {"open": op, "close": cl, "volume": vol, "ret_open": ret,
-            "ret_open0": ret.fillna(0.0),
-            "listed_days": cl.notna().cumsum(),
-            "amount20": (cl * vol * 100.0).rolling(20).mean()}
-
-
-def factor_matrices(exprs, mtx):
-    """按主线 DSL 逐标的求值因子（与截面评估同一条求值路径，不另写一套）
-
-    safe_eval 的求值环境会绑定 open/high/low/close/volume 五个裸名列，缺任一列
-    即整式抛错，故本批表达式虽不用 high/low，仍按「等于 close」补齐占位。"""
-    out = {e: {} for e in exprs}
-    for code in mtx["close"].columns:
-        cl = mtx["close"][code]
-        df = pd.DataFrame({"open": mtx["open"][code], "high": cl, "low": cl,
-                           "close": cl, "volume": mtx["volume"][code]})
-        for e in exprs:
-            try:
-                out[e][code] = safe_eval(e, df)
-            except Exception:
-                pass
-    return {e: pd.DataFrame(v).reindex(index=mtx["close"].index,
-                                       columns=mtx["close"].columns)
-            .astype("float32") for e, v in out.items()}
-
-
-def _gates(s, d1, f, mtx):
-    """信号日 s 上每只标的是否可交易；返回 (可选池布尔, 涨停剔除数)"""
-    ok = (f.loc[s].notna()
-          & (mtx["listed_days"].loc[s] >= ASHARE_PORT_MIN_LISTED)
-          & (mtx["amount20"].loc[s] >= ASHARE_PORT_MIN_AMOUNT))
-    gap = mtx["open"].loc[d1] / mtx["close"].loc[s] - 1
-    n_limit = int((ok & gap.notna() & (gap >= ASHARE_PORT_LIMIT_UP)).sum())
-    return ok & gap.notna() & (gap < ASHARE_PORT_LIMIT_UP), n_limit
-
-
 def run_signal(f, col_of, days, mtx, n, hold, universe, quintiles=0):
     """单信号 × 单规模回放。返回 (扣费后日收益, 统计 dict, 五分位日收益 list)"""
     w = np.zeros((len(days), f.shape[1]), dtype="float32")
@@ -186,7 +96,7 @@ def run_signal(f, col_of, days, mtx, n, hold, universe, quintiles=0):
     prev, phis, n_rebal, amounts, limits = None, [], 0, [], []
     for i in range(0, len(days) - hold - 1, hold):
         s, d1, j = days[i], days[i + 1], i + 1
-        ok, n_limit = _gates(s, d1, f, mtx)
+        ok, n_limit = tradable_mask(s, d1, f, mtx)
         cand = f.loc[s].where(ok).dropna()
         if len(cand) < n:
             continue

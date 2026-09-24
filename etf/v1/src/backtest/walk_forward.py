@@ -1,16 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Walk-forward 验证（滚动训练-检验 + DSR + PBO）
+"""Walk-forward 验证（滚动训练-检验 + 逐折 DSR + 跨折稳定性）
 
 对抗"全样本挑最优"的过拟合：时间轴切若干折，每折只用训练段
 挖因子，在之后的测试段模拟交易；测试段表现才是可信的样本外证据。
-试验次数（n_trials）逐折累计喂给 DSR。"""
+试验次数（n_trials）逐折累计喂给 DSR。本模块不出 PBO，原因见末尾注释。"""
 
 import numpy as np
 import pandas as pd
-from config import WALK_FORWARD, DSR, PBO as PBO_CFG
+from config import WALK_FORWARD, DSR
 from dsr import deflated_sharpe_ratio, TrialCounter
 from frequency_adapter import get_adapter
-from pbo import cscv_pbo, build_returns_matrix
 
 
 def make_splits(timestamps):
@@ -46,7 +45,13 @@ def _dsr_from_equity(equity, n_trials):
         return {"dsr": 0.0, "passed": False}
     r = deflated_sharpe_ratio(rets, n_trials=n_trials)
     if "sr_observed" in r:
-        r["sharpe_annual"] = get_adapter().annualize_sharpe(r["sr_observed"])
+        ann = get_adapter()
+        r["sharpe_annual"] = ann.annualize_sharpe(r["sr_observed"])
+        # 门槛同批年化：逐 bar 的 SR* 只有千分之几，不换算就看不出
+        # "没过 DSR" 是成绩差还是门槛本身被量纲撑大了
+        if "sr0_expected_max" in r:
+            r["sr0_annual"] = round(
+                ann.annualize_sharpe(r["sr0_expected_max"]), 4)
     return r
 
 
@@ -57,13 +62,13 @@ def walk_forward_run(pool, universe, factor_fn, backtest_fn,
     信号生成/回测用 pool 全量（策略内部 .loc[:ts] 天然不越界，
     测试区间由 test_ts 边界控制）。每折挖出的因子数计入 TrialCounter，
     使后续折的 DSR 门槛随累计试验次数收紧。"""
-    print("\n========== Walk-forward + DSR + PBO ==========")
+    print("\n========== Walk-forward + 逐折 DSR ==========")
     # 与主流程一致：时间轴取最长历史标的，短历史首位标的会截断分折窗口
     ref_code = max(pool, key=lambda c: len(pool[c]))
     all_ts = pool[ref_code].index
     splits = make_splits(all_ts)
     tc = trial_counter or TrialCounter()
-    all_stats, all_dsr, fold_equities = [], [], {}
+    all_stats, all_dsr = [], []
 
     for i, (tr_s, tr_e, te_s, te_e) in enumerate(splits):
         print(f"\n--- 折 {i + 1}/{len(splits)} ---")
@@ -94,15 +99,21 @@ def walk_forward_run(pool, universe, factor_fn, backtest_fn,
         result = backtest_fn(pool, signals, universe, None)
         stats = result["stats"]
         equity = result["equity"]["equity"]
-        fold_equities[f"fold_{i+1}"] = equity
-        dsr_result = _dsr_from_equity(equity, DSR.get("n_trials") or tc.get())
+        n_trials_now = DSR.get("n_trials") or tc.get()
+        dsr_result = _dsr_from_equity(equity, n_trials_now)
         print(f"  测试段: 收益={stats.get('总收益率')}  "
               f"夏普={stats.get('夏普比率')}  "
               f"交易={stats.get('交易次数')}  "
-              f"DSR={dsr_result.get('dsr', 0):.4f}")
+              f"DSR={dsr_result.get('dsr', 0):.4f}（累计试验 N={n_trials_now}"
+              f"，运气门槛年化={dsr_result.get('sr0_annual')}）")
         stats["fold"] = i + 1
+        stats["测试段bar数"] = int(len(test_ts))
+        stats["n_trials"] = n_trials_now
         stats["DSR"] = round(dsr_result.get("dsr", 0), 4)
         stats["DSR通过"] = dsr_result.get("passed", False)
+        # 门槛与 DSR 并排放：只报 DSR 就看不出"差多少"，而 DSR 是个概率、
+        # 年化夏普才是能被业务读出来的量
+        stats["运气门槛年化"] = dsr_result.get("sr0_annual")
         # 记录本折实际验证的因子来源，便于发现"只验了注册表基线"这类退化
         stats["折内因子数"] = len(factors)
         stats["折内因子来源"] = "/".join(sorted(
@@ -112,21 +123,27 @@ def walk_forward_run(pool, universe, factor_fn, backtest_fn,
 
     summary = {}
     if all_stats:
+        sharpes = np.array([float(s["夏普比率"]) for s in all_stats])
         summary = {
             "折数": len(all_stats),
+            "验证段合计bar": int(sum(s["测试段bar数"] for s in all_stats)),
             "平均收益": np.mean([float(s["总收益率"].strip("%"))
                               for s in all_stats]),
-            "平均夏普": np.mean([float(s["夏普比率"]) for s in all_stats]),
+            "平均夏普": float(sharpes.mean()),
+            # 各折是不同时间段，样本外夏普跨折的离散度就是"这条结论稳不稳"
+            "夏普跨折std": (float(sharpes.std(ddof=1))
+                          if len(sharpes) > 1 else 0.0),
+            "正夏普折数": int((sharpes > 0).sum()),
             "平均DSR": np.mean(all_dsr),
             "DSR通过折数": sum(1 for d in all_dsr if d > 0.95)}
 
+    # 这里**不再**算 PBO。旧实现把各折测试段净值喂给 cscv_pbo：折与折的时间段
+    # 互不相交，build_returns_matrix 对齐后每列只有自己那段非零、其余填 0，
+    # 于是"IS 上选冠军"退化成"看这一段的日历落在哪折"，冠军的 OOS 排名只能取
+    # {1/4, 2/4, 3/4}（3 折实测 PBO=0.9444，纯切分假象）。CSCV 的前提是 N 个
+    # 配置在同一条时间轴上竞争，walk-forward 的折不满足；参数选择偏差那部分
+    # 由 main.py 的策略级配置族 PBO（真实回测过的 OFAT 档）承担。
     pbo_result = {}
-    if PBO_CFG["enabled"] and len(fold_equities) >= 3:
-        rets_df = build_returns_matrix(fold_equities)
-        pbo_result = cscv_pbo(rets_df, n_splits=PBO_CFG["n_splits"],
-                              max_combinations=PBO_CFG["max_combinations"])
-        summary["PBO"] = round(pbo_result.get("pbo", 1), 4)
-        summary["PBO通过"] = pbo_result.get("passed", False)
 
     print("\n--- Walk-forward 汇总 ---")
     for k, v in summary.items():

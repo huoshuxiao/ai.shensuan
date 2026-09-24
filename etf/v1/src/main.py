@@ -294,6 +294,8 @@ def stage_validation(raw_factors, pool, universe, all_ts, eq, tc,
         pd.DataFrame(wf["folds"]).to_csv(
             f"{RESULTS_DIR}/walk_forward_{FREQ}.csv",
             index=False, encoding="utf-8-sig")
+        # 跨折汇总（验证段合计长度、夏普跨折 std、正夏普折数）不在这里另落一份：
+        # 它们全是折表的纯函数，多看板/入口各算一次即可，两个出处只会漂
     if WALK_FORWARD["enabled"]:
         safe_stage("Walk-forward 验证", _wf)
 
@@ -315,7 +317,9 @@ def stage_validation(raw_factors, pool, universe, all_ts, eq, tc,
     def _pbo_config_family():
         """构造真实配置族的收益矩阵，供 CSCV 判断"挑参数"这件事本身
         有多大概率是过拟合。任一环节不满足（无终态因子/净值太短/回测全
-        失败）时返回 None，让 strategy_level_pbo 退化为伪变体族。
+        失败）时返回 None，让 strategy_level_pbo 退化为伪变体族 —— 退化
+        必须出声，因为伪变体族的 PBO 只测"对微小扰动的敏感度"，不含参数
+        选择偏差，却同样以 passed=True 的形态进入生命周期与重挖判据。
 
         配置族 = 终态因子集（含研究侧 ICIR 权重）× OFAT 风控参数邻域，
         每档跑一次全样本回测；除风控档外，信号口径与第 6 步完全一致，
@@ -324,6 +328,9 @@ def stage_validation(raw_factors, pool, universe, all_ts, eq, tc,
         if not (STRATEGY_PBO.get("use_config_family") and factors
                 and risk_params and len(eq) >=
                 STRATEGY_PBO["min_equity_bars"]):
+            print("  ⚠️ 真实配置族前置条件不满足（开关/终态因子/风控参数/"
+                  f"净值 ≥{STRATEGY_PBO['min_equity_bars']} bar），"
+                  "改用伪变体族：下面的 PBO 不含参数选择偏差")
             return None
         try:
             from pbo import collect_config_equities, build_returns_matrix
@@ -336,7 +343,16 @@ def stage_validation(raw_factors, pool, universe, all_ts, eq, tc,
                 IntradayRotationStrategy,
                 type(get_backtester(pool, universe, risk_params)),
                 all_ts=all_ts, strategy_kwargs={"factor_weights": weights})
+            if len(eqs) < len(sets):
+                # collect_config_equities 逐档 try/except 吞异常，档数缩水
+                # 只在 n_configs 里体现，不喊出来会被当成"配置族就这么大"。
+                # 列名固定是 {因子集名}_{风控档名}，此处因子集名只有 "final"
+                got = {k.split("_", 1)[1] for k in eqs}
+                print(f"  ⚠️ 配置族 {len(sets)} 档只有 {len(eqs)} 档回测成功，"
+                      f"被丢掉的是风控档 {[k for k in sets if k not in got]}")
             if len(eqs) < 3:
+                print("  ⚠️ 可比的回测成功档 <3，改用伪变体族："
+                      "下面的 PBO 不含参数选择偏差")
                 return None
             return build_returns_matrix(eqs)
         except Exception as e:
@@ -496,7 +512,9 @@ def main():
         return
 
     tc = TrialCounter()
-    tc.reset()
+    # 不 reset：trial_counter.json 是"这条研究线到目前为止一共试过多少个因子
+    # 变体"的持久账本，每次跑批清零会让 DSR 的多重检验门槛永远停在当轮因子数
+    # （09-23 实测账本 61 → 09-24 跑完变 3，门槛随之塌回原样）。
     # 时间轴锚定历史最长的标的：池按成交额排序，首位常是近年新 ETF，
     # 若以它作参考会把全部阶段截到短历史，长历史代表（如 510050 2005 起）闲置
     ref_code = max(pool, key=lambda c: len(pool[c]))
@@ -534,16 +552,11 @@ def main():
     print(f"  信号长表 {len(signals)} 行 / "
           f"{signals.index.nunique()} 次调仓（稀疏：只在调仓 bar 出行）")
 
-    # 7. 回测 + DSR
+    # 7. 回测
     print("\n[7/9] 回测...")
     bt = get_backtester(pool, universe, risk_params)
     result = bt.run(signals)
     eq = result["equity"]["equity"]
-    rets = eq.pct_change().dropna().values
-    n_trials = DSR.get("n_trials") or tc.get()
-    dsr_res = deflated_sharpe_ratio(rets, n_trials=n_trials)
-    dsr_res["sharpe_annual"] = adapter.annualize_sharpe(
-        dsr_res.get("sr_observed", 0))
 
     # 8. 验证（walk-forward / PBO / 多策略）
     print("\n[8/9] 稳健性验证...")
@@ -551,6 +564,21 @@ def main():
                                           all_ts, eq, tc,
                                           factors=factors, weights=weights,
                                           risk_params=risk_params)
+
+    # 全样本 DSR 必须排在验证之后：折内挖因子是往同一个 tc 上累加试验次数
+    # （walk_forward 的 tc.add），先算的话门槛用的是"本折之前"的计数，
+    # 实测 n_trials 恒为 3（只数上了主链的注册表基线）。
+    rets = eq.pct_change().dropna().values
+    n_trials = DSR.get("n_trials") or tc.get()
+    dsr_res = deflated_sharpe_ratio(rets, n_trials=n_trials)
+    dsr_res["sharpe_annual"] = adapter.annualize_sharpe(
+        dsr_res.get("sr_observed", 0))
+    # 门槛一并年化：逐 bar 的 SR* 与年化 SR̂ 放在一起才看得出差距是真差距
+    dsr_res["sr0_annual"] = round(adapter.annualize_sharpe(
+        dsr_res.get("sr0_expected_max", 0)), 4)
+    print(f"  全样本 DSR={dsr_res.get('dsr', 0):.4f}  "
+          f"SR̂_ann={dsr_res['sharpe_annual']:.4f}  "
+          f"运气门槛 SR*_ann={dsr_res['sr0_annual']}  N={n_trials}")
 
     # 9. 分析与闭环
     print("\n[9/9] 分析与反馈闭环...")

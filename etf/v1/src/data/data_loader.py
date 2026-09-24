@@ -42,6 +42,7 @@ class DataLoader:
         self.is_intraday = FREQ_MAP[self.freq]["is_intraday"]
         os.makedirs(CACHE_DIR, exist_ok=True)
         self._mirror_end = None
+        self._stale_codes = []
 
     def _cache_path(self, code: str) -> str:
         return os.path.join(CACHE_DIR, f"{code}_{self.freq}.csv")
@@ -89,6 +90,20 @@ class DataLoader:
         df = df.loc[BACKTEST_START:BACKTEST_END]
         return df if not df.empty else None
 
+    def _cache_is_stale(self, df) -> bool:
+        """缓存的末日落后全市场镜像的批次末尾 ⇒ 本轮不能用它。
+
+        判据是「落后于本机已知的最新一天」而不是「旧于今天」：`DataLoader` 原先
+        见到缓存就原样返回，于是日更没跑的那几天里，回测安静地算着上周的净值
+        （09-24 实测 20 只池缓存全止于 09-18，而同机的镜像止于 09-22）。
+        分钟线没有镜像可比，恒判为不陈旧。"""
+        if self.is_intraday or df is None or df.empty:
+            return False
+        end, last = self._mirror_batch_end(), str(df.index[-1])[:10]
+        if not end or not last:
+            return False
+        return pd.Timestamp(last) < pd.Timestamp(end)
+
     def load(self, code: str, use_cache: bool = True) -> pd.DataFrame:
         """加载单只 ETF 数据：主线缓存 → 全市场镜像 → 网络源（按优先级降级）"""
         cache_file = self._cache_path(code)
@@ -96,14 +111,20 @@ class DataLoader:
             try:
                 df = pd.read_csv(cache_file,
                                   parse_dates=[self._time_col()])
-                return df.set_index(self._time_col())
+                df = df.set_index(self._time_col())
+                if not self._cache_is_stale(df):
+                    return df
+                self._stale_codes.append(code)
             except Exception:
                 pass
 
+        from_cache = os.path.exists(cache_file)
         mirrored = None if self.is_intraday else self._load_mirror(code)
         if mirrored is not None:
             print(f"    📦 {code} 取全市场镜像 {self.freq} "
                   f"{len(mirrored)} bar（止于 {mirrored.index[-1].date()}）")
+            if from_cache:      # 只自愈已有的缓存，不给镜像里没有的标的凭空建档
+                mirrored.to_csv(cache_file, encoding="utf-8-sig")
             return mirrored
 
         sources = DATA_SOURCES["intraday" if self.is_intraday
@@ -216,6 +237,7 @@ class DataLoader:
         """批量加载"""
         pool = {}
         min_bars = 60 if self.freq == "daily" else 240
+        self._stale_codes = []
         print(f"  加载 {len(codes)} 只 ETF [{self.freq}]...")
         for i, code in enumerate(codes):
             df = self.load(code)
@@ -226,6 +248,13 @@ class DataLoader:
                 print(f"    已加载 {i + 1}/{len(codes)}")
         print(f"  实际加载成功: {len(pool)} 只 "
               f"(平均 {sum(len(d) for d in pool.values()) // max(len(pool), 1)} bar)")
+        if self._stale_codes:
+            # 一只一行地报会淹掉日志，聚合成一行：读了旧缓存的标的数量 + 补救入口
+            print(f"  ⚠️ {len(self._stale_codes)} 只的本地缓存落后全市场镜像，"
+                  f"本轮已改用镜像/网络源（例 "
+                  f"{self._stale_codes[:5]}）；要根治就跑 "
+                  f"`python data/update_etf_daily.py`")
+            self._stale_codes = []
         return pool
 
 

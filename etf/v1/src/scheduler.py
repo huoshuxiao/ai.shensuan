@@ -28,6 +28,15 @@ def _run(script, *args):
         print(proc.stderr)
 
 
+def daily_data_update():
+    """日线镜像 + 池缓存 + 风险面板拉到源方最新可得日，跑完再进 feedback。
+
+    09-24 17:58 实测：新浪的 T 日日线要到 **T+1** 才出（当日只有 tx 有 09-24，
+    而 tx 是整段缩放的口径，过不了 `update_etf_daily` 的重叠残差闸）⇒ 本点位拿到
+    的是 T−1，这是源方上限，不是抓取时刻不够晚。"""
+    _run("data/update_etf_daily.py")
+
+
 def daily_feedback():
     _run("run_feedback.py", "--auto", "--llm", "daily")
 
@@ -43,6 +52,7 @@ def monthly_report():
 def main():
     setup_logging("scheduler")
     schedule.every().monday.at("09:00").do(weekly_retrain)
+    schedule.every().day.at("15:20").do(daily_data_update)
     schedule.every().day.at("15:30").do(daily_feedback)
     schedule.every(30).days.at("09:00").do(monthly_report)
     print("⏰ 定时任务已启动")

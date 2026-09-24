@@ -28,6 +28,8 @@
                20 日均成交额 >= 3000 万元（容量）/ 近 10 日单日成交额**谷值** >= 3000 万
                （连续低量不买：天天有量才算，峰值读法实测与均值闸同义）/
                建仓日开盘未涨停（涨跌停近似）
+               另有第六道规模闸（#17 的份额面板，`ETF_MIN_SCALE`，**默认 5 亿**，
+               09-24 定档；选档过程与代价见 CHANGELOG 同节，`=0` 回到 #14 口径）
                基准的"可投域"取同一道闸门的矩阵式（EA.universe_mask），不分叉
 
 基准给两条，差在哪一目了然
@@ -92,6 +94,30 @@ def bench_ret(m, code=EA.BENCH_CODE):
     if code not in m["ret_open"].columns:
         return None
     return m["ret_open"][code].rename(f"buyhold_{code}")
+
+
+def _risk_line(rk):
+    """`EA.risk_readout` 的 dict → 一行体检文本（只报读数，不判生死）。
+
+    措辞上刻意不写"末日"：规模/折溢价是每只标的**各自最近可读到**的那一天。日线
+    镜像的按市场滞后已由 `data/update_etf_daily.py`（#19）拉平，但份额披露节奏仍
+    不同（沪市只有月末快照），所以同一个截面日期并不存在。这行是体检报告，
+    不参与任何判据。
+
+    折溢价必须连着只数与格子数一起读：09-24 复核后这条腿已是全池口径（过闸 379 只
+    只只可算，中位 −0.02% 贴着 0），但格子总共 408 个 = 每只只攒到一天多，且最大
+    |·| 全在纳指 QDII 上（额度溢价混着境外前收的时差，本机分不开）。
+    详见 `EA.premium_matrix` 的两条坑。
+    """
+    prem = ("无一只可算" if not rk["n_prem_known"] else
+            f"{rk['n_prem_known']} 只有净值（格子 {rk['n_prem_cells']}、"
+            f"中位 {rk['prem_med']:+.2%}、最大 |·| {rk['prem_max_abs']:.2%}）")
+    return (f"{rk['n']} 只过闸标的（各取最近可读日）：规模可读 {rk['n_scale_known']} 只"
+            f"（中位 {rk['scale_med']:.1f} 亿、最小 {rk['scale_min']:.1f} 亿）"
+            f"｜清盘线（连续 {EA.CLEAR_DAYS} 日 <{EA.CLEAR_LINE / 1e8:.1f} 亿）"
+            f"已越线 {rk['n_clearing_line']} 只、过半程 {rk['n_near_line']} 只"
+            f"｜折溢价 {prem}"
+            f"｜份额面板可读格子 {EA.SCALE_COVERAGE['share_cells']:.1%}")
 
 
 def dedupe_by_corr(facs, weights, keep_max=None):
@@ -181,6 +207,15 @@ def main():
           f"（次新/容量/连续低量共剔 {int((q_last & ~dom_last).sum())} 只）；"
           f"全期日均过闸 {universe.sum(axis=1).mean():.0f} 只"
           f"｜成本口径 {EA.COST_MODE}，档位 {EA.SLIP_TIERS}")
+    import fetch_etf_risk_panel as RP
+    if RP.has_table(RP.SHARES_SSE_OUT) or RP.has_table(RP.SHARES_SZSE_OUT):
+        gate = (f"规模 >= {EA.MIN_SCALE / 1e8:.1f} 亿（已生效）" if EA.MIN_SCALE > 0
+                else "未启用（ETF_MIN_SCALE=0）")
+        print(f"[规模闸] {gate}｜" + _risk_line(EA.risk_readout(
+            m, codes=m["close"].columns[dom_last.values])))
+    else:
+        print(f"[规模闸] 未启用（{RP.RISK_DIR} 里还没有份额表，"
+              f"跑 data/fetch_etf_risk_panel.py --daily / --backfill-shares）")
     ew_all, ew_uni = EA.equal_weight_benchmarks(m, universe=universe)
     b300 = bench_ret(m)
 

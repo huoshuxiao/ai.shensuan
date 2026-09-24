@@ -26,6 +26,11 @@ os.environ.pop("ETF_LLM_BASE_URL", None)
 # official 源在 ETF 线默认打开（见 config），但一轮循环 ≈50min 且要
 # conda+docker 沙箱，测试环境一律显式关闭，防止任何用例误拉起子进程
 os.environ["ETF_RDAGENT_OFFICIAL_FALLBACK"] = "false"
+# 规模闸在生产里默认开（5 亿，见 etf_admission.MIN_SCALE），但它要读 `data/risk/`
+# 的份额长表 —— 而本文件的 `ETF_DATA_DIR` 已经指到临时空目录，闸门就会在
+# `load_scale_matrix` 里 SystemExit。测试测的是其余几道闸的语义，一律关掉；
+# 规模闸自己的语义在 test_etf_admission 第 12 节用**内存假面板**显式覆盖。
+os.environ["ETF_MIN_SCALE"] = "0"
 
 sys.path.insert(0, SRC)
 import _bootstrap  # noqa: E402,F401

@@ -8,7 +8,7 @@
 2. 前向 h 日收益 + 份额折算护栏（跨伪影日的整段作废，不跨的一个数都不变）
 3. 分层归组、单调性、高分侧换手
 4. 判重的 complete-case 逐日两两相关（含时间错位必须接近 0）
-5. 组合回放的成本恒等式（平值池上净收益 = -首次建仓手续费）与四道可交易闸门
+5. 组合回放的成本恒等式（平值池上净收益 = -首次建仓手续费）与五道可交易闸门
 6. 池子装载的三道筛选是否真按 docstring 执行
 """
 
@@ -615,5 +615,60 @@ def test_topk_pays_per_name_slippage():
     _, _, s2 = EA.topk_rebalance(score, m, days, k=1, hold=10, cost=0.0006,
                                  min_listed=0, min_amount=1e6)
     assert s2["avg_cost_one_way"] == pytest.approx(0.0006)
+
+
+# ---------- 12. 规模面板：清盘线读数与"不知道 ≠ 规模小"（#17 的两张长表） ----------
+
+def _fake_shares(monkeypatch, sh):
+    """份额面板换成内存宽表：测试既不碰 `data/risk/`，也不碰网络。
+
+    `load_scale_matrix`/`risk_readout` 都是函数内 `import fetch_etf_risk_panel`，
+    改模块属性即可命中；`has_table` 一律关成 False ⇒ 净值那条腿留给单独的测试。
+    """
+    import fetch_etf_risk_panel as RP
+    monkeypatch.setattr(RP, "load_shares_matrix", lambda *a, **k: sh)
+    monkeypatch.setattr(RP, "has_table", lambda p: False)
+    return RP
+
+
+def test_scale_gate_never_removes_a_name_it_cannot_read(monkeypatch):
+    """规模闸只剔"知道它小"的：份额读不出来（NaN）一律放行。
+
+        A_{t,i} = shares_{t,i} × close_{t,i}
+    510300=1e9×10=100 亿、510310=1e6×10=0.1 亿、510320 整列没有份额记录。
+    沪市份额只有月末快照 ⇒ NaN 是数据源的结构性缺口，把"不知道"当"规模小"剔掉，
+    等于按 akshare 的披露节奏做投资决策。
+    """
+    m = EA.build_matrices(_streak_pool(dead_tail=False))
+    days = m["close"].index
+    sh = pd.DataFrame({"510300": 1e9, "510310": 1e6}, index=days)
+    _fake_shares(monkeypatch, sh)
+    ok = EA.universe_mask(m, min_listed=0, min_amount=1e6, min_scale=5e7).loc[days[-1]]
+    assert ok["510300"] and ok["510320"] and not ok["510310"]
+    # 关闸（min_scale=0，即默认）⇒ 510310 回来：剔掉它的只有规模那一道，不是别的门
+    assert EA.universe_mask(m, min_listed=0, min_amount=1e6).loc[days[-1]].all()
+
+
+def test_risk_readout_reads_each_name_own_last_readable_day(monkeypatch):
+    """镜像按市场滞后时，体检不能只读全池末日那一行。
+
+    09-24 实测：沪市日线到 09-22、深市 388 只停在 09-21，而深市份额恰好有 09-22。
+    旧写法 `aum.loc[aum.index[-1]]` 在滞后列上给 NaN ⇒ 打印"规模可读 0 只"，看着像
+    面板全废，其实只差一天。这里造同样的错位：510310 的日线少最后两天。
+    """
+    pool = _streak_pool(dead_tail=False, n=70)
+    pool["510310"].iloc[-2:] = np.nan          # 深市镜像滞后两天
+    m = EA.build_matrices(pool)
+    days = m["close"].index
+    sh = pd.DataFrame({"510300": 1e9, "510310": 1e6, "510320": np.nan}, index=days)
+    _fake_shares(monkeypatch, sh)
+    rk = EA.risk_readout(m, codes=["510300", "510310", "510320"])
+    assert rk["n"] == 3 and rk["n_scale_known"] == 2
+    assert rk["scale_min"] == pytest.approx(0.1)        # 0.1 亿，且不是来自末日那行
+    # 510310 天天 0.1 亿 < 0.5 亿，到它自己的最近可读日已连 68 日 ⇒ 越过 60 日线
+    assert rk["n_below_line"] == 1 and rk["n_clearing_line"] == 1
+    assert rk["streak_max"] == len(days) - 2
+    assert rk["n_prem_known"] == 0              # 净值这条腿被 has_table 关掉了
+
 
 

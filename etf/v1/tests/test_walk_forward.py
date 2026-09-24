@@ -100,6 +100,29 @@ def test_fold_dsr_annualization_uses_daily_adapter():
     res = _dsr_from_equity(eq.to_frame("equity")["equity"], n_trials=2)
     assert res["sharpe_annual"] == pytest.approx(
         res["sr_observed"] * np.sqrt(get_adapter("daily").bars_per_year))
+    # 运气门槛也要出年化读数：逐 bar 的 SR* 是千分位，报出来才知道没过
+    # DSR 是成绩差还是门槛被量纲撑大
+    assert res["sr0_annual"] == pytest.approx(
+        res["sr0_expected_max"] * np.sqrt(get_adapter("daily").bars_per_year),
+        abs=1e-4)
+
+
+def test_summary_reports_validation_span_and_no_fold_pbo():
+    """折与折的测试段互不相交，喂进 CSCV 只会得到切分假象（3 折实测
+    PBO=0.9444）。汇总必须出"验证段有多长"这类可核查读数，且不再出 PBO。"""
+    pool = make_daily_pool(n_codes=3, n_bars=1200)
+    total_bars = len(pool[next(iter(pool))].index)
+    wf = walk_forward_run(
+        pool, None,
+        lambda p, idx, fold=None: [_fake_factor(p)],
+        _fake_backtest, trial_counter=None)
+    s = wf["summary"]
+    assert wf["pbo"] == {} and "PBO" not in s
+    assert s["验证段合计bar"] == sum(r["测试段bar数"] for r in wf["folds"])
+    assert 0 < s["验证段合计bar"] < total_bars, "测试段不能铺满全样本"
+    # 假回测每折都给同一个夏普，故这里只验口径（非负、条数对齐）
+    assert s["夏普跨折std"] >= 0 and s["正夏普折数"] == len(wf["folds"])
+    assert all(r["n_trials"] >= 1 for r in wf["folds"])
 
 
 def test_fold_with_no_factors_is_skipped():

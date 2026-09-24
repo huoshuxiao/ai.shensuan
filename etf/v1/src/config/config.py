@@ -81,7 +81,9 @@ ETF_FILTER = {
 # ========== 截面组合（策略形态） ==========
 # 原形态是「每根 bar 只持有得分最高的 1 只、全进全出」：16 年只成交 12 笔，
 # DSR 的期望最大夏普与 PBO 的 CSCV 都没有足够独立观测可用（实测 DSR=0、
-# PBO 配置族 logits_std≈0）。改为按分数取前 top_k 只的横截面组合。
+# PBO 配置族 logits_std≈0。注：那句"DSR=0"后来查到还有一层量纲错——
+# sr_variance 写死 1.0 让日线门槛=年化 13.5，任何成绩都是 0，见 #15 与
+# backtest/dsr.py；top_k 改造解决的是独立观测不足，两者是两回事）。改为按分数取前 top_k 只的横截面组合。
 PORTFOLIO = {
     "top_k": 10,
     # equal: 1/k；score_prop: 按正分数占比（负分不参与，等价于绝对过滤）
@@ -131,6 +133,11 @@ RDAGENT_SOURCE_DIR = os.environ.get(
 RDAGENT_COSTEER_MAX_LOOP = os.environ.get("ETF_RDAGENT_COSTEER_MAX_LOOP", "8")
 
 # ========== Walk-forward ==========
+# 折数与起点尚未定档（CHANGELOG #15 待办列了四条路径）。已知的硬约束：
+# 每折测试段 bar 数直接决定该折 DSR 的门槛（T 越短、纯运气能摸到的夏普越高），
+# 现状 3 折 = 每折 402 bar → 过 DSR(0.95) 要年化夏普 2.86，而实测最好的折只有
+# 1.47；把折数加到 6 更要 4.06。也就是说"折内 DSR 全 False"是几何的产物，
+# 不是策略的判决 —— 门槛随几何变化的实测表见 shell/i15_fold_probe_0924.py。
 WALK_FORWARD = {"enabled": True, "n_splits": 3,
                 "train_ratio": 0.7,
                 "embargo_bars": LOOKBACK_BARS // 4,
@@ -261,6 +268,17 @@ UNIVERSE_ALL_DIR = os.environ.get(
 # 全市场 ETF 上市日期持久缓存 {code: "YYYY-MM-DD"}：按"最早上市"选代表
 # 需要先拿到所有候选的上市日期（逐只拉取），缓存后增量补拉
 ETF_LIST_DATE_CACHE = os.path.join(CACHE_DIR, "etf_list_dates.json")
+# ========== ETF 特有风险面板（份额 / 净值 / 规模 / 折溢价） ==========
+# 长表目录：由 `data/fetch_etf_risk_panel.py` **只增不改**地追加（那是它唯一的写权限），
+# 裁判链 `etf_admission.py` 与主线日更只读它。规模/折溢价都是派生量，**不落盘**：
+# 它们要用当日收盘价，而日线镜像每天在长，把派生量存成文件就等于存一份过期的真相。
+# 两份 derived 产物（折溢价与清盘线日报）走 RESULTS_DIR，与裁判链同源。
+RISK_DIR = os.environ.get("ETF_RISK_DIR", os.path.join(DATA_DIR, "risk"))
+RISK_SHARES_SSE = os.path.join(RISK_DIR, "shares_sse.csv")
+RISK_SHARES_SZSE = os.path.join(RISK_DIR, "shares_szse.csv")
+RISK_NAV_THS = os.path.join(RISK_DIR, "nav_ths.csv")
+RISK_PREMIUM_OUT = os.path.join(RESULTS_DIR, "etf_risk_premium.csv")
+RISK_CLEARING_OUT = os.path.join(RESULTS_DIR, "etf_risk_clearing.csv")
 TRIAL_COUNTER_FILE = os.path.join(CACHE_DIR, "trial_counter.json")
 PBO_RESULT_FILE = os.path.join(RESULTS_DIR, "pbo_result.json")
 

@@ -138,6 +138,28 @@ HOLD = int(os.environ.get("ETF_HOLD", "10"))
 # 合成打分取前几条因子（按 |RankICIR|）
 COMPOSITE_TOP = int(os.environ.get("ETF_COMPOSITE_TOP", "5"))
 
+# ========== 规模闸（#17：清盘线代理，2026-09-24 定为默认开启 5 亿） ==========
+# 0 ⇒ 不启用。选档过程与代价全部实测在 `shell/probe_etf_scale_gate_0924.py` →
+# `shell/etf_scale_gate_0924.log`，两档真实跑批在 `shell/ring2_scale_0924/`：
+#   关 162.7 只日均 / 2 亿 161.2 / **5 亿 153.7**；合成 k=10 净年化 +30.58% /
+#   +31.13% / +32.22%，回撤 −21.0% / −21.0% / **−17.1%**。
+# 取 5 亿的理由是**回撤那一档**（本轮所有改动里最大的一次风险改善），不是那 1.09pp
+# 净年化 —— 后者不 robust：同一档在 k=20 上把合成从 +28.41% 打到 +27.06%。所以这
+# 一道闸目前的身份是"风险控制阀"，其在样本外是否还站得住属 #15 的验证范围。
+# 已知软肋：份额面板里沪市只有月末快照（ffill≤25 交易日）⇒ 贴在线上的沪市标的读到的
+# 可能是上月末规模。#18（镜像滞后）解决后应复核这条线要不要换真净值口径。
+MIN_SCALE = float(os.environ.get("ETF_MIN_SCALE", "500000000"))
+# 份额的披露节奏两个市场完全不同：深市逐日、沪市只有月末快照 ⇒ 取最近一次披露
+# 向前填充。填充窗（交易日）就是"这条规模最多信多久"，超窗落回 NaN = 不知道，
+# 而不是拿三个月前的数字冒充今天的规模。
+SCALE_FFILL = int(os.environ.get("ETF_SCALE_FFILL", "25"))
+# 清盘条款本身（合同条款，非交易所规则）：连续 CLEAR_DAYS 个交易日资产净值 < 5000 万
+CLEAR_DAYS = int(os.environ.get("ETF_CLEAR_DAYS", "60"))
+CLEAR_LINE = float(os.environ.get("ETF_CLEAR_LINE", str(5e7)))
+# 规模面板的可读度回执，由 `load_scale_matrix` 填、入口脚本打印。单独一个 dict 是
+# 因为"覆盖了多少格子"决定了规模闸是判据还是装饰品 —— 每次开闸都必须看得见这个数。
+SCALE_COVERAGE = {"share_cells": np.nan, "share_dates": 0}
+
 # ========== 产物路径（只写 results/，文件名带 etf_ 前缀以区别主链产物） ==========
 FACTOR_EVAL_OUT = os.path.join(RESULTS_DIR, "etf_factor_eval.csv")
 FACTOR_LAYER_OUT = os.path.join(RESULTS_DIR, "etf_factor_layers.csv")
@@ -860,15 +882,191 @@ def amount_floor(m, low_run_days=AMT_STREAK):
     return m[key]
 
 
+def load_scale_matrix(m, ffill=SCALE_FFILL, verbose=True):
+    """份额面板（#17 采集器落的长表）× 本池收盘价 → 资产规模矩阵（date × code，元）。
+
+        A_{t,i} = shares_{t,i} × close_{t,i}
+    为什么用收盘而不是净值：本机拿不到净值历史（同花顺只有最新一日快照），但
+    实测 `(份额×收盘)/(份额×净值)` 的 P5~P95 = 0.991~1.023（中位 1.004）⇒ 前复权
+    收盘是合格的净值代理，误差远小于 5000 万这条线要判的量级差。净值攒够之后
+    （满 `CLEAR_DAYS` 个交易日）应把这里换成真净值，代理口径要一并撤掉。
+
+    缺口处理是这门口径的要害：深市份额逐日、沪市只有月末快照，两市场并集才是 100%
+    覆盖。所以份额先按 `ffill` 向前填充至多 `ffill` 个交易日 —— 它表达的是"这条
+    规模最多信多久"；超出窗口就是 NaN（不知道），**不是**"没有规模"，更不是 0。
+    NaN 在闸门里判 False ⇒ 规模闸不因此剔谁，缺数据的后果由 `verbose` 报出来。
+    """
+    import fetch_etf_risk_panel as RP       # 只读它的长表，绝不在裁判进程里触发抓取
+    key = f"scale_ffill{ffill}"
+    if key in m:
+        return m[key]
+    sh = RP.load_shares_matrix()
+    if sh.empty:
+        raise SystemExit(f"[规模闸] {RP.RISK_DIR} 里没有份额表，先跑 "
+                         f"data/fetch_etf_risk_panel.py --backfill-shares / --daily")
+    idx, cols = m["close"].index, m["close"].columns
+    sh = sh.reindex(index=idx, columns=cols).sort_index().ffill(limit=ffill)
+    aum = sh * m["close"]
+    m[key] = aum
+    if verbose or not SCALE_COVERAGE.get("share_dates"):
+        # 覆盖度是"这门口径能不能信"的读数，静默调用也要把它填上，
+        # 否则 risk_readout 打印的覆盖率会停在初值 NaN
+        want = m["close"].notna()
+        SCALE_COVERAGE["share_cells"] = float(
+            (aum.notna() & want).to_numpy().sum() / want.to_numpy().sum())
+        SCALE_COVERAGE["share_dates"] = int(sh.notna().any(axis=1).sum())
+    if verbose:
+        print(f"[规模面板] 份额 {sh.index.min().date()}~{sh.index.max().date()}"
+              f"（{SCALE_COVERAGE['share_dates']} 个披露日）"
+              f"｜深市 {'有' if RP.has_table(RP.SHARES_SZSE_OUT) else '无'}"
+              f" 沪市 {'有' if RP.has_table(RP.SHARES_SSE_OUT) else '无'}"
+              f"｜ffill={ffill} 交易日"
+              f"｜与日线对齐后可读格子 {SCALE_COVERAGE['share_cells']:.1%}")
+    return aum
+
+
+def streak_below(b, n=None):
+    """逐列累计"连续为真"的天数计数器（清盘线读数的载体）。
+
+        s_{t,i} = s_{t-1,i} + 1  若 b_{t,i}   否则 0
+    为什么自己写而不用 `rolling(n).min()`：`rolling` 要 n 个非 NaN 才吐数，而份额
+    面板的缺口结构性存在（沪市只有月末），那样算出的"连续 60 日"会因为一个空洞而
+    整段变 NaN —— 空洞在语义上是"不知道"，不是"没连续"。这里的递推把 NaN 当 False
+    （断掉计数），保守方向与规模闸一致：不确定时不判它该清盘。
+    O(T) 行、每行一次向量操作，1875×871 实测不到 0.1 秒。
+    """
+    v = b.fillna(False).values.astype(np.int64)
+    out = np.empty_like(v)
+    run = np.zeros(v.shape[1], dtype=np.int64)
+    for i in range(v.shape[0]):
+        run = np.where(v[i] == 1, run + 1, 0)
+        out[i] = run
+    return pd.DataFrame(out, index=b.index, columns=b.columns)
+
+
+def premium_matrix(m, ffill=5):
+    """折溢价矩阵（date × code，小数）：`prem = close / nav - 1`。
+
+    净值只有同花顺的当日快照（本机无净值历史，见 #17 探源），所以这张表**只能从
+    采集器开始攒的那天起算** —— 攒到第 4 个交易日就有 4 天可看，但窗口长度是
+    采集天数决定的，不是这里能挑的。`ffill` 只给 5 天：净值缺一天还可以说"昨天的
+    净值勉强能用"，缺一周就是节假日后或源方漏披露，那时候的"折溢价"其实是
+    6 天涨跌的累积，已经不是这个量的定义了。缺的地方一律 NaN。
+
+    两个必须连带读的坑（09-24 复核，日线镜像与净值同日都到 09-23）：
+      1) **覆盖靠"当天采到过净值"，不是历史长度**。池内 851 只里 814 只在 09-23 就有
+         当日净值，同日截面中位 **-0.033%**、P5 -0.745%、P95 +0.174% ⇒ 场内 ETF 的
+         折溢价本来就是"贴着 0"的量；剩下 37 只净值只到 09-22，被 ffill 顶上来那一格
+         混进了当日涨跌。#14 探源时写的"配对上只剩 13 只、全是 513 段、中位 +8.49%"
+         是**镜像比净值晚一天**造成的假稀疏，不是覆盖率上限，别再引用那组数。
+      2) **跨境段的大尾部不是算错，是用不了**。|折溢价| 最大的 12 只全是纳斯达克 QDII
+         （159509 纳指科技 +29.5%、159501 +14.3%、513100 +13.0%…）：里面既有外汇额度
+         限制的真溢价，也有 QDII 净值按境外市场**前一交易日**收盘算、盘中价已含当晚
+         涨跌的时差错位 —— 本机数据分不开这两份。把它当"买贵了"的信号用会系统性做空
+         美股行情。
+    """
+    import fetch_etf_risk_panel as RP
+    key = f"prem_ffill{ffill}"
+    if key in m:
+        return m[key]
+    nav = RP.load_nav_matrix()
+    if nav.empty:
+        raise SystemExit("[折溢价] 净值长表是空的，先跑 data/fetch_etf_risk_panel.py --daily")
+    nav = nav.reindex(index=m["close"].index,
+                      columns=m["close"].columns).sort_index().ffill(limit=ffill)
+    m[key] = m["close"] / nav - 1
+    return m[key]
+
+
+def clearing_streak(m, days=CLEAR_DAYS, line=CLEAR_LINE, ffill=SCALE_FFILL):
+    """清盘线条款计数器：连续多少个交易日 `A_{t,i} < line`（返回整数矩阵）。
+
+    条款原文是"连续 60 个工作日基金资产净值低于 5000 万 ⇒ 须发起清盘/合并"，
+    这里读的是**它的前置量**，不是"会不会清盘"的预测：一只连 40 天在 5000 万以下的
+    标的，即便最后没清盘，也已经是没人买、申赎套利盘不愿覆盖成本的状态。
+    规模用 `load_scale_matrix` 的代理口径（份额×收盘），因此沪市标的的连续段会被
+    月末快照 + ffill 撑长 —— 那是数据源的披露节奏，不是这只基金的属性，读数时
+    必须连带 `SCALE_COVERAGE` 一起看。
+    """
+    aum = load_scale_matrix(m, ffill=ffill, verbose=False)
+    # 只认"知道它低于线"的那些天：NaN 在 streak_below 里断计数，但必须先写清楚，
+    # 否则读者会以为缺口也参与连续段（份额有结构性缺口，见 load_scale_matrix）
+    return streak_below(aum.notna() & (aum < line))
+
+
+def _last_valid(row):
+    """一行的最后一个非 NaN 值（整列版本见 risk_readout 里的 apply）"""
+    row = row.dropna()
+    return row.iloc[-1] if len(row) else np.nan
+
+
+def risk_readout(m, codes=None, lookback=SCALE_FFILL):
+    """给一行的风险体检：清盘线连续天数 + 折溢价 + 规模分位（只读，不改判据）。
+
+    返回 dict 供入口打印。`codes` 一般传当日过闸名单 —— 关心的是"我正要买的这
+    几只风险如何"，全池的分布另有规模闸代价探针去量。
+
+    **每只标的各取自己"最近可读到"的那一天**，不取全池末日同一行：份额披露节奏按
+    市场不同（沪市只有月末快照），拿 `aum.loc[aum.index[-1]]` 这一行读数会得出一堆
+    假 0。（09-24 之前还叠着一条"日线镜像沪市到 09-22、深市停在 09-21"的错位，
+    已由 `data/update_etf_daily.py`（#19）拉平，取数口径本身不变。）
+    代价是这个读数没有共同的时间截面 —— 它是"体检报告"，不是"排序因子"，
+    绝不能进判据。
+    清盘线连续天数取该列最后一个**份额可读**日的计数（ffill 之内），否则月末快照
+    之外的日期会把连续段无声切断。
+    """
+    import fetch_etf_risk_panel as RP
+    aum = load_scale_matrix(m, verbose=False)
+    cols = list(codes) if codes is not None else list(aum.columns)
+    cols = [c for c in cols if c in aum.columns]
+    A = aum[cols]
+    streak = clearing_streak(m)[cols].where(A.notna()).ffill(limit=lookback).apply(_last_valid)
+    day = A.index.max()
+    a = A.apply(_last_valid) / 1e8
+    # 净值是"只能向前攒"的那条腿：一天都没有就不报折溢价，报 NaN 让人看不见
+    if RP.has_table(RP.NAV_THS_OUT):
+        P = premium_matrix(m)[cols]
+        prem = P.apply(_last_valid)
+        n_prem_cells = int(P.notna().sum().sum())
+    else:
+        prem = pd.Series(np.nan, index=cols)
+        n_prem_cells = 0
+    return {
+        "date": day,
+        "n": len(cols),
+        # 规模可读性分两个读数：末 lookback 窗内 + 过闸格子的全期占比。只看末日
+        # 单行会被日线镜像的市场错位带偏（深市份额有 09-22 而镜像停在 09-21 ⇒ 末日
+        # 交集为 0，看着像"面板全废"，其实只是差一天）
+        "n_scale_known": int(a.notna().sum()),
+        "cells_known": float((A.notna() & universe_mask(m)[cols]).to_numpy().sum()
+                             / max(1, universe_mask(m)[cols].to_numpy().sum())),
+        "n_clearing_line": int((streak >= CLEAR_DAYS).sum()),
+        "n_near_line": int(((streak >= CLEAR_DAYS // 2) & (streak < CLEAR_DAYS)).sum()),
+        "n_below_line": int((a < CLEAR_LINE / 1e8).sum()),
+        "scale_med": float(a.median()) if a.notna().any() else np.nan,
+        "scale_min": float(a.min()) if a.notna().any() else np.nan,
+        "prem_med": float(prem.median()) if prem.notna().any() else np.nan,
+        "prem_max_abs": float(prem.abs().max()) if prem.notna().any() else np.nan,
+        # 折溢价必须连着只数与格子数一起读：`prem_med` 是在这几只的"各自最近可读日"上
+        # 取的，格子数 = 这些标的在面板里一共占了几个交易日（09-24：过闸 379 只 = 379
+        # 格，即每只基本只有一天）。一比就知道这条腿还短到什么程度
+        "n_prem_known": int(prem.notna().sum()),
+        "n_prem_cells": n_prem_cells,
+        "streak_med": float(streak.median()) if streak.notna().any() else np.nan,
+        "streak_max": int(streak.max()) if streak.notna().any() else 0,
+    }
+
+
 def universe_mask(m, min_listed=MIN_LISTED, min_amount=MIN_AMOUNT,
-                  low_run_days=AMT_STREAK):
+                  low_run_days=AMT_STREAK, min_scale=MIN_SCALE):
     """可投域（宽表布尔，date × code）—— 闸门只有这一处定义，基准与回放共用。
 
         U_{t,i} = close 非缺失                    （当日真有行情）
                   且 listed_days >= min_listed
                   且 amount20 >= min_amount
                   且 min(amount_{t-low_run_days+1..t}) >= min_amount
-    四道都是"买不买得到"，不含任何"该不该买"。第一道必须写进来而不是留给调用方
+                  且 (min_scale <= 0 或 规模 A_{t,i} >= min_scale)
+    前四道都是"买不买得到"，不含任何"该不该买"。第一道必须写进来而不是留给调用方
     补：`listed_days` 是 cumsum(skipna)、成交额闸门的 rolling 也跳过 NaN，一只已
     退市/当日没有行情的标的在其余三道上**仍然为真**（实测末日这类有 11 只），
     域统计就会报出"过闸 489 / 有行情 478"这种自相矛盾的数。第三道是连续低量：
@@ -877,20 +1075,29 @@ def universe_mask(m, min_listed=MIN_LISTED, min_amount=MIN_AMOUNT,
     做归因时必须能单独撤掉它，否则新闸门和旧结论之间少了一级台阶。把它单列出来
     是因为基准域与建仓域必须是同一个：分开的两处写法一旦漂移，"超可投域"就变成了
     与一个不存在的域比较。
+
+    第五道（规模闸）**默认开在 5 亿**（`min_scale=MIN_SCALE=5e8`，2026-09-24 定档，
+    选档代价实测见 `MIN_SCALE` 那段注释）；`ETF_MIN_SCALE=0` 即关掉它，回到 #14 口径。
+    规模读不出来的格子（NaN）**不剔**：份额披露有结构性缺口（沪市只有月末），
+    "不知道"不能当"规模小"用。
     """
     thin = (amount_floor(m, low_run_days) < min_amount if low_run_days > 0
             else pd.Series(False, index=m["amount"].columns, dtype=bool))
-    return (m["close"].notna()
-            & (m["listed_days"] >= min_listed)
-            & (m["amount20"] >= min_amount)
-            & ~thin)
+    ok = (m["close"].notna()
+          & (m["listed_days"] >= min_listed)
+          & (m["amount20"] >= min_amount)
+          & ~thin)
+    if min_scale > 0:
+        aum = load_scale_matrix(m)
+        ok &= aum.isna() | (aum >= min_scale)
+    return ok
 
 
 def tradable_mask(m, s, d1=None, min_listed=MIN_LISTED, min_amount=MIN_AMOUNT,
-                  use_limit=True, low_run_days=AMT_STREAK):
+                  use_limit=True, low_run_days=AMT_STREAK, min_scale=MIN_SCALE):
     """信号日 s 的可交易闸门，返回 (布尔 Series, 被涨停挡掉的只数)。
 
-    五道，全是"能不能成交"而不是"该不该买"，前四道直接取 `universe_mask` 在 s 日
+    五道，全是"能不能成交"而不是"该不该买"，五道直接取 `universe_mask` 在 s 日
     那一行（闸门只有一处定义，基准域与建仓域不分叉）：
       1) 当日有 close（本池无停牌概念，缺行即未上市/已退市）
       2) listed_days >= min_listed（次新不买：建仓期跟踪误差未收敛）
@@ -899,12 +1106,16 @@ def tradable_mask(m, s, d1=None, min_listed=MIN_LISTED, min_amount=MIN_AMOUNT,
          看的是"这一个月平均有没有量"，这道看的是"最近是不是天天没人交易"，
          后者才是挂单出不去的形态。取谷值不取峰值：峰值只要一个月里碰巧放过一天量
          就放行，实测与均值闸几乎同义（末日剔 0 只），挡不住"偶尔放量"的僵尸基）
-      5) d1 给出时加涨停近似闸：O_{d1}/C_s - 1 >= 该标的涨跌停幅 ⇒ 买不进
+      5) 规模 A_{s,i} >= min_scale（#17 的规模闸，默认 `ETF_MIN_SCALE=5e8` 即 5 亿；
+         选档代价与"这一档目前算风险阀、不算 alpha"的定性见 `MIN_SCALE` 注释）
+    第六道在 `d1` 给出时叠在本函数里，不在 `universe_mask` 里 —— 它要用**明天**的
+    开盘价，而基准域是历史宽表，没有"明天"可言：
+      6) 涨停近似闸：O_{d1}/C_s - 1 >= 该标的涨跌停幅 ⇒ 买不进
          （科创板 ETF 段按 ±20%、其余 ±10%；深市创业板系无法从代码区分，
           对它们偏严，挡掉的只数逐次报出，读数的人自己判断影响）
-    d1=None 表示只回前四道（日频给名单时明天的开盘价还不存在）。
+    d1=None 表示不叠第六道（日频给名单时明天的开盘价还不存在），前五道照常生效。
     """
-    ok = universe_mask(m, min_listed, min_amount, low_run_days).loc[s]
+    ok = universe_mask(m, min_listed, min_amount, low_run_days, min_scale).loc[s]
     n_block = 0
     if use_limit and d1 is not None and d1 in m["open"].index:
         gap = m["open"].loc[d1] / m["close"].loc[s] - 1
@@ -959,7 +1170,8 @@ def icir_weights(stats, top=COMPOSITE_TOP, key="rank_icir", min_abs=0.05):
 
 
 def topk_rebalance(score, m, days, k, hold, cost=None,
-                   min_listed=MIN_LISTED, min_amount=MIN_AMOUNT):
+                   min_listed=MIN_LISTED, min_amount=MIN_AMOUNT,
+                   min_scale=MIN_SCALE):
     """每 hold 个交易日调一次、持有截面 top-k 等权的多头组合回放。
 
     时序（可执行口径）：信号日 s 收盘算分 → s+1 **开盘**建仓 → 持有 hold 日
@@ -992,7 +1204,8 @@ def topk_rebalance(score, m, days, k, hold, cost=None,
     n_missing = 0
     for i in range(0, len(days) - hold - 1, hold):
         s, d1 = days[i], days[i + 1]
-        ok, n_block = tradable_mask(m, s, d1, min_listed, min_amount)
+        ok, n_block = tradable_mask(m, s, d1, min_listed, min_amount,
+                                    min_scale=min_scale)
         cand = score.loc[s].where(ok).dropna()
         if len(cand) < max(1, k // 2):
             continue
@@ -1105,6 +1318,8 @@ def run_params():
             "min_cs": MIN_CS, "min_bars": MIN_BARS, "min_listed": MIN_LISTED,
             "min_ann_vol": MIN_ANN_VOL, "ret_limit": RET_LIMIT,
             "min_amount": MIN_AMOUNT, "amt_streak": AMT_STREAK,
+            "min_scale": MIN_SCALE, "clear_days": CLEAR_DAYS,
+            "clear_line": CLEAR_LINE, "scale_ffill": SCALE_FFILL,
             "cost_mode": COST_MODE, "slip_tiers": list(SLIP_TIERS),
             "horizons": list(HORIZONS),
             "quintiles": QUINTILES, "top_k": list(TOP_K), "hold": HOLD,

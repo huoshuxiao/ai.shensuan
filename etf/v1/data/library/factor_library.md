@@ -1,12 +1,12 @@
 # 因子库
 
-> 自动生成于 `2026-09-22 17:03:10` | 共 **26** 个因子
+> 自动生成于 `2026-09-24 09:31:34` | 共 **28** 个因子
 
 ## 📊 元信息
 
-- 总因子数: 26
-- 活跃: 26
-- 来源分布: {'genetic': 3, 'pipeline': 21, 'simple': 2}
+- 总因子数: 28
+- 活跃: 28
+- 来源分布: {'genetic': 3, 'pipeline': 23, 'simple': 2}
 - 截面口径(market): `etf` —— IC 只在同口径内可比
 
 ## 🏆 Top 20 因子
@@ -24,15 +24,15 @@
 | 9 | `gp_1` | 遗传规划因子2号 | -0.0226 | -0.667 | genetic | active |
 | 10 | `mogp_2` | 多目标遗传规划因子3号 | -0.0224 | +0.000 | pipeline | active |
 | 11 | `gp_3` | 遗传规划因子4号 | +0.0213 | +0.644 | pipeline | active |
-| 12 | `gp_4` | 遗传规划因子5号 | +0.0198 | +0.643 | pipeline | active |
-| 13 | `hybrid_7` | LLM-遗传混合因子8号 | +0.0192 | +0.000 | pipeline | active |
-| 14 | `hybrid_1` | LLM-遗传混合因子2号 | +0.0168 | +0.000 | pipeline | active |
-| 15 | `hybrid_2` | LLM-遗传混合因子3号 | -0.0159 | +0.000 | pipeline | active |
-| 16 | `gp_6` | 遗传规划因子7号 | -0.0152 | -0.453 | pipeline | active |
-| 17 | `mogp_4` | 多目标遗传规划因子5号 | -0.0150 | +0.000 | pipeline | active |
-| 18 | `volume_ratio_20` | 20日量比 | +0.0145 | +0.528 | pipeline | active |
-| 19 | `mogp_3` | 多目标遗传规划因子4号 | +0.0139 | +0.000 | pipeline | active |
-| 20 | `mogp_5` | 多目标遗传规划因子6号 | +0.0139 | +0.000 | pipeline | active |
+| 12 | `reversal_5` | 5日反转 | +0.0199 | +0.694 | pipeline | active |
+| 13 | `gp_4` | 遗传规划因子5号 | +0.0198 | +0.643 | pipeline | active |
+| 14 | `hybrid_7` | LLM-遗传混合因子8号 | +0.0192 | +0.000 | pipeline | active |
+| 15 | `hybrid_1` | LLM-遗传混合因子2号 | +0.0168 | +0.000 | pipeline | active |
+| 16 | `volatility_20` | 20日低波动 | -0.0159 | -0.501 | pipeline | active |
+| 17 | `hybrid_2` | LLM-遗传混合因子3号 | -0.0159 | +0.000 | pipeline | active |
+| 18 | `gp_6` | 遗传规划因子7号 | -0.0152 | -0.453 | pipeline | active |
+| 19 | `mogp_4` | 多目标遗传规划因子5号 | -0.0150 | +0.000 | pipeline | active |
+| 20 | `volume_ratio_20` | 20日量比 | +0.0145 | +0.528 | pipeline | active |
 
 ## 📈 指标说明
 
@@ -229,8 +229,8 @@ ts_mean(returns, 10)
 - **状态**: `active`
 - **来源**: `pipeline`
 - **截面口径**: `etf`
-- **IC**: +0.0136
-- **ICIR**: +0.389
+- **IC**: +0.0199
+- **ICIR**: +0.694
 - **首次发现**: 2026-09-20 10:56:10
 
 ---
@@ -484,5 +484,29 @@ ts_mean(ts_sum((-ts_mean(open, 240)), 60), 60)
 ```python
 (delta(ts_std(ts_sum(volume, 240), 20), 240) + (returns - (-abs(returns))))
 ```
+
+---
+
+### `volatility_20` · 20日低波动
+
+- **中文名**: 20日低波动
+- **状态**: `active`
+- **来源**: `pipeline`
+- **截面口径**: `etf`
+- **IC**: -0.0159
+- **ICIR**: -0.501
+- **首次发现**: 2026-09-24 09:31:34
+
+---
+
+### `momentum_20` · 20日动量
+
+- **中文名**: 20日动量
+- **状态**: `active`
+- **来源**: `pipeline`
+- **截面口径**: `etf`
+- **IC**: -0.0054
+- **ICIR**: -0.184
+- **首次发现**: 2026-09-24 09:31:34
 
 ---

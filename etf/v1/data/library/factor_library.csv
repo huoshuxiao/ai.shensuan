@@ -1,5 +1,5 @@
 ﻿name,cn_name,expr,ic,icir,source,market,status,first_seen,last_seen,updates
-gp_0,遗传规划因子1号,"ts_std(returns, 5)",-0.031,-0.8135,genetic,etf,active,2026-09-20 10:53:42,2026-09-24 18:50:54,14
+gp_0,遗传规划因子1号,"ts_std(returns, 5)",-0.031,-0.8135,genetic,etf,active,2026-09-20 10:53:42,2026-09-25 00:19:27,15
 gp_1,遗传规划因子2号,"ts_mean(((high / (volume * open)) + (delta((delta(close, 10) + (high / close)), 10) + (high / low))), 20)",-0.0306,-0.8854,genetic,etf,active,2026-09-20 10:53:42,2026-09-24 18:50:54,9
 gp_2,遗传规划因子3号,"ts_mean(((high / close) + (delta(close, 10) + (high / low))), 20)",0.0241,1.0006,genetic,etf,active,2026-09-20 10:53:42,2026-09-22 17:03:10,10
 mogp_0,多目标遗传规划因子1号,"delta(ts_std(abs(abs(high)), 10), 10)",0.0253,0.0,pipeline,etf,active,2026-09-20 10:56:10,2026-09-22 17:03:10,7

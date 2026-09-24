@@ -14,11 +14,19 @@ from config import (COMMISSION_RATE, INIT_CAPITAL, MIN_COMMISSION,
 from synth import make_flat_pool
 
 
-def _signals(idx, code, buy_at, exit_at):
-    """buy_at 起持有 code，exit_at 起空仓"""
-    target = ["" if ts < idx[buy_at] or ts >= idx[exit_at] else code
-              for ts in idx]
-    return pd.DataFrame({"target_code": target}, index=idx)
+def _signals(idx, code, buy_at, exit_at, weight=1.0):
+    """buy_at 起持有 code（目标权重 weight），exit_at 起转为空仓哨兵。
+
+    长表契约：index=日期、columns=[code, weight, score]，每根 bar 一行
+    （回测引擎只在权重目标变化时才真正下单）。"""
+    rows = []
+    for i, ts in enumerate(idx):
+        holding = buy_at <= i < exit_at
+        rows.append({"datetime": ts,
+                     "code": code if holding else "",
+                     "weight": weight if holding else 0.0,
+                     "score": 1.0 if holding else float("nan")})
+    return pd.DataFrame(rows).set_index("datetime")
 
 
 def test_cost_formula_known_answers():

@@ -129,16 +129,32 @@ class LiveEngine:
             return None
 
     def _execute(self, target):
-        target_code = target.get("target_code", "")
-        prices = target.get("prices", {})
-        cur_code = self.positions_cache[0].code \
-            if self.positions_cache else ""
-        if cur_code and cur_code != target_code:
-            self._sell_position(cur_code, prices.get(cur_code, 0))
-        if target_code and target_code != cur_code:
-            self._buy_target(target_code, prices.get(target_code, 0))
+        """把实际持仓对齐到目标组合 target["targets"] = {code: weight}。
 
-    def _sell_position(self, code, price):
+        次序与回测引擎一致：先卖出目标之外的标的，再逐只补到
+        目标金额 = 净值 × 权重 × min(1, max_position_ratio/权重)。
+        偏差不足 min_order_amount 的不动手，避免每轮询一次就下一单。"""
+        targets = target.get("targets") or {}
+        prices = target.get("prices", {})
+        equity = self.account_cache.total_asset if self.account_cache else 0.0
+        held = {p.code: p for p in self.positions_cache}
+        for code in [c for c in held if c not in targets]:
+            self._sell_position(code, prices.get(code, 0))
+        for code, wt in sorted(targets.items(), key=lambda kv: -kv[1]):
+            want = self._target_amount(equity, wt) - \
+                (held[code].market_value if code in held else 0.0)
+            if want > LIVE_RISK["min_order_amount"]:
+                self._buy_target(code, prices.get(code, 0), want)
+            elif want < -LIVE_RISK["min_order_amount"]:
+                self._sell_position(code, prices.get(code, 0), want=-want)
+
+    def _target_amount(self, equity, weight):
+        """单标的目标金额 = 净值 × 权重，并受实盘单标的仓位上限约束"""
+        cap = min(1.0, LIVE_RISK["max_position_ratio"])
+        return equity * min(max(float(weight), 0.0), cap)
+
+    def _sell_position(self, code, price, want=None):
+        """卖出：want 给出金额则按金额折算份数（减仓），否则清空可用份额"""
         if price <= 0:
             price = self.market.get_price(code)
         if price <= 0:
@@ -147,6 +163,10 @@ class LiveEngine:
         if not pos or pos.available <= 0:
             return
         shares = pos.available
+        if want is not None:
+            shares = min(shares, int(want / price / 100) * 100)
+            if shares <= 0:
+                return
         approved, _ = self.risk.check_order(
             "SELL", code, price, shares, self.account_cache,
             self.positions_cache, price)
@@ -164,14 +184,14 @@ class LiveEngine:
         self.notifier.send(f"卖出 {code}",
                            f"{price:.3f} × {shares}")
 
-    def _buy_target(self, code, price):
+    def _buy_target(self, code, price, want):
+        """买入：金额取 min(信号给出的目标缺口, 可用现金 - 保留金, 单笔上限)"""
         if price <= 0:
             price = self.market.get_price(code)
         if price <= 0:
             return
         cash = self.account_cache.cash
-        invest = min(cash - LIVE_RISK["min_cash_reserve"],
-                     cash * LIVE_RISK["max_position_ratio"],
+        invest = min(want, cash - LIVE_RISK["min_cash_reserve"],
                      LIVE_RISK["max_order_amount"])
         if invest < LIVE_RISK["min_order_amount"]:
             return

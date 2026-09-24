@@ -1,14 +1,55 @@
 # -*- coding: utf-8 -*-
 """策略：参数按频率自适应
 
-单一持仓轮动：每根 bar 对全部可交易 ETF 打分
-（各因子时间序列 z-score 的加权和），持有得分最高且 > 0 的标的。"""
+截面组合：每根调仓 bar 对全部可交易 ETF 打分
+（各因子时间序列 z-score 的加权和），取分数最高且 > min_score 的前 top_k 只，
+按 PORTFOLIO["weighting"] 给出目标权重。"""
 
 import pandas as pd
 import numpy as np
-from config import LOOKBACK_BARS, FREQ
+from config import LOOKBACK_BARS, FREQ, PORTFOLIO
 from frequency_adapter import get_adapter
 from data_loader import PointInTimeData
+
+
+def select_weights(scores, cfg=None):
+    """分数 → 目标权重（占组合净值比例，Σw = 1）。
+
+    1) 绝对过滤：score <= min_score 的一律剔除（全被剔除即空仓）；
+    2) 取前 top_k；
+    3) equal: w_i = 1/k；score_prop: w_i = s_i / Σ s（s 已 > 0）；
+    4) 单标的上限 max_weight：超出部分按其余权重的比例回摊，
+       迭代到无标的越限（water-filling）。
+
+    研究侧回测与实盘侧下单共用此函数，权重口径不会两处漂移。"""
+    cfg = cfg or PORTFOLIO
+    pos = {c: float(s) for c, s in scores.items()
+           if np.isfinite(s) and s > cfg["min_score"]}
+    if not pos:
+        return {}
+    top = sorted(pos, key=lambda c: -pos[c])[:cfg["top_k"]]
+    if cfg["weighting"] == "score_prop":
+        tot = sum(pos[c] for c in top)
+        w = {c: pos[c] / tot for c in top} if tot > 0 else \
+            {c: 1.0 / len(top) for c in top}
+    else:
+        w = {c: 1.0 / len(top) for c in top}
+    cap = cfg.get("max_weight")
+    if cap and len(top) * cap < 1.0:
+        for _ in range(len(top)):
+            over = {c: w[c] - cap for c in w if w[c] > cap + 1e-12}
+            if not over:
+                break
+            excess = sum(over.values())
+            under = {c: w[c] for c in w if c not in over}
+            base = sum(under.values())
+            for c in over:
+                w[c] = cap
+            if base <= 0:
+                break
+            for c in under:
+                w[c] += excess * w[c] / base
+    return w
 
 
 class IntradayRotationStrategy:
@@ -62,24 +103,30 @@ class IntradayRotationStrategy:
         return score / w_sum if w_sum > 0 else np.nan
 
     def generate_signals(self, timestamps, rebalance_every=None):
-        """逐 bar 生成目标持仓信号。每 rebalance_every 根 bar 重新
-        选一次最优标的，其余 bar 沿用上次结果（降低换手）。
-        最高分 <= 0 时空仓（绝对收益过滤，而非必然满仓轮动）。"""
+        """逐 bar 生成目标持仓信号（**长表契约**）。
+
+        返回 index=时间戳、columns=[code, weight, score] 的 DataFrame，
+        **只在调仓 bar 出行**；两个调仓日之间的权重由回测引擎沿用上次的
+        目标权重（持有不操作）。全部标的都被绝对过滤剔除的那根 bar 出一行
+        `code=""` 的空仓哨兵（引擎靠它定位时间轴，见 portfolio_engine）。"""
         rebalance_every = rebalance_every or self.default_rebalance
         records = []
-        last_target = ""
         for i, ts in enumerate(timestamps):
-            if i % rebalance_every == 0:
-                tradable = (self.universe.get_tradable_at(ts)
-                            if self.universe else list(self.pool.keys()))
-                best_code, best_score = "", -np.inf
-                for code in tradable:
-                    s = self._score_one(code, ts)
-                    if not np.isnan(s) and s > best_score:
-                        best_score = s
-                        best_code = code
-                last_target = best_code if best_score > 0 else ""
-            records.append({"datetime": ts,
-                            "target_code": last_target,
-                            "bar_idx": i})
+            if i % rebalance_every:
+                continue
+            tradable = (self.universe.get_tradable_at(ts)
+                        if self.universe else list(self.pool.keys()))
+            scores = {c: s for c in tradable
+                      if (s := self._score_one(c, ts)) is not None
+                      and not np.isnan(s)}
+            weights = select_weights(scores)
+            if not weights:
+                records.append({"datetime": ts, "code": "",
+                                "weight": 0.0, "score": np.nan})
+            for code, wt in weights.items():
+                records.append({"datetime": ts, "code": code,
+                                "weight": wt, "score": scores[code]})
+        if not records:
+            return pd.DataFrame(columns=["code", "weight", "score"]) \
+                .rename_axis("datetime")
         return pd.DataFrame(records).set_index("datetime")

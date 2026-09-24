@@ -46,32 +46,63 @@ MIN_TRADE_AMOUNT = 100
 MIN_COMMISSION = 0.1
 
 # ========== ETF 池 ==========
-# 东财/新浪接口均不可用时的兜底：常见宽基/行业 ETF（code, name）
-FALLBACK_UNIVERSE = [
-    ("510300", "沪深300ETF"), ("510500", "中证500ETF"),
-    ("510050", "上证50ETF"), ("159915", "创业板ETF"),
-    ("512100", "中证1000ETF"), ("588000", "科创50ETF"),
-    ("512880", "证券ETF"), ("512760", "芯片ETF"),
-    ("159928", "消费ETF"), ("512690", "酒ETF"),
-    ("513100", "纳指ETF"), ("513500", "标普500ETF"),
-    ("159941", "纳指ETF(深)"), ("518880", "黄金ETF"),
-    ("511990", "华宝添益"),
-]
+# 兜底池不再手写名单：全部行情源都挂时，直接用本地已缓存的日线目录
+# （data/cache/ 与 data/universe_all/）里现存过的代码，程序按数据说了算。
+FALLBACK_UNIVERSE = []
+FALLBACK_SOURCES = [CACHE_DIR, os.path.join(os.path.dirname(CACHE_DIR),
+                                            "universe_all")]
 
 ETF_FILTER = {
     # 成立不满 1 年的 ETF 不入池（365 自然日）：新基金建仓期收益不代表策略有效域
     "min_list_days": 365,
+    # 流动性下限。口径已从「现货快照的当日成交额单点值」改成「近
+    # amount_window 日成交额中位数」——一天异动/一天放量不再决定进出。
+    # 取不到本地日线的候选退回快照值判定（见 etf_universe.build 计数提示）。
     "min_avg_amount": 5_000_000,
-    # 截面轮动池规模：每指数取"上市最早且流动性达标"的代表，再按成交额截断 Top N。
-    # 这里刻意保持小池：轮动策略要的是可交易、低相关的少数标的，全市场 1.6 千只
-    # 里一半以上是同指数的重复份额，放进轮动是噪声。RD-Agent 那侧不受此约束
-    # （截面回归要的是样本量），它读 data/universe_all/ 的全市场池
-    "max_count": 20,
-    "exclude_keywords": ["货币", "短融", "同业存单", "现金",
-                         "日利", "添益", "添利", "活期", "理财"],
-    # 511=上交所债券/货币 ETF 段：价格近似债券，混入轮动是噪声
-    "exclude_prefixes": ["511"],
+    "amount_window": 20,
+    # 波动下限：取代原来的「按名称关键字（货币/短融/日利…）与代码段（511）
+    # 拉黑」。货币/理财/债性品种近 vol_window 日的年化波动天然远低于此值，
+    # 剔除理由由实测波动给出而不是名字，也就不再误伤同段的高波动品种。
+    "min_ann_vol": 0.05,
+    "vol_window": 60,
+    # 截面轮动池规模上限。仍守「每指数取 1 只代表」的去重，放宽的是
+    # **可选的指数个数**（20 → 100），不是同指数的第二三名重复份额——
+    # 后者与「把指数拉进截面」是同一个共线错误。日均截面厚度是 IC/DSR/PBO
+    # 有没有统计功效的前提，20 只池撑不起横截面结论。
+    "max_count": 100,
+    # 人工紧急兜底：默认空，正常准入判定全部由上面的数据阈值给出
+    "exclude_keywords": [],
+    "exclude_prefixes": [],
+    # 当日可交易性（第三条判据，之前只有「在池内 + 上市满 365 天」两条）：
+    # 当日无 bar 或当日成交额低于此值视为不可买入（卖出仍允许，用最近价）
+    "min_daily_amount": 1_000_000,
 }
+
+# ========== 截面组合（策略形态） ==========
+# 原形态是「每根 bar 只持有得分最高的 1 只、全进全出」：16 年只成交 12 笔，
+# DSR 的期望最大夏普与 PBO 的 CSCV 都没有足够独立观测可用（实测 DSR=0、
+# PBO 配置族 logits_std≈0）。改为按分数取前 top_k 只的横截面组合。
+PORTFOLIO = {
+    "top_k": 10,
+    # equal: 1/k；score_prop: 按正分数占比（负分不参与，等价于绝对过滤）
+    "weighting": "equal",
+    # 单标的权重上限（占组合净值比例，超出部分按比例回摊给其余持仓）
+    "max_weight": 0.30,
+    # 绝对收益过滤：综合分 <= 此值的标的不入组合（全被过滤即空仓）
+    "min_score": 0.0,
+    # 单次调仓换手上限（占净值，Σ|Δ权重|/2 口径）。超出时按权重变动幅度
+    # 从大到小裁剪，先把最必要的变动做完
+    "max_turnover": 0.60,
+    # 最小交易单位（份）。ETF 场内申报 100 份起，回测此前按小数股成交
+    "lot_size": 100,
+}
+
+# 底座 RISK_CONTROL 的 max_trades_per_day 在日线侧默认 1，那是「单标的
+# 全进全出」时代的取值；截面组合一次调仓最多 2·top_k 笔。留在 1 有两个后果：
+# 一是 OFAT 风控配置族的基线落不进搜索空间（基线值不是空间里的某一档，
+# 该维度白多出一档变体），二是研究调参经 run_live.RISK_KEY_MAP 映射到实盘时
+# 把 max_orders_per_day 又压回 1 单，组合根本建不起来。
+RISK_CONTROL["max_trades_per_day"] = PORTFOLIO["top_k"]
 
 # ========== 行情数据源（按优先级降级） ==========
 # em=东方财富(akshare)  sina=新浪  tx=腾讯
@@ -80,14 +111,24 @@ DATA_SOURCES = {
     "intraday": ["em", "tx"],
 }
 
-# ========== RD-Agent(Q)（ETF 线 official 源默认关闭） ==========
-# 本线已有自己的 qlib bin（data/qlib/qlib_data/cn_data）、daily_pv.h5 与工作区，
-# 数据隔离经实测成立，但 09-22 那轮 coding 未收敛（7B 丢 MultiIndex 层级、
-# CoSTEER_MAX_LOOP=4 耗尽）导致 running 被跳过、回收定义带不到官方 IC，故默认
-# 仍关；要连主线一起跑用 ETF_RDAGENT_OFFICIAL_FALLBACK=true 临时打开。
-# 取舍与补证路径见用户使用手册 §10.1
+# ========== RD-Agent(Q)（ETF 线） ==========
+# 本线有自己的 qlib bin（data/qlib/qlib_data/cn_data）、daily_pv.h5 与工作区，
+# 数据隔离经实测成立。09-23 上午那轮（11:27 落盘）已跑通到 running 步并带回
+# 官方 IC（`ma(df,5)`、`ts_mean(volume,10)` 各 IC≈0.0085），故 official 源
+# 默认与股票线一致地打开；不想让主线带上这 ~50min 循环时置
+# ETF_RDAGENT_OFFICIAL_FALLBACK=false。取舍与取证见用户使用手册 §10.1
 RDAGENT_USE_OFFICIAL_FALLBACK = os.environ.get(
-    "ETF_RDAGENT_OFFICIAL_FALLBACK", "false").lower() in ("1", "true", "yes")
+    "ETF_RDAGENT_OFFICIAL_FALLBACK", "true").lower() in ("1", "true", "yes")
+# RD-Agent 数据新鲜度比对基准：dump_qlib_bin 的输入池是全市场 ETF 缓存
+# （data/universe_all/，871 只），不是主线那 20 只代表池 data/cache/——
+# 拿 cache 比对会让体检天天报"过期"，因为主线缓存只按需刷新十几只。
+RDAGENT_SOURCE_DIR = os.environ.get(
+    "ETF_RDAGENT_SOURCE_DIR", os.path.join(DATA_DIR, "universe_all"))
+# coding 阶段演化轮数。09-22 那轮 7B 把 result.h5 写成只剩 datetime 一层索引，
+# 4 轮耗尽仍没过格式 critic → running 被跳过、回收不到官方 IC；critic 反馈是
+# 逐轮累积的，多给轮数是最可能收敛的单一旋钮（不动数据、不改生成代码）。
+# 经 official_rdagent 注入子进程环境变量，压过 rdagent_output/.env 里那份 4。
+RDAGENT_COSTEER_MAX_LOOP = os.environ.get("ETF_RDAGENT_COSTEER_MAX_LOOP", "8")
 
 # ========== Walk-forward ==========
 WALK_FORWARD = {"enabled": True, "n_splits": 3,
@@ -168,14 +209,22 @@ STRATEGY_LIFECYCLE = {
 }
 
 # ========== 风控（本线专属部分，公共 RISK_CONTROL 在底座） ==========
+# max_trades_per_day 的计数单位是「笔」。策略形态改成 top_k 只的截面组合后，
+# 一次完整调仓最多 2·top_k 笔（卖出掉出名单的 + 买入新进名单的），
+# 沿用单标的轮动时代的 1~3 笔会让调仓次日起几乎禁止一切买入——
+# 闸门与形态彼此矛盾；这里按「够做完一次调仓」的量级放开。
+# 频控仍主要由 min_bars_between_trades + cooldown_days 承担。
 RISK_SEARCH_SPACE = {
     "daily_stop_loss": [-0.02, -0.03, -0.05],
     "max_drawdown_stop": [-0.08, -0.10, -0.15],
     "cooldown_days": [1, 3, 5],
     "min_bars_between_trades": [1, 3, 5] if FREQ == "daily"
                                 else [3, 5, 10],
-    "max_trades_per_day": [1, 2, 3] if FREQ == "daily"
-                          else [3, 5, 10],
+    "max_trades_per_day": [PORTFOLIO["top_k"], 2 * PORTFOLIO["top_k"],
+                           3 * PORTFOLIO["top_k"]] if FREQ == "daily"
+                          else [2 * PORTFOLIO["top_k"],
+                                3 * PORTFOLIO["top_k"],
+                                5 * PORTFOLIO["top_k"]],
 }
 RISK_LLM_MAX_ROUNDS = 4
 

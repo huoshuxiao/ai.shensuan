@@ -1,16 +1,23 @@
 # -*- coding: utf-8 -*-
-"""分钟线回测（T+0/T+1 + 风控）"""
+"""分钟线回测封装：截面组合引擎的分钟 bar 口径
+
+与日线唯一差别是时间口径（bar 级 ts、同一自然日内多次风控复位）与统计的
+年度换算系数；成交约束、换手上限、先卖后买等执行逻辑全在 portfolio_engine。"""
 
 import pandas as pd
 import numpy as np
 from config import (
-    INIT_CAPITAL, COMMISSION_RATE, MIN_COMMISSION, SLIPPAGE,
-    MIN_TRADE_AMOUNT, RISK_CONTROL,
+    INIT_CAPITAL, RISK_CONTROL, PORTFOLIO, ETF_FILTER, MIN_TRADE_AMOUNT,
 )
 from data_loader import PointInTimeData
+from portfolio_engine import (
+    PortfolioEngine, holding_stats, annual_turnover, win_rate,
+)
 
 
 class RiskController:
+    """分钟线风控（逐 bar 判定，日内计数按自然日复位）"""
+
     def __init__(self, params=None):
         self.p = {**RISK_CONTROL, **(params or {})}
         self.reset()
@@ -33,6 +40,12 @@ class RiskController:
     def can_trade(self, ts, bar_idx, equity):
         if self.cooldown_until and pd.Timestamp(ts) < self.cooldown_until:
             return False, "熔断冷却"
+        if self.cooldown_until:
+            # 冷却到期后以当前净值重新起算峰值，否则触发熔断的那段回撤
+            # 会逐 bar 复读，引擎再也开不了仓（与日线侧同一处修正）
+            self.cooldown_until = None
+            self.peak_equity = equity
+            self.daily_start_equity = equity
         if self.daily_start_equity and self.daily_start_equity > 0:
             r = equity / self.daily_start_equity - 1
             if r <= self.p["daily_stop_loss"]:
@@ -63,95 +76,27 @@ class RiskController:
 
 
 class MinuteBacktester:
+    """分钟线回测：与 DailyBacktester 同接口，共用截面组合引擎"""
+
     def __init__(self, pool, universe, risk_params=None):
         self.pool = pool
         self.universe = universe
         self.risk_params = risk_params
         # 与日线引擎一致：取价统一走时点访问器（只允许看到 ts 及之前的 bar）
         self.pit = PointInTimeData(pool)
-
-    @staticmethod
-    def _cost(amount):
-        return max(amount * COMMISSION_RATE, MIN_COMMISSION) + amount * SLIPPAGE
-
-    def _price(self, code, ts, field="close"):
-        return self.pit.get_price(code, ts, field)
+        self.engine = PortfolioEngine(
+            pit=self.pit, risk_cls=RiskController,
+            risk_params=self.risk_params, universe=universe, pool=pool,
+            day_of=lambda ts: pd.Timestamp(ts).date(), is_t0=self._is_t0,
+            init_capital=INIT_CAPITAL, min_trade_amount=MIN_TRADE_AMOUNT,
+            lot_size=PORTFOLIO["lot_size"],
+            max_turnover=PORTFOLIO["max_turnover"],
+            min_daily_amount=0.0)  # 分钟 bar 成交额与日线阈值不同口径，不设闸
 
     def run(self, signals):
-        cash = INIT_CAPITAL
-        position = None
-        equity_curve, trades = [], []
-        risk = RiskController(self.risk_params)
-
-        for bar_idx, ts in enumerate(signals.index):
-            target_code = signals.loc[ts, "target_code"]
-
-            mv = 0.0
-            if position is not None:
-                cur = self._price(position["code"], ts, "close") or position["cost"]
-                mv = position["shares"] * cur
-            equity = cash + mv
-
-            risk.on_new_day(ts, equity)
-            allowed, reason = risk.can_trade(ts, bar_idx, equity)
-
-            # 卖出
-            if position is not None:
-                cur_code = position["code"]
-                is_t0 = position.get("is_t0", False)
-                need_sell = (target_code != cur_code)
-                if not allowed and ("止损" in reason or "熔断" in reason):
-                    need_sell = True
-                if need_sell and not is_t0 and position.get("buy_date") == ts.date():
-                    need_sell = False
-                cur_price = self._price(cur_code, ts, "close")
-                if need_sell and cur_price is not None:
-                    amount = position["shares"] * cur_price
-                    cost = self._cost(amount)
-                    cash += amount - cost
-                    trades.append({
-                        "datetime": ts, "action": "SELL", "code": cur_code,
-                        "price": cur_price, "shares": position["shares"],
-                        "amount": amount, "cost": cost,
-                        "reason": reason or "换仓"})
-                    position = None
-                    risk.on_trade(bar_idx)
-
-            # 买入
-            if position is None and target_code and allowed:
-                tradable = (set(self.universe.get_tradable_at(ts))
-                            if self.universe else set(self.pool.keys()))
-                if target_code in tradable:
-                    bp = self._price(target_code, ts, "close")
-                    if bp and bp > 0:
-                        ratio = risk.adjust_position_ratio(equity)
-                        invest = min(cash * ratio, cash - self._cost(cash * ratio))
-                        if invest >= MIN_TRADE_AMOUNT:
-                            shares = invest / bp
-                            cost = self._cost(invest)
-                            cash -= (invest + cost)
-                            position = {
-                                "code": target_code, "shares": shares,
-                                "cost": bp, "buy_date": ts.date(),
-                                "is_t0": self._is_t0(target_code)}
-                            trades.append({
-                                "datetime": ts, "action": "BUY",
-                                "code": target_code, "price": bp,
-                                "shares": shares, "amount": invest,
-                                "cost": cost, "reason": "信号"})
-                            risk.on_trade(bar_idx)
-
-            mv = 0.0
-            if position is not None:
-                cur = self._price(position["code"], ts, "close") or position["cost"]
-                mv = position["shares"] * cur
-            equity_curve.append({"datetime": ts, "equity": cash + mv,
-                                 "cash": cash, "position_value": mv})
-
-        equity_df = pd.DataFrame(equity_curve).set_index("datetime")
-        trades_df = pd.DataFrame(trades) if trades else pd.DataFrame(
-            columns=["datetime", "action", "code", "price", "shares",
-                     "amount", "cost", "reason"])
+        """signals: 截面组合长表契约（index=datetime, columns=[code, weight,
+        score]，只在调仓 bar 出行，空仓日出 code="" 哨兵）"""
+        equity_df, trades_df = self.engine.run(signals, "datetime")
         return {"equity": equity_df, "trades": trades_df,
                 "stats": self._stats(equity_df, trades_df)}
 
@@ -161,6 +106,8 @@ class MinuteBacktester:
 
     @staticmethod
     def _stats(equity_df, trades_df, adapter=None):
+        """绩效统计。夏普 = 年化收益/年化波动；最大回撤取
+        min(eq/cummax(eq) - 1)；胜率按同标的 FIFO 配对。"""
         from frequency_adapter import get_adapter
         adapter = adapter or get_adapter()
         if equity_df.empty:
@@ -173,16 +120,8 @@ class MinuteBacktester:
         ann_vol = rets.std() * np.sqrt(adapter.bars_per_year)
         sharpe = ann_ret / (ann_vol + 1e-9)
         dd = (eq - eq.cummax()) / eq.cummax()
-
-        win_rate = 0.0
-        if not trades_df.empty:
-            buys = trades_df[trades_df["action"] == "BUY"].reset_index(drop=True)
-            sells = trades_df[trades_df["action"] == "SELL"].reset_index(drop=True)
-            n = min(len(buys), len(sells))
-            if n > 0:
-                wins = sum(1 for i in range(n)
-                           if sells.loc[i, "price"] > buys.loc[i, "price"])
-                win_rate = wins / n
+        turnover = annual_turnover("datetime", trades_df, equity_df,
+                                   adapter.bars_per_year)
 
         return {
             "回测区间": (f"{eq.index[0]} ~ {eq.index[-1]} "
@@ -195,7 +134,9 @@ class MinuteBacktester:
             "夏普比率": round(sharpe, 3),
             "最大回撤": f"{dd.min() * 100:.2f}%",
             "交易次数": len(trades_df),
-            "胜率": f"{win_rate * 100:.2f}%",
+            "平均持仓只数": round(holding_stats(equity_df), 2),
+            "年化换手率": f"{turnover * 100:.1f}%",
+            "胜率": f"{win_rate(trades_df) * 100:.2f}%",
             "频率": adapter.freq,
             "bars_per_year": adapter.bars_per_year,
         }

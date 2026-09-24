@@ -47,20 +47,47 @@ def test_drawdown_triggers_cooldown_days():
     assert not still and "熔断冷却" in reason2
 
 
+def test_cooldown_expiry_rebases_peak():
+    """熔断冷却到期后必须恢复交易：以当前净值重设峰值。
+
+    回归场景：强制清仓之后净值不再变化，相对旧峰值的回撤恒在阈值之下，
+    旧实现会在每一根 bar 上重新触发熔断，整段回测此后再没有一笔买入
+    （实测 2010-07 起锁死到 2026）。"""
+    r = DailyRiskController({"cooldown_days": 1})
+    for i, eq in enumerate((100.0, 97.0, 94.0, 88.5)):
+        r.on_new_day(_day(i), eq)
+        r.can_trade(_day(i), i * 10, eq)
+    assert r.cooldown_until is not None, "跌到 -11.5% 应已触发熔断"
+    r.on_new_day(_day(6), 88.5)                      # 冷却期满
+    ok, reason = r.can_trade(_day(6), 60, 88.5)
+    assert ok, f"冷却到期后应恢复交易，实际被拒：{reason}"
+    assert r.peak_equity == pytest.approx(88.5)
+    for i in range(7, 12):                           # 此后一路持平
+        r.on_new_day(_day(i), 88.5)
+        assert r.can_trade(_day(i), i * 10, 88.5)[0]
+
+
 def test_max_trades_per_day_on_daily():
-    r = DailyRiskController()
+    """当日笔数闸门本身：显式给一档小上限，不依赖 RISK_CONTROL 的默认值
+    （截面组合形态下默认已按 top_k 放大，见 config.PORTFOLIO）。"""
+    r = DailyRiskController({"max_trades_per_day": 1})
     r.on_new_day(_day(0), 100.0)
     assert r.can_trade(_day(0), 0, 100.0)[0] is True
     r.on_trade(0)
     ok, reason = r.can_trade(_day(0), 10, 100.0)
     assert not ok and "当日交易次数超限" in reason
+    r.on_new_day(_day(1), 100.0)              # 跨日复位
+    assert r.can_trade(_day(1), 10, 100.0)[0] is True
 
 
 def test_min_bars_between_trades_is_one_on_daily():
-    """日线：间隔门槛为 1 根 bar（次日即可再交易），当日次数上限为 1。"""
+    """日线：间隔门槛为 1 根 bar（次日即可再交易）。
+    次数上限按组合只数放大，一次调仓的 2·top_k 笔不该互相挡。"""
     assert RISK_CONTROL["min_bars_between_trades"] == 1
+    assert RISK_CONTROL["max_trades_per_day"] >= 1
     r = DailyRiskController()
     r.on_new_day(_day(0), 100.0)
-    r.on_trade(0)
+    for i in range(RISK_CONTROL["max_trades_per_day"]):
+        r.on_trade(0)
     r.on_new_day(_day(1), 100.0)
     assert r.can_trade(_day(1), 1, 100.0)[0] is True

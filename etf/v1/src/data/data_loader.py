@@ -7,15 +7,31 @@ import pandas as pd
 import akshare as ak
 from config import (
     BACKTEST_START, BACKTEST_END, FREQ, CACHE_DIR, FREQ_MAP,
-    DATA_SOURCES,
+    DATA_SOURCES, UNIVERSE_ALL_DIR,
 )
 
 OHLC = ["open", "high", "low", "close"]
+# 全市场日线镜像（data/universe_all/）可接受的落后天数：镜像是整批更新的，
+# 个别文件比批次末尾还旧超过这个天数，就当成缺数据回源重拉。
+MIRROR_MAX_LAG_DAYS = 7
 
 
 def _sina_symbol(code: str) -> str:
     """沪市基金以 5/6/9 开头，其余归深市"""
     return ("sh" if code.startswith(("5", "6", "9")) else "sz") + code
+
+
+def _last_date(path: str) -> str:
+    """只读 CSV 末尾一块，取最后一行的时间列：判断镜像新鲜度不必整份载入"""
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            f.seek(max(f.tell() - 4096, 0))
+            tail = f.read().decode("utf-8-sig", "ignore").strip()
+        rows = tail.splitlines()
+        return rows[-1].split(",")[0].strip() if rows else ""
+    except Exception:
+        return ""
 
 
 class DataLoader:
@@ -25,12 +41,56 @@ class DataLoader:
         self.freq = freq or FREQ
         self.is_intraday = FREQ_MAP[self.freq]["is_intraday"]
         os.makedirs(CACHE_DIR, exist_ok=True)
+        self._mirror_end = None
 
     def _cache_path(self, code: str) -> str:
         return os.path.join(CACHE_DIR, f"{code}_{self.freq}.csv")
 
+    def _mirror_batch_end(self) -> str:
+        """镜像目录的批次末尾日期 = 目录内各文件最新日期的最大值。
+        整进程只扫一次（上千份文件只读末块，实测零点几秒）。"""
+        if self._mirror_end is None:
+            end = ""
+            try:
+                for fn in os.listdir(UNIVERSE_ALL_DIR):
+                    if fn.endswith(f"_{self.freq}.csv"):
+                        end = max(end, _last_date(
+                            os.path.join(UNIVERSE_ALL_DIR, fn)))
+            except OSError:
+                end = ""
+            self._mirror_end = end
+        return self._mirror_end
+
+    def _load_mirror(self, code: str):
+        """data/universe_all/ 的全市场日线镜像当作二级缓存用。
+
+        主线池扩到上百只以后，逐只回源既慢又不稳：akshare 的请求不带
+        socket 超时，单个连接挂起就能把整轮加载钉死，而这段历史本机已经有了
+        （镜像由 data/fetch_etf_universe_all.py 走同一个 _load_daily 落盘，
+        列名与复权口径逐字一致）。只在该代码存在、且它没有落后批次末尾
+        MIRROR_MAX_LAG_DAYS 天时采用；否则返回 None 交给网络源。"""
+        path = os.path.join(UNIVERSE_ALL_DIR, f"{code}_{self.freq}.csv")
+        if not os.path.exists(path):
+            return None
+        end, last = self._mirror_batch_end(), _last_date(path)
+        if not end or not last:
+            return None
+        lag = (pd.Timestamp(end) - pd.Timestamp(last)).days
+        if lag > MIRROR_MAX_LAG_DAYS:
+            print(f"    ⚠️ 镜像里的 {code} 落后批次末尾 {lag} 天，回源重拉")
+            return None
+        try:
+            df = pd.read_csv(path)
+        except Exception:
+            return None
+        df = self._standardize(df, self._time_col())
+        if df.empty:
+            return None
+        df = df.loc[BACKTEST_START:BACKTEST_END]
+        return df if not df.empty else None
+
     def load(self, code: str, use_cache: bool = True) -> pd.DataFrame:
-        """加载单只 ETF 数据"""
+        """加载单只 ETF 数据：主线缓存 → 全市场镜像 → 网络源（按优先级降级）"""
         cache_file = self._cache_path(code)
         if use_cache and os.path.exists(cache_file):
             try:
@@ -39,6 +99,12 @@ class DataLoader:
                 return df.set_index(self._time_col())
             except Exception:
                 pass
+
+        mirrored = None if self.is_intraday else self._load_mirror(code)
+        if mirrored is not None:
+            print(f"    📦 {code} 取全市场镜像 {self.freq} "
+                  f"{len(mirrored)} bar（止于 {mirrored.index[-1].date()}）")
+            return mirrored
 
         sources = DATA_SOURCES["intraday" if self.is_intraday
                                else "daily"]
@@ -189,3 +255,9 @@ class PointInTimeData:
             return None
         v = df.loc[date, field]
         return float(v) if not pd.isna(v) else None
+
+    def has_bar(self, code, date):
+        """date 当日该标的是否有 bar（停牌/未上市/池里没有 → False）。
+        get_price 对「无 bar」和「有 bar 但该列缺失」都返回 None，
+        可交易性判定要区分这两件事，故单列此访问器。"""
+        return code in self.pool and date in self.pool[code].index

@@ -1,14 +1,17 @@
 # -*- coding: utf-8 -*-
-"""日线回测封装"""
+"""日线回测封装：截面组合引擎的多标的日线口径"""
 
 import pandas as pd
 import numpy as np
 from config import (
     INIT_CAPITAL, COMMISSION_RATE, MIN_COMMISSION,
-    SLIPPAGE, MIN_TRADE_AMOUNT, RISK_CONTROL,
+    SLIPPAGE, MIN_TRADE_AMOUNT, RISK_CONTROL, PORTFOLIO, ETF_FILTER,
 )
 from frequency_adapter import get_adapter
 from data_loader import PointInTimeData
+from portfolio_engine import (
+    PortfolioEngine, holding_stats, annual_turnover, win_rate,
+)
 
 
 class DailyBacktester:
@@ -24,6 +27,14 @@ class DailyBacktester:
         self.adapter = get_adapter("daily")
         # 全部取价走时点访问器，杜绝越界读到 date 之后的 bar
         self.pit = PointInTimeData(pool)
+        self.engine = PortfolioEngine(
+            pit=self.pit, risk_cls=DailyRiskController,
+            risk_params=self.risk_params, universe=universe, pool=pool,
+            day_of=lambda ts: pd.Timestamp(ts).date(), is_t0=self._is_t0,
+            init_capital=INIT_CAPITAL, min_trade_amount=MIN_TRADE_AMOUNT,
+            lot_size=PORTFOLIO["lot_size"],
+            max_turnover=PORTFOLIO["max_turnover"],
+            min_daily_amount=ETF_FILTER.get("min_daily_amount", 0.0))
 
     @staticmethod
     def _cost(amount):
@@ -39,95 +50,11 @@ class DailyBacktester:
     def run(self, signals: pd.DataFrame) -> dict:
         """事件循环式日线回测（按时间顺序模拟，杜绝未来函数）。
 
-        signals: index=date, columns=['target_code']（空串=空仓）
-        每日流程：估值 -> 风控判定 -> 必要时卖出(T+1 限制) ->
-        空仓且允许时按仓位比例买入 -> 记录净值。单一持仓，全进全出。
+        signals: 截面组合长表契约（index=date, columns=[code, weight, score]，
+        只在调仓日出行，空仓日出 code="" 哨兵）。多标的同时持仓，
+        权重和乘全组合降仓比例 = 目标金额。具体执行次序见 portfolio_engine。
         """
-        cash = INIT_CAPITAL
-        position = None
-        equity_curve, trades = [], []
-        risk = DailyRiskController(self.risk_params)
-
-        for bar_idx, date in enumerate(signals.index):
-            target_code = signals.loc[date, "target_code"]
-
-            # 计算当前净值
-            mv = 0.0
-            if position is not None:
-                cur = self._price(position["code"], date, "close") or \
-                    position["cost"]
-                mv = position["shares"] * cur
-            equity = cash + mv
-
-            risk.on_new_day(date, equity)
-            allowed, reason = risk.can_trade(date, bar_idx, equity)
-
-            # 卖出
-            if position is not None:
-                cur_code = position["code"]
-                is_t0 = position.get("is_t0", False)
-                need_sell = (target_code != cur_code)
-                if not allowed and ("止损" in reason or "熔断" in reason):
-                    need_sell = True
-                # T+1：日线天然 T+1（当日买入当日不能卖）
-                if need_sell and not is_t0 and position.get("buy_date") == date:
-                    need_sell = False
-                cur_price = self._price(cur_code, date, "close")
-                if need_sell and cur_price is not None:
-                    amount = position["shares"] * cur_price
-                    cost = self._cost(amount)
-                    cash += amount - cost
-                    trades.append({
-                        "date": date, "action": "SELL", "code": cur_code,
-                        "price": cur_price, "shares": position["shares"],
-                        "amount": amount, "cost": cost,
-                        "reason": reason or "换仓"})
-                    position = None
-                    risk.on_trade(bar_idx)
-
-            # 买入
-            if position is None and target_code and allowed:
-                tradable = set(self.pool.keys())
-                if self.universe:
-                    try:
-                        tradable = set(
-                            self.universe.get_tradable_at(date))
-                    except Exception:
-                        pass
-                if target_code in tradable:
-                    bp = self._price(target_code, date, "close")
-                    if bp and bp > 0:
-                        ratio = risk.adjust_position_ratio(equity)
-                        invest = min(cash * ratio,
-                                     cash - self._cost(cash * ratio))
-                        if invest >= MIN_TRADE_AMOUNT:
-                            shares = invest / bp
-                            cost = self._cost(invest)
-                            cash -= (invest + cost)
-                            position = {
-                                "code": target_code, "shares": shares,
-                                "cost": bp, "buy_date": date,
-                                "is_t0": self._is_t0(target_code)}
-                            trades.append({
-                                "date": date, "action": "BUY",
-                                "code": target_code, "price": bp,
-                                "shares": shares, "amount": invest,
-                                "cost": cost, "reason": "信号"})
-                            risk.on_trade(bar_idx)
-
-            # 记录净值
-            mv = 0.0
-            if position is not None:
-                cur = self._price(position["code"], date, "close") or \
-                    position["cost"]
-                mv = position["shares"] * cur
-            equity_curve.append({"date": date, "equity": cash + mv,
-                                 "cash": cash, "position_value": mv})
-
-        equity_df = pd.DataFrame(equity_curve).set_index("date")
-        trades_df = pd.DataFrame(trades) if trades else pd.DataFrame(
-            columns=["date", "action", "code", "price", "shares",
-                     "amount", "cost", "reason"])
+        equity_df, trades_df = self.engine.run(signals, "date")
         stats = self._stats(equity_df, trades_df)
         return {"equity": equity_df, "trades": trades_df, "stats": stats}
 
@@ -140,7 +67,7 @@ class DailyBacktester:
     def _stats(self, equity_df, trades_df):
         """绩效统计。夏普 = 年化收益/年化波动（adapter 按频率折算）；
         最大回撤 dd_t = eq_t / cummax(eq)_t - 1 取最小值；
-        胜率按 BUY/SELL 逐笔配对（卖价 > 买价记为赢）。"""
+        胜率按同标的 FIFO 配对（卖价 > 该批买价记为赢）。"""
         if equity_df.empty:
             return {}
         eq = equity_df["equity"]
@@ -151,18 +78,8 @@ class DailyBacktester:
         ann_vol = self.adapter.annualize_vol(rets)
         sharpe = ann_ret / (ann_vol + 1e-9)
         dd = (eq - eq.cummax()) / eq.cummax()
-
-        win_rate = 0.0
-        if not trades_df.empty:
-            buys = trades_df[trades_df["action"] == "BUY"].reset_index(
-                drop=True)
-            sells = trades_df[trades_df["action"] == "SELL"].reset_index(
-                drop=True)
-            n = min(len(buys), len(sells))
-            if n > 0:
-                wins = sum(1 for i in range(n)
-                           if sells.loc[i, "price"] > buys.loc[i, "price"])
-                win_rate = wins / n
+        turnover = annual_turnover("date", trades_df, equity_df,
+                                   self.adapter.bars_per_year)
 
         def _d(ts):
             return ts.date() if hasattr(ts, "date") else str(ts)[:10]
@@ -177,7 +94,9 @@ class DailyBacktester:
             "夏普比率": round(sharpe, 3),
             "最大回撤": f"{dd.min() * 100:.2f}%",
             "交易次数": len(trades_df),
-            "胜率": f"{win_rate * 100:.2f}%",
+            "平均持仓只数": round(holding_stats(equity_df), 2),
+            "年化换手率": f"{turnover * 100:.1f}%",
+            "胜率": f"{win_rate(trades_df) * 100:.2f}%",
             "频率": "daily",
             "bars_per_year": self.adapter.bars_per_year,
         }
@@ -215,6 +134,13 @@ class DailyRiskController:
         注意止损/熔断触发时外层引擎会反向强制卖出。"""
         if self.cooldown_until and pd.Timestamp(ts) < self.cooldown_until:
             return False, "熔断冷却"
+        if self.cooldown_until:
+            # 冷却到期：以当前净值重新起算峰值。不清零就会让触发那次熔断的
+            # 同一段回撤逐 bar 复读——净值空仓后不再变化，dd 永远停在阈值下，
+            # 引擎此后再也没买过（实测 2010-07 起的 16 年全被锁死）。
+            self.cooldown_until = None
+            self.peak_equity = equity
+            self.daily_start_equity = equity
         if self.daily_start_equity and self.daily_start_equity > 0:
             r = equity / self.daily_start_equity - 1
             if r <= self.p["daily_stop_loss"]:

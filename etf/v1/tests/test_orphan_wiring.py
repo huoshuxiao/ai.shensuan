@@ -233,16 +233,22 @@ def test_collect_config_equities_names_by_config_keys(daily_pool):
     factors = _factors(pool)
     base = {"daily_stop_loss": -0.03, "max_drawdown_stop": -0.10,
             "cooldown_days": 1, "min_bars_between_trades": 1,
-            "max_trades_per_day": 1}
-    sets = {"base": base, "stop=-0.05": {**base, "daily_stop_loss": -0.05},
-            "dd=-0.20": {**base, "max_drawdown_stop": -0.20}}
+            # 截面组合一次调仓就有 top_k 笔，1 笔/日的上限会让所有配置
+            # 都退化成"只建一次仓"，档与档之间再也分不出胜负
+            "max_trades_per_day": 30}
+    # 变体选「必然改变成交」的两维：日止损收到 -0.5% 会挡掉多数交易日的买入，
+    # 交易间隔 1→5 直接改变可下单的 bar。回撤熔断类的档在 3 只分散组合上
+    # 可能全程不触发，测不出参数是否被吃到。
+    sets = {"base": base,
+            "stop=-0.005": {**base, "daily_stop_loss": -0.005},
+            "gap=5": {**base, "min_bars_between_trades": 5}}
     idx = pool[next(iter(pool))].index
     eqs = collect_config_equities(pool, None, [factors], sets,
                                   IntradayRotationStrategy, DailyBacktester,
                                   all_ts=idx)
     assert len(eqs) == 3
     # 名字 = 因子集名_风控档名；dict 用键名，list 退回下标 F{i}/R{i}
-    assert set(eqs) == {"F0_base", "F0_stop=-0.05", "F0_dd=-0.20"}
+    assert set(eqs) == {"F0_base", "F0_stop=-0.005", "F0_gap=5"}
     by_list = collect_config_equities(pool, None, [factors], list(sets.values()),
                                       IntradayRotationStrategy, DailyBacktester,
                                       all_ts=idx)

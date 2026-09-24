@@ -23,6 +23,9 @@ os.environ["ETF_FREQ"] = "daily"
 # 测试永不触外部端：LLM 与 RD-Agent 一律视为不可用
 os.environ.pop("OPENAI_API_KEY", None)
 os.environ.pop("ETF_LLM_BASE_URL", None)
+# official 源在 ETF 线默认打开（见 config），但一轮循环 ≈50min 且要
+# conda+docker 沙箱，测试环境一律显式关闭，防止任何用例误拉起子进程
+os.environ["ETF_RDAGENT_OFFICIAL_FALLBACK"] = "false"
 
 sys.path.insert(0, SRC)
 import _bootstrap  # noqa: E402,F401

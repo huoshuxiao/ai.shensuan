@@ -5,8 +5,8 @@
 1. 参数：读取研究管线落盘的 `data/results/optimized_params_{FREQ}.json`
    （因子 ICIR 权重 + 调参后的风控参数），覆盖 config_live.LIVE_RISK；
 2. 信号：用因子库（data/library）中的活跃因子表达式对订阅标的打分，
-   按研究侧权重加权取最大者；因子库为空说明研究管线（main.py）尚未产出，
-   拒绝启动并提示先跑研究。
+   再走研究侧同一份 select_weights 得出目标组合（只数/权重与回测同口径）；
+   因子库为空说明研究管线（main.py）尚未产出，拒绝启动并提示先跑研究。
 券商默认走 config_live.ACCOUNT["broker"]（模拟盘 paper），
 --mode qmt/easytrader + --live --auto-order 才触碰真实账户。"""
 
@@ -19,6 +19,7 @@ import _bootstrap  # noqa: F401  必须先于项目模块导入
 from log_kit import setup_logging
 from config import RESULTS_DIR, UNIVERSE_CACHE, FREQ
 from config_live import ACCOUNT, MODE, LIVE_RISK
+from strategy import select_weights
 from paper_broker import PaperBroker
 from live_engine import LiveEngine
 from market_data import MarketDataManager
@@ -93,7 +94,8 @@ def default_codes():
 
 def build_factor_signal_fn(codes):
     """用因子库活跃因子构造实盘信号：
-    score(code) = Σ |wᵢ|·符号(ICᵢ)·tanh(因子最新值) / Σ|wᵢ|，取分数最大的标的。
+    score(code) = Σ |wᵢ|·符号(ICᵢ)·tanh(因子最新值) / Σ|wᵢ|，
+    再交给 select_weights 变成目标组合（top_k 只 + 单标的上限）。
     wᵢ 取研究侧 ICIR 权重（apply_optimized_config 传入），缺失时等权。
     日线数据按日缓存，避免每 30s 轮询都重新拉数据。"""
     from factor_library import get_library
@@ -151,12 +153,16 @@ def build_factor_signal_fn(codes):
             scores[code] = s
         if not scores:
             return None
-        target = max(scores, key=scores.get)
+        # 与回测侧同一份选股/权重函数：top_k、min_score、max_weight 不漂移
+        targets = select_weights(scores)
         prices = {c: t.get("price", 0) for c, t in snapshot.items()}
-        print(f"  信号: 目标 {target} "
-              f"(score={scores[target]:+.3f}, "
-              f"候选 {len(scores)})")
-        return {"target_code": target, "prices": prices,
+        if targets:
+            print(f"  信号: 目标组合 {len(targets)} 只 "
+                  f"(最高 {max(targets, key=targets.get)} "
+                  f"w={max(targets.values()):.2f}, 候选 {len(scores)})")
+        else:
+            print(f"  信号: 全部标的分数不过门槛 → 空仓（候选 {len(scores)}）")
+        return {"targets": targets, "prices": prices,
                 "codes": list(prices.keys())}
 
     return signal_fn

@@ -364,8 +364,16 @@ def stage_validation(raw_factors, pool, universe, all_ts, eq, tc,
                                     save_multi_strategy_results)
         ms = run_multi_strategy(raw_factors, pool, universe, all_ts)
         save_multi_strategy_results(ms)
-        print(f"  多策略: {len(ms['strategies'])} 个，"
-              f"组合夏普={ms['summary'].get('combined_sharpe')}")
+        if not ms:
+            print("  多策略: 0 个入场（逐条原因见上方的正交化/PBO 过滤输出）")
+            return
+        s = ms["summary"]
+        # 组合层读数在 summary 的「[组合] 」行里；此前取的是不存在的
+        # combined_sharpe 键，所以恒打印 None，等于这条链没有出口读数
+        comb = s[s["策略"].str.startswith("[组合]")]
+        print(f"  多策略: {len(ms['strategies'])} 个入场 | "
+              + "  ".join(f"{r['策略'][4:].strip()}夏普={r['夏普']}"
+                          for _, r in comb.iterrows()))
     if MULTI_STRATEGY["enabled"]:
         safe_stage("多策略并行回测", _multi)
     return pbo_now, pbo_trend
@@ -523,7 +531,8 @@ def main():
     strategy = IntradayRotationStrategy(
         factors, pool, universe, factor_weights=weights)
     signals = strategy.generate_signals(all_ts)
-    print(f"  bar 数: {len(signals)}")
+    print(f"  信号长表 {len(signals)} 行 / "
+          f"{signals.index.nunique()} 次调仓（稀疏：只在调仓 bar 出行）")
 
     # 7. 回测 + DSR
     print("\n[7/9] 回测...")

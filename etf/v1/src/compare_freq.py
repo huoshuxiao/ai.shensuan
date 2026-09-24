@@ -47,43 +47,57 @@ def compute_stats(eq_series, trades_df, freq):
 
 
 def load_daily_positions(freq):
-    """从 signals_{freq}.csv 提取每日收盘持仓（当天最后一个非空 target_code）"""
+    """从 signals_{freq}.csv 还原每日收盘的目标持仓**集合**。
+
+    信号是稀疏长表（只在调仓 bar 出行，每只一行 code/weight），两个调仓
+    日之间沿用上一组目标；code 空串是空仓哨兵，表示该次调仓目标为空。"""
     path = f"{RESULTS_DIR}/signals_{freq}.csv"
     if not os.path.exists(path):
         return None
     s = pd.read_csv(path)
-    ts_col = s.columns[0]
-    code = s["target_code"].astype(str)
-    s["date"] = pd.to_datetime(s[ts_col]).dt.date
-    s["target_code"] = code.where(
-        code.notna() & ~code.isin(["", "nan", "None"]), "")
-    held = s[s["target_code"] != ""]
-    all_dates = pd.Index(sorted(s["date"].unique()), name="date")
-    daily = held.groupby("date")["target_code"].last().reindex(
-        all_dates, fill_value="")
-    return daily
+    if "code" not in s.columns:
+        print(f"  ⚠️ {path} 不是长表格式（缺 code 列），跳过持仓对比")
+        return None
+    s["ts"] = pd.to_datetime(s[s.columns[0]])
+    s["date"] = s["ts"].dt.date
+    last_ts = s.groupby("date")["ts"].max()
+    daily, cur = {}, set()
+    for d in sorted(s["date"].unique()):
+        rows = s[(s["date"] == d) & (s["ts"] == last_ts[d])]
+        cur = {c for c in rows["code"].astype(str)
+               if c not in ("", "nan", "None")}
+        daily[d] = frozenset(cur)
+    return pd.Series(daily).sort_index()
 
 
 def holdings_similarity(pos_a, pos_b):
-    """两个频率每日收盘持仓的一致程度"""
+    """两个频率每日收盘目标持仓集合的一致程度：
+    完全一致率 = |{d: A_d == B_d}| / 对齐天数；
+    重合度（Jaccard）= |A∩B| / |A∪B|，逐日取均值（两边都空仓记 1.0）。"""
     common = pos_a.index.intersection(pos_b.index)
     if len(common) == 0:
         return None
     a, b = pos_a.loc[common].values, pos_b.loc[common].values
-    match = a == b
-    at_least_one = (a != "") | (b != "")
-    both_held = (a != "") & (b != "")
-    disagree = [(str(d), x, y or "-") for d, x, y, m
+    match = np.array([x == y for x, y in zip(a, b)])
+    jac = np.array([len(x & y) / len(x | y) if (x | y) else 1.0
+                    for x, y in zip(a, b)])
+    at_least_one = np.array([bool(x or y) for x, y in zip(a, b)])
+    both_held = np.array([bool(x) and bool(y) for x, y in zip(a, b)])
+
+    def _s(x):
+        return "+".join(sorted(x)) if len(x) else "-"
+    disagree = [(str(d), _s(x), _s(y)) for d, x, y, m
                 in zip(common, a, b, match) if not m][:20]
     return {
         "对齐天数": int(len(common)),
         "总相似度": round(float(match.mean()), 4),
+        "平均重合度": round(float(jac.mean()), 4),
         "持仓日相似度": round(float(match[at_least_one].mean()), 4)
                          if at_least_one.any() else None,
         "双边持仓日相似度": round(float(match[both_held].mean()), 4)
                              if both_held.any() else None,
-        "持仓占比_a": round(float((a != "").mean()), 4),
-        "持仓占比_b": round(float((b != "").mean()), 4),
+        "持仓占比_a": round(float(np.array([bool(x) for x in a]).mean()), 4),
+        "持仓占比_b": round(float(np.array([bool(x) for x in b]).mean()), 4),
         "不一致示例": [{"date": d, "a": x, "b": y}
                        for d, x, y in disagree],
     }

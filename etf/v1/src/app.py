@@ -29,9 +29,10 @@ def load_json(p):
     return None
 
 
-def _held_mask(signals):
-    code = signals["target_code"].astype(str)
-    return code.notna() & ~code.isin(["", "nan", "None"])
+def _holdings(signals):
+    """长表信号里带持仓的行（code="" 是空仓哨兵，见 portfolio_engine）"""
+    code = signals["code"].astype(str)
+    return signals[code.notna() & ~code.isin(["", "nan", "None"])]
 
 
 equity_df = load_csv(f"{RESULTS_DIR}/equity.csv")
@@ -61,10 +62,17 @@ if dsr_df is not None and not dsr_df.empty:
                 delta="显著" if dsr_val > 0.95 else "不显著")
 if trades_df is not None:
     col7.metric("交易次数", len(trades_df))
-if signals_df is not None and "target_code" in signals_df.columns:
-    hold = _held_mask(signals_df).sum()
-    col8.metric("持仓 bar", int(hold),
-                delta=f"占比 {hold / max(len(signals_df), 1) * 100:.1f}%")
+if signals_df is not None and "code" in signals_df.columns:
+    held = _holdings(signals_df)
+    ts_col = signals_df.columns[0]
+    # 信号是稀疏长表：一根调仓 bar 出多行（每只持仓一行），故按时间戳去重
+    rebal_days = signals_df[ts_col].nunique()
+    held_days = held[ts_col].nunique() if not held.empty else 0
+    last_n = 0
+    if not held.empty:
+        last_n = int((held[ts_col] == held[ts_col].max()).sum())
+    col8.metric("最近调仓只数", last_n,
+                delta=f"在仓 {held_days}/{rebal_days} 次调仓")
 
 st.divider()
 
@@ -103,27 +111,34 @@ with tabs[2]:
                 st.metric(k, v)
 
 with tabs[3]:
-    if signals_df is not None and "target_code" in signals_df.columns:
-        held_df = signals_df[_held_mask(signals_df)]
-        counts = held_df["target_code"].value_counts()
+    if signals_df is not None and "code" in signals_df.columns:
+        held_df = _holdings(signals_df)
+        ts_col = signals_df.columns[0]
+        n_rebal = signals_df[ts_col].nunique()
+        counts = held_df["code"].value_counts()
         if not counts.empty:
-            c1, c2, c3 = st.columns(3)
-            c1.metric("持仓 bar 数", len(held_df))
-            c2.metric("持仓时间占比",
-                      f"{len(held_df) / max(len(signals_df), 1) * 100:.1f}%")
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("调仓次数", n_rebal)
+            c2.metric("平均持仓只数",
+                      f"{len(held_df) / max(n_rebal, 1):.1f}")
             c3.metric("涉及标的数", counts.size)
+            # 空仓 = 该次调仓只剩哨兵行（无任何标的过分数门槛）
+            c4.metric("空仓调仓次数", int(n_rebal - held_df[ts_col].nunique()))
             fig = go.Figure(go.Bar(
                 x=counts.index, y=counts.values,
-                text=[f"{v / len(held_df) * 100:.1f}%"
-                      for v in counts.values],
+                text=[f"{v / n_rebal * 100:.0f}%" for v in counts.values],
                 textposition="outside", marker_color="steelblue"))
             fig.update_layout(
-                title="持仓分布（bar 数，标注为持仓内占比）",
-                xaxis_title="标的", yaxis_title="持仓 bar 数",
+                title="标的入选次数（标注为占调仓次数比例）",
+                xaxis_title="标的", yaxis_title="入选次数",
                 height=400)
             st.plotly_chart(fig, use_container_width=True)
+            st.dataframe(held_df.tail(200), use_container_width=True)
         else:
             st.info("全程空仓")
+    else:
+        st.info("signals.csv 不是截面组合长表格式（缺 code 列），"
+                "请重跑 main.py 生成")
 
 with tabs[4]:
     coords = load_csv(f"{RESULTS_DIR}/factor_clusters.csv")

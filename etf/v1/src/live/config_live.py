@@ -43,11 +43,13 @@ LIVE_RISK = {
     "enabled": True,
     "max_position_ratio": 0.95,
     "min_cash_reserve": 100,
-    # 换手上限必须 ≥ max_position_ratio：单标的轮动策略一次建仓就要打满
-    # ~95% 权益（amount/equity≈0.87），若上限低于此值，首笔买入即被
-    # check_order 判"日换手超限"拒单，账户永远开不出仓——闸门彼此矛盾。
-    # 真正的频控由 max_orders_per_day + cooldown 承担，此处只挡同日反复倒仓。
-    "max_daily_turnover": 1.0,
+    # 换手闸门按「Σ成交金额/净值」累计（买卖都计，不折半）。截面组合一次完整
+    # 调仓是「清掉出名单的 + 买入新名单的」≈ 2×在仓比例，取 1.0 会在换仓当天
+    # 拒掉后半数订单、留下一个半成品组合——闸门必须容得下形态本身要做的动作。
+    # 研究侧单次调仓上限是 Σ|Δ金额|/(2·净值) ≤ PORTFOLIO["max_turnover"]=0.60，
+    # 折到本口径 = 1.2，此处留 2.0 覆盖「同日多次小步调仓」的累计量。
+    # 真正的频控由 max_orders_per_day + max_orders_per_minute + cooldown 承担。
+    "max_daily_turnover": 2.0,
     "max_order_amount": 9000,
     "min_order_amount": 100,
     "max_orders_per_day": 10,

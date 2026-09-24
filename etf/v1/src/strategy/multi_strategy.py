@@ -58,6 +58,16 @@ def run_single_strategy(config, raw_factors, pool, universe, all_ts):
         raw_factors, threshold=config["ortho"]["corr_threshold"],
         method=config["ortho"]["method"])
     if not factors:
+        # 静默 return None 会让日志里那条策略「凭空消失」，看板上只剩少一条的
+        # 名单——把消掉的环节报出来，才分得清「策略差」和「策略没跑」。
+        # pca 不是「判重判光了」：内核把输出改名为 PC1..PCk，随后按输入名回填，
+        # 那条路结构性地必然清空（要接回 PC 得在 common/ 动刀，两线共用未轻动）。
+        o = config["ortho"]
+        why = ("输出改名 PC1..PCk 后按输入名回填，结构性清空"
+               if o["method"] == "pca" else
+               f"阈值 {o['corr_threshold']} 把候选全判为重复")
+        print(f"    ⚠️ {config['name']} 不入场：正交化 method={o['method']}，"
+              f"{why}（{len(raw_factors)} 个候选 → 0）")
         return None
     weights = None
     if RISK_BUDGET["enabled"]:

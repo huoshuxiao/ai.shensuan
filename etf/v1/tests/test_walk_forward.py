@@ -32,7 +32,8 @@ def _fake_factor(pool, tag="gp_fake"):
 
 
 def _fake_backtest(pool, signals, universe, risk):
-    idx = signals.index
+    # 长表信号每根调仓 bar 有 top_k 行，净值序列按调仓时点去重
+    idx = signals.index.unique()
     eq = pd.DataFrame({"equity": 10_000 * np.exp(
         np.cumsum(np.linspace(1e-4, 3e-4, len(idx))
                   + np.random.default_rng(len(idx)).normal(0, 2e-3, len(idx))))},

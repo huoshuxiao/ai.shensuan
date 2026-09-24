@@ -27,6 +27,8 @@ class LiveAttributionTracker:
             if elapsed < self.p["snapshot_interval_minutes"]:
                 return
         self.last_snapshot_time = now
+        tgt = set((target or {}).get("targets") or {})
+        held = {p.code for p in positions}
         snapshot = {
             "time": now.isoformat(),
             "total_asset": account.total_asset,
@@ -36,10 +38,10 @@ class LiveAttributionTracker:
             "n_positions": len(positions),
             "position_codes": ",".join(p.code for p in positions),
             "position_mv": sum(p.market_value for p in positions),
-            "target_code": target.get("target_code", ""),
-            "target_match": (positions[0].code == target.get("target_code")
-                             if positions and target.get("target_code")
-                             else False)}
+            "target_codes": ",".join(sorted(tgt)),
+            # 持仓与目标组合的 Jaccard 重合度（两边都空仓 = 1.0 已对齐）
+            "target_overlap": round(len(held & tgt) / len(held | tgt), 4)
+                              if (held or tgt) else 1.0}
         self.snapshots.append(snapshot)
 
     def save(self):

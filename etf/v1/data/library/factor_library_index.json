@@ -1242,5 +1242,43 @@
       }
     ],
     "market": "etf"
+  },
+  "5-day SMA of Price": {
+    "name": "5-day SMA of Price",
+    "expr": "ma(df,5)",
+    "ic": -0.028648877181990585,
+    "icir": -0.7596943394572644,
+    "source": "official",
+    "status": "active",
+    "first_seen": "2026-09-25 03:10:24",
+    "last_seen": "2026-09-25 03:10:24",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-25 03:10:24",
+        "ic": -0.028648877181990585,
+        "icir": -0.7596943394572644
+      }
+    ],
+    "market": "etf"
+  },
+  "1-day SMA of Price over 60-day MAX of Price": {
+    "name": "1-day SMA of Price over 60-day MAX of Price",
+    "expr": "(ma(df,1))/(max(df,60))",
+    "ic": -0.012683548154752094,
+    "icir": -0.354516650412969,
+    "source": "official",
+    "status": "active",
+    "first_seen": "2026-09-25 03:10:24",
+    "last_seen": "2026-09-25 03:10:24",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-25 03:10:24",
+        "ic": -0.012683548154752094,
+        "icir": -0.354516650412969
+      }
+    ],
+    "market": "etf"
   }
 }

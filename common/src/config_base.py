@@ -469,5 +469,15 @@ def build(line_root, env_prefix="ETF_", freq_default="daily", market="etf"):
     # 本地/自建 LLM 端点（Ollama: http://localhost:11434/v1、vLLM、LM Studio 等，
     # 均需 OpenAI 兼容接口）。留空走 OpenAI 官方；本地服务不校验 key，可缺省
     d["LLM_BASE_URL"] = env("LLM_BASE_URL", "").strip()
+    # 思考型模型（qwen3.5 等）的三道请求体闸门。历史包袱：本仓 20 个
+    # chat.completions.create 调用点**没有一个**传 max_tokens，而纯 CPU 的 ollama
+    # 上 9b 不开思考封顶时实测单次 >900s 不返回（09-25）。三个键默认"不注入"，
+    # 于是没设 ETF_LLM_*/STOCK_LLM_* 的那条线拿到的客户端与改动前逐字一致。
+    d["LLM_MAX_TOKENS"] = int(env("LLM_MAX_TOKENS", "0") or 0)
+    # "none" 才真关得掉思考：/v1 兼容口下 think:false / thinking:{type:disabled} /
+    # chat_template_kwargs 三种写法实测全部无效（09-25 i34/i34b）
+    d["LLM_REASONING_EFFORT"] = env("LLM_REASONING_EFFORT", "").strip()
+    # 墙钟上限（秒），0=不注入（沿用 SDK 默认）。防的是"一次调用挂住整批日更"
+    d["LLM_TIMEOUT"] = float(env("LLM_TIMEOUT", "0") or 0)
 
     return d

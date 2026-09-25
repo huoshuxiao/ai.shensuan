@@ -323,9 +323,11 @@ def test_main_stage_validation_uses_real_family(tmp_path, daily_pool,
     eq = DailyBacktester(pool, None, risk_params).run(
         strategy.generate_signals(idx))["equity"]["equity"]
 
-    pbo_now, pbo_trend = stage_validation(
+    pbo_now, pbo_trend, pbo_for_trigger, dsr_oos = stage_validation(
         factors, pool, None, idx, eq, None,
         factors=factors, weights=weights, risk_params=risk_params)
+    # 本用例关掉了 walk-forward ⇒ 没有合并样本外 DSR 可喂（触发器退回全样本）
+    assert dsr_oos is None
     res = json.loads((tmp_path / "pbo_result.json").read_text("utf-8"))
     assert "error" not in res, res
     assert res["config_family"] == "real"
@@ -336,10 +338,14 @@ def test_main_stage_validation_uses_real_family(tmp_path, daily_pool,
     assert res["n_configs"] == expected
     assert 0.0 <= pbo_now <= 1.0
     assert pbo_trend is None                       # 时间线已关闭
+    # 真实配置族才喂重挖触发器（09-24 定档：伪变体族按"指标缺失"处理）
+    assert pbo_for_trigger == pytest.approx(pbo_now)
     # 关掉配置族开关后必须退回伪变体族（证明开关真的接上了）
     monkeypatch.setitem(config.STRATEGY_PBO, "use_config_family", False)
-    stage_validation(factors, pool, None, idx, eq, None,
-                     factors=factors, weights=weights,
-                     risk_params=risk_params)
+    _, _, pbo_off_trigger, _ = stage_validation(
+        factors, pool, None, idx, eq, None,
+        factors=factors, weights=weights, risk_params=risk_params)
     res_off = json.loads((tmp_path / "pbo_result.json").read_text("utf-8"))
     assert res_off["config_family"] == "pseudo"
+    # 退化轮的 PBO 仍是 0~1 的一个数（照样落盘、照样上看板），但不得进判据
+    assert pbo_off_trigger is None

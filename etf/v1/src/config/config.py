@@ -133,18 +133,34 @@ RDAGENT_SOURCE_DIR = os.environ.get(
 RDAGENT_COSTEER_MAX_LOOP = os.environ.get("ETF_RDAGENT_COSTEER_MAX_LOOP", "8")
 
 # ========== Walk-forward ==========
-# 折数与起点尚未定档（CHANGELOG #15 待办列了四条路径）。已知的硬约束：
-# 每折测试段 bar 数直接决定该折 DSR 的门槛（T 越短、纯运气能摸到的夏普越高），
-# 现状 3 折 = 每折 402 bar → 过 DSR(0.95) 要年化夏普 2.86，而实测最好的折只有
-# 1.47；把折数加到 6 更要 4.06。也就是说"折内 DSR 全 False"是几何的产物，
-# 不是策略的判决 —— 门槛随几何变化的实测表见 shell/i15_fold_probe_0924.py。
+# 几何已于 09-24 定档（用户选「路径 1+2 叠加」）：train_ratio 0.7 → 0.5，
+# 配合 backtest/walk_forward.py 的合并样本外 DSR。为什么要动：DSR 的运气门槛
+# 与各段自己的 bar 数挂钩（T 越短、纯运气能摸到的夏普越高），09-24 探针
+# （shell/i15_threshold_probe_0924.py，账本 N=43、该条净值偏度 7.70/峰度 264.74）
+# 反解"过 DSR=0.95 所需年化夏普"：
+#   单折 402 bar → 4.33｜合并 1206 bar → 1.75｜单折 672 bar → 2.61｜
+#   0.5 + 合并 ≈2.0 千 bar → 1.31（当时三折实测年化夏普 0.83/1.14/1.47）
+# 即：只改 ratio 或只加合并检验都够不着，两条叠加才是第一次"可判定"的几何。
+# 定档后的实测代价（09-24 晚真实跑批，账本已涨到 N=76~92）：
+#   每折测试段 402 → 672/672/673 bar（拼接 2014 根逐 bar 收益）；
+#   训练段 947 → 677 bar/折 ⇒ 折 1 可用标的从 6 只缩到 **4 只**（100 只池），
+#   早期折挖出的因子样本更薄，这一点在跨折稳定性上要一起读。
 WALK_FORWARD = {"enabled": True, "n_splits": 3,
-                "train_ratio": 0.7,
+                "train_ratio": 0.5,
                 "embargo_bars": LOOKBACK_BARS // 4,
                 # 折内挖掘引擎：与主链同构，样本外验证才覆盖得到 GP/DSL 因子。
                 # registry=注册表基线，genetic=字符串 DSL 遗传编程（折内成本主力），
-                # multi_source=多源（含 RD-Agent/LLM，默认关闭：每折一次外部调用）
-                "fold_engines": ["registry", "genetic"]}
+                # multi_source=多源（含 RD-Agent/LLM）。
+                # 09-25 改成 ["registry","multi_source"] 以对齐本轮只跑
+                # official+llm 的主链。已知代价，两条都要读数时一起看：
+                #   ① 每折各拉起一次 RD-Agent 容器循环（~50min/轮，3 折 ≈2.5h）；
+                #   ② official **不是点时**的——multi_source_mining._run_official(pool)
+                #      没把 pool 传给容器，循环读的是全样本 daily_pv.h5 与 rdagent
+                #      自己 conf 的区间，折内只用 _attach_impl 在切片池子上重算 IC。
+                #      ⇒ 表达式带着未来信息，合并样本外 DSR 对 official 那几条
+                #      只能当"折内重算 IC"读，不能当"挖它时还看不到未来"读。
+                #      llm 源没有这个问题（LLMFactorAgent(pool) 真吃折内池子）。
+                "fold_engines": ["registry", "multi_source"]}
 
 # ========== 归因 ==========
 FACTOR_ATTRIBUTION = {
@@ -287,3 +303,29 @@ DASHBOARD = {
     "title": "ETF 量化系统",
     "output_dir": RESULTS_DIR, "auto_refresh_seconds": 60,
 }
+
+# ========== 分支裁剪（09-25 定档：只跑 RD-Agent + 本地 LLM 两支） ==========
+# 用户指定：official（RD-Agent(Q) 官方循环）与 llm（本机 qwen2.5:7b）之外的
+# 挖掘分支本轮全部不跑。
+# 作用范围要说清楚：下面这些 enabled 只管**主链**（stage_mining /
+# stage_orthogonalize）；折内与自动重挖走 main.mine_with_engines，它认的是
+# 引擎清单（WALK_FORWARD["fold_engines"]、AUTO_REMINING["remining_engines"]），
+# 与 GENETIC["enabled"] 无关——所以本轮把两处清单一起改成 registry+multi_source，
+# 否则会出现"主线没有 GP、折内却在挖 GP"的错配。
+MULTI_SOURCE["sources"] = ["official", "llm"]
+# 外层天花板必须高于子进程自己的 RDAGENT_TIMEOUT_SEC：multi_source_mine 里
+# `as_completed(futures, timeout=...)` 抛的 TimeoutError 落在 try 之外，底座默认
+# 300s 一到就整段多源连 llm 已收的产物一起丢（09-24「GP 那 4 个因子整段被跳过」
+# 走的就是这条路）。official 一轮约 50min，故按子进程上限再留 10min 回收余量。
+MULTI_SOURCE["timeout_seconds"] = int(RDAGENT_TIMEOUT_SEC) + 600
+GENETIC["enabled"] = False
+GENETIC_MULTI_OBJECTIVE["enabled"] = False
+LLM_GENETIC_HYBRID["enabled"] = False
+ORTHO_LLM["enabled"] = False
+JOINT_LLM["enabled"] = False
+LLM_RESEARCH_PLANNER["enabled"] = False
+# 归因本轮关掉（09-25 用户指定）：Shapley 实测 70s/次回测，是全量批的瓶颈；
+# 关掉后 [5/9] 正交化落到 main.py:274 的默认路径（orthogonalize_factors），
+# 不会因为 JOINT_LLM/ORTHO_LLM 一起关而断链。
+FACTOR_ATTRIBUTION["enabled"] = False
+AUTO_REMINING["remining_engines"] = ["registry", "multi_source"]

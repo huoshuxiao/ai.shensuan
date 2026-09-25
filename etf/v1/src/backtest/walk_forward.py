@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Walk-forward 验证（滚动训练-检验 + 逐折 DSR + 跨折稳定性）
+"""Walk-forward 验证（滚动训练-检验 + 逐折 DSR + 合并样本外 DSR + 跨折稳定性）
 
 对抗"全样本挑最优"的过拟合：时间轴切若干折，每折只用训练段
 挖因子，在之后的测试段模拟交易；测试段表现才是可信的样本外证据。
-试验次数（n_trials）逐折累计喂给 DSR。本模块不出 PBO，原因见末尾注释。"""
+试验次数（n_trials）逐折累计喂给 DSR。除逐折检验外，另出一条
+"合并样本外"检验（把各折不相交的测试收益拼接后整体做 DSR），
+因为折内 T 太短会让运气门槛高到任何策略都够不着。
+本模块不出 PBO，原因见末尾注释。"""
 
 import numpy as np
 import pandas as pd
@@ -35,24 +38,28 @@ def make_splits(timestamps):
     return splits
 
 
-def _dsr_from_equity(equity, n_trials):
-    """对一条净值曲线做 DSR 检验（样本 <30 直接判不过）。
+def _dsr_from_returns(rets, n_trials):
+    """对一段逐 bar 收益做 DSR 检验（样本 <30 直接判不过）。
 
     年化系数走 frequency_adapter：dsr.annualize_sharpe 的默认值是分钟
     常量 240*252，日线折内沿用会把年化夏普高估 √240≈15.5 倍。"""
-    rets = equity.pct_change().dropna().values
-    if len(rets) < 30:
+    r = np.asarray(pd.Series(rets).dropna(), dtype=float)
+    if len(r) < 30:
         return {"dsr": 0.0, "passed": False}
-    r = deflated_sharpe_ratio(rets, n_trials=n_trials)
-    if "sr_observed" in r:
+    res = deflated_sharpe_ratio(r, n_trials=n_trials)
+    if "sr_observed" in res:
         ann = get_adapter()
-        r["sharpe_annual"] = ann.annualize_sharpe(r["sr_observed"])
+        res["sharpe_annual"] = ann.annualize_sharpe(res["sr_observed"])
         # 门槛同批年化：逐 bar 的 SR* 只有千分之几，不换算就看不出
         # "没过 DSR" 是成绩差还是门槛本身被量纲撑大了
-        if "sr0_expected_max" in r:
-            r["sr0_annual"] = round(
-                ann.annualize_sharpe(r["sr0_expected_max"]), 4)
-    return r
+        if "sr0_expected_max" in res:
+            res["sr0_annual"] = round(
+                ann.annualize_sharpe(res["sr0_expected_max"]), 4)
+    return res
+
+
+def _dsr_from_equity(equity, n_trials):
+    return _dsr_from_returns(equity.pct_change().dropna(), n_trials)
 
 
 def walk_forward_run(pool, universe, factor_fn, backtest_fn,
@@ -61,7 +68,9 @@ def walk_forward_run(pool, universe, factor_fn, backtest_fn,
     引擎集合由调用方决定（应与主链同构，否则验的不是同一批因子）；
     信号生成/回测用 pool 全量（策略内部 .loc[:ts] 天然不越界，
     测试区间由 test_ts 边界控制）。每折挖出的因子数计入 TrialCounter，
-    使后续折的 DSR 门槛随累计试验次数收紧。"""
+    使后续折的 DSR 门槛随累计试验次数收紧。
+    两道 DSR 读数并列：逐折（各段自己的 T）与合并样本外（各段 T 之和），
+    后者是现状几何下唯一可判定的那条。"""
     print("\n========== Walk-forward + 逐折 DSR ==========")
     # 与主流程一致：时间轴取最长历史标的，短历史首位标的会截断分折窗口
     ref_code = max(pool, key=lambda c: len(pool[c]))
@@ -69,6 +78,8 @@ def walk_forward_run(pool, universe, factor_fn, backtest_fn,
     splits = make_splits(all_ts)
     tc = trial_counter or TrialCounter()
     all_stats, all_dsr = [], []
+    # 各折测试段的逐 bar 收益，段间时间不相交 ⇒ 可按时间顺序拼成一条长样本外序列
+    oos_rets = []
 
     for i, (tr_s, tr_e, te_s, te_e) in enumerate(splits):
         print(f"\n--- 折 {i + 1}/{len(splits)} ---")
@@ -101,6 +112,9 @@ def walk_forward_run(pool, universe, factor_fn, backtest_fn,
         equity = result["equity"]["equity"]
         n_trials_now = DSR.get("n_trials") or tc.get()
         dsr_result = _dsr_from_equity(equity, n_trials_now)
+        leg = equity.pct_change().dropna()
+        if len(leg):
+            oos_rets.append(leg)
         print(f"  测试段: 收益={stats.get('总收益率')}  "
               f"夏普={stats.get('夏普比率')}  "
               f"交易={stats.get('交易次数')}  "
@@ -121,6 +135,29 @@ def walk_forward_run(pool, universe, factor_fn, backtest_fn,
         all_stats.append(stats)
         all_dsr.append(dsr_result.get("dsr", 0))
 
+    merged = {}
+    if oos_rets:
+        # 拼接而不是取折均：DSR 的运气门槛 SR* ≈ sqrt((1+0.5·SR̂²)/T)·极值系数，
+        # T 是**每段自己的** bar 数 —— 3 折各 402 bar 时每段门槛都被推到年化
+        # 4.33（09-24 探针 shell/i15_threshold_probe_0924.py，实测最好的折 1.47），
+        # 于是"折内 DSR 全 False"只是分折切出来的几何，不是策略判决。拼成一条
+        # 样本外序列后 T 变成各段之和，门槛才落到可判定的量级（train_ratio
+        # 0.5 下三段拼接 ≈2.0 千 bar → 过线所需年化 1.31）。代价：拼接抹掉了
+        # 折与折之间的空档，隐含"样本外收益在时间上可复利串联"这一假定，
+        # 因此它与逐折读数并列报告，不替换逐折。
+        oos = pd.concat(oos_rets).sort_index()
+        n_trials_now = DSR.get("n_trials") or tc.get()
+        merged = _dsr_from_returns(oos.values, n_trials_now)
+        # 几何随读数一起落盘：门槛是 T 的函数，不记 T/N 的 DSR 没法跨轮比较
+        merged["n_segments"] = len(oos_rets)
+        merged["train_ratio"] = WALK_FORWARD["train_ratio"]
+        print(f"\n--- 合并样本外检验（{len(oos_rets)} 段拼接）---")
+        print(f"  bar={merged.get('n_samples', len(oos))}  "
+              f"年化夏普={merged.get('sharpe_annual', 0):.4f}  "
+              f"DSR={merged.get('dsr', 0):.4f}  "
+              f"运气门槛年化={merged.get('sr0_annual')}  "
+              f"通过={merged.get('passed', False)}（累计试验 N={n_trials_now}）")
+
     summary = {}
     if all_stats:
         sharpes = np.array([float(s["夏普比率"]) for s in all_stats])
@@ -136,6 +173,17 @@ def walk_forward_run(pool, universe, factor_fn, backtest_fn,
             "正夏普折数": int((sharpes > 0).sum()),
             "平均DSR": np.mean(all_dsr),
             "DSR通过折数": sum(1 for d in all_dsr if d > 0.95)}
+        if merged:
+            # 合并段与逐折并列：这两条读数是"同一段样本外证据"的两种取法，
+            # 只有拼接那条可判定，逐折那条在现状几何下恒 False
+            summary.update({
+                "合并样本外段数": len(oos_rets),
+                "合并样本外bar": int(merged.get("n_samples", len(oos))),
+                "合并样本外夏普": round(
+                    float(merged.get("sharpe_annual", 0.0)), 4),
+                "合并样本外DSR": round(float(merged.get("dsr", 0.0)), 4),
+                "合并门槛年化": merged.get("sr0_annual"),
+                "合并DSR通过": bool(merged.get("passed", False))})
 
     # 这里**不再**算 PBO。旧实现把各折测试段净值喂给 cscv_pbo：折与折的时间段
     # 互不相交，build_returns_matrix 对齐后每列只有自己那段非零、其余填 0，
@@ -150,4 +198,5 @@ def walk_forward_run(pool, universe, factor_fn, backtest_fn,
         print(f"  {k}: {v:.4f}" if isinstance(v, float) else f"  {k}: {v}")
 
     return {"folds": all_stats, "summary": summary,
-            "dsr_list": all_dsr, "pbo": pbo_result}
+            "dsr_list": all_dsr, "merged_oos_dsr": merged,
+            "pbo": pbo_result}

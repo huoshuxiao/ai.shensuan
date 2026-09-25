@@ -10,8 +10,9 @@ import streamlit as st
 import plotly.graph_objects as go
 from config import (
     LIVE_DATA_DIR as _LIVE, RESULTS_DIR as _RESULTS,
-    REPORT_DIR as _REPORT,
+    REPORT_DIR as _REPORT, FACTOR_ATTRIBUTION, LLM_SHAP_EXPLAINER,
 )
+from llm_selfreport import self_report_mtime
 
 st.set_page_config(page_title="反馈闭环", layout="wide")
 st.title("🔄 实盘反馈闭环看板")
@@ -98,9 +99,64 @@ with tabs[6]:
                   encoding="utf-8") as fp:
             st.markdown(fp.read())
 
+    # ---------- 模型自述：衰减解释文本（不是判据） ----------
+    st.subheader("模型给的衰减解释（文本，不是判据）")
+    attr_on = "开" if FACTOR_ATTRIBUTION["enabled"] else "关"
+    shap_on = "开" if LLM_SHAP_EXPLAINER["enabled"] else "关"
+    attr_csv = f"{RESULTS_DIR}/factor_attribution.csv"
+    st.caption(f"数值贡献表（`factor_attribution.csv`）由 `FACTOR_ATTRIBUTION`"
+               f"（现{attr_on}）产出、列在研究看板的「🧬 因子」页，最后一次落盘 "
+               f"{self_report_mtime(attr_csv)}；文本解释由 `LLM_SHAP_EXPLAINER`"
+               f"（现{shap_on}）在衰减环节写进 `report/llm_shap_report.md`。"
+               "两段都是**模型对既有数字的说法**，不进准入判据，也不与数值表做核对。")
+    shap = load_json(f"{REPORT_DIR}/llm_shap_report.json") or {}
+    st.write(f"解释文本 {len(shap)} 段 · 落盘于 "
+             f"{self_report_mtime(f'{REPORT_DIR}/llm_shap_report.json')}")
+    for name, text in shap.items():
+        with st.expander(name):
+            st.markdown(text)
+
 with tabs[7]:
+    # ---------- 主读数：本线按日期合并的自评历史 ----------
+    # 日更每天只评当日 1 份（见 `scheduler.daily_feedback`），共享层那份汇总因此
+    # 只反映"最后一次批量"，累计读数只能从本线这份合并文件取。
+    st.subheader("四维分数（准确性/完整性/可执行性/逻辑性，各 25 分）")
+    dims = load_json(f"{REPORT_DIR}/self_eval_dims.json")
+    if dims:
+        rows = dims.get("detail") or []
+        scores = pd.Series([r.get("final_score") for r in rows]).dropna()
+        n_tpl = sum(1 for r in rows if r.get("mode") == "template")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("已落盘天数", len(rows))
+        c2.metric("最近一批份数", dims.get("n_batch", 0))
+        c3.metric("累计平均分",
+                  round(float(scores.mean()), 1) if len(scores) else None)
+        st.caption(f"落盘于 {dims.get('written_at')}；最近一批评法 "
+                   f"`mode={dims.get('mode')}`")
+        if n_tpl:
+            st.error(f"{n_tpl}/{len(rows)} 天是**模板分**（那几天没有 LLM 端点，"
+                     "四维恒 20、grade 恒 A），不是模型给的。每行的 `mode` 才是"
+                     "那天的评法，顶层 `mode` 只代表最近一批 —— 日更中途端点断过 "
+                     "一天，就在那一行上留着。")
+        else:
+            st.caption("`mode=llm` 只说明**那几天端点在**（判据是 key 或 "
+                       "`LLM_BASE_URL` 非空，本线默认就配着），不代表分数可信 —— "
+                       "09-25 实测 `qwen2.5:7b` 会把提示词里的示例 JSON 逐字吐回"
+                       "（四维 22/18/20/21、total 81）。评的对象是**日报文本质量**，"
+                       "不参与任何策略判据。")
+        if rows:
+            st.dataframe(pd.DataFrame(rows), hide_index=True)
+    else:
+        st.info("还没有四维落盘：跑 `run_feedback.py --self-eval` 才会写 "
+                "`report/self_eval_dims.json`（共享层自己只落 final_score/grade，"
+                "且是整表覆写）。")
+
+    # ---------- 最近一批：共享层自己那份汇总 ----------
     summary = load_json(f"{REPORT_DIR}/self_eval_summary.json")
     if summary:
+        st.subheader("最近一批（共享层 `self_eval_summary.json`）")
+        st.caption("这份每跑一次 `--self-eval` 就被**整表覆写**一次：日更挂 "
+                   "`--monthly-days 1` 时它是 1 天的数，别当趋势读。")
         c1, c2, c3 = st.columns(3)
         c1.metric("平均分", summary.get("avg_score", 0))
         c2.metric("中位数", summary.get("median_score", 0))

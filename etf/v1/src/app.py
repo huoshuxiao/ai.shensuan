@@ -27,8 +27,11 @@ from plotly.subplots import make_subplots
 
 from config import (CACHE_DIR, DSR, FACTOR_LIBRARY, FREQ, PORTFOLIO,
                     RESULTS_DIR, RISK_DIR, STRATEGY_PBO, TRIAL_COUNTER_FILE,
-                    TRIGGER_LOGIC, UNIVERSE_ALL_DIR, WALK_FORWARD)
+                    TRIGGER_LOGIC, UNIVERSE_ALL_DIR, WALK_FORWARD,
+                    RDAGENT_OUTPUT_DIR)
 from factor_naming import cn_name, METRIC_GLOSSARY
+from llm_selfreport import (decision_tally, harvest_vs_library,
+                            self_report_mtime)
 
 st.set_page_config(page_title="ETF 量化看板", layout="wide")
 st.title("📊 ETF 量化系统看板")
@@ -88,6 +91,9 @@ signals_df = load_csv(sig_path)
 trades_df = load_csv(artifact("trades"))
 dsr_df = load_csv(artifact("dsr"))
 wf_df = load_csv(artifact("walk_forward"))
+# 合并样本外 DSR：这条读数是各折原始逐 bar 收益的函数，折表里没有，
+# 只能由 walk_forward 单独落一行（walk_forward_oos_*.csv）
+wf_oos_df = load_csv(f"{RESULTS_DIR}/walk_forward_oos_{FREQ}.csv")
 pbo_res = load_json(f"{RESULTS_DIR}/pbo_result.json")
 params = load_json(f"{RESULTS_DIR}/optimized_params_{FREQ}.json")
 trial_counter = load_json(TRIAL_COUNTER_FILE)
@@ -299,6 +305,36 @@ with tabs[2]:
                       f"{int(dsr_ok.sum())}/{n_folds}" if dsr_ok is not None else "—")
         else:
             st.caption("（这份折表缺 `测试段bar数`/`夏普比率`，算不出跨折汇总）")
+
+        # 合并样本外：把互不相交的几段测试收益拼成一条长序列再检验。
+        # 单折的 T 太短会让运气门槛高到任何策略都够不着（402 bar → 需年化
+        # 4.33），拼接后 T 是各段之和 ⇒ 这才是这条链上唯一可判定的 DSR
+        if wf_oos_df is not None and not wf_oos_df.empty:
+            o = wf_oos_df.iloc[0]
+            st.markdown("**合并样本外 DSR**（各折测试段按时间拼接）")
+            o1, o2, o3, o4, o5 = st.columns(5)
+            o1.metric("拼接段数 / bar",
+                      f"{int(float(o.get('n_segments', 0)))} / "
+                      f"{int(float(o.get('n_samples', 0)))}",
+                      help=f"train_ratio={o.get('train_ratio')}；每段的"
+                           "首根 bar 是净值起点、无收益，不计入")
+            o2.metric("年化夏普", f"{float(o.get('sharpe_annual', 0)):.3f}")
+            o3.metric("DSR", f"{float(o.get('dsr', 0)):.4f}",
+                      delta="通过（>0.95）" if str(o.get("passed")).lower()
+                      in ("true", "1") else "未通过",
+                      delta_color="normal" if str(o.get("passed")).lower()
+                      in ("true", "1") else "off")
+            o4.metric("运气门槛年化", f"{float(o.get('sr0_annual', 0)):.3f}",
+                      help="N 次试验纯运气能挣到的年化夏普；年化夏普要跨过"
+                           "它 DSR 才过 0.95")
+            o5.metric("累计试验 N", int(float(o.get("n_trials", 0))),
+                      help="取检验时点的账本，即本折链挖完之后的计数")
+            o6, o7 = st.columns(2)
+            o6.caption(f"该条收益的偏度 {float(o.get('skew', 0)):.2f} / "
+                       f"峰度 {float(o.get('kurt', 0)):.2f}：厚尾会抬高夏普"
+                       "估计量的方差，等价于把门槛再往上推")
+            o7.caption("逐折那栏仍是各段自己的 T ⇒ 现状几何下恒 False，"
+                       "两条读数并列看，不要互相替换")
 
     st.subheader("③ 策略级 PBO（CSCV）")
     if not pbo_res:
@@ -512,6 +548,31 @@ with tabs[4]:
     if lib:
         st.caption(f"因子库 {len(lib)} 条，其中活跃 "
                    f"{sum(1 for v in lib.values() if v.get('status') == 'active')} 条")
+    # ---------- 容器/LLM 自述（只加读数，不收判据） ----------
+    st.subheader("容器/LLM 自述（不是判据）")
+    st.caption("两块都不是本系统的准入依据：① `Final Decision` 是 RD-Agent 容器"
+               "（CoSTEER）判**代码实现**对不对，与因子 alpha 无关，`common/src` 从不读"
+               "它，数值只从子进程日志文本里数出来，且只覆盖落在这个目录的场次——"
+               "stdout 被重定向到别处的场次不在表里；② 下表的“容器自报 IC”来自"
+               "`factors.json`，准入永远用**本池重算**的那一列"
+               "（`main.recount_foreign_ic`，判据=逐标的 IC 全等即视为自报值），"
+               "这里只显示两者差多少。")
+    tally = decision_tally(RDAGENT_OUTPUT_DIR)
+    c3, c4 = st.columns(2)
+    if tally:
+        c3.dataframe(pd.DataFrame(tally), hide_index=True)
+        c4.metric("历场自报 SUCCESS/FAIL 合计",
+                  f"{sum(r['decision_success'] for r in tally)} / "
+                  f"{sum(r['decision_fail'] for r in tally)}",
+                  help="按日志里的 `This implementation is …` 逐行计数")
+    else:
+        c3.info(f"{RDAGENT_OUTPUT_DIR} 下没有可解析的容器循环日志")
+    harvest = f"{RDAGENT_OUTPUT_DIR}/factors.json"
+    hv = harvest_vs_library(harvest, FACTOR_LIBRARY.get("index_path"))
+    st.caption(f"自报产物落盘时间：{self_report_mtime(harvest)}"
+               f"（比它新的库内读数以库为准）")
+    if not hv.empty:
+        st.dataframe(hv, hide_index=True)
 
 with tabs[5]:
     st.subheader("策略参数与生命周期")
@@ -527,7 +588,12 @@ with tabs[5]:
     st.caption(f"判据在 `common/src/optimizer/trigger_logic.py`：DSR 与 PBO "
                f"**同时**恶化（mode={TRIGGER_LOGIC['mode']}）才记一轮，连续 "
                f"{TRIGGER_LOGIC['consecutive_rounds']} 轮才触发重挖；指标缺失时不"
-               f"计入。本页只读，不改这个文件。")
+               f"计入。本页只读，不改这个文件。"
+               f"**喂进来的 DSR 是上面那条「合并样本外 DSR」**（walk-forward 没跑出"
+               f"该读数时才退回全样本 DSR），PBO 只认真实配置族、退化族按缺失处理。"
+               f"注意 DSR 那条腿的门槛是 `{TRIGGER_LOGIC['dsr_threshold']}`：这条线"
+               f"迄今任何一档 DSR 都没接近过它，所以判据实际由 PBO 那条腿驱动"
+               f"（`>{TRIGGER_LOGIC['pbo_threshold']}` 或 Δ`>{TRIGGER_LOGIC['pbo_delta_threshold']}`）。")
     st.json(load_json(os.path.join(CACHE_DIR, "remining_state.json")) or {},
             expanded=False)
     rem_log = load_csv(f"{RESULTS_DIR}/auto_remining_log.csv")
@@ -562,10 +628,14 @@ with tabs[6]:
   `train_ratio={WALK_FORWARD['train_ratio']}`、
   `embargo={WALK_FORWARD['embargo_bars']}` bar。折内只喂训练段挖因子，
   折级**不出 PBO**（测试段互不相交会让 CSCV 退化成日历归属，恒 0.9444）。
+  DSR 出**两道并列**读数：逐折各用本段 bar 数（T 短 ⇒ 门槛高，现状几何下
+  恒 False），与把几段不重叠测试收益拼接后的合并样本外检验（T=各段之和，
+  这条才是可判定的；拼接隐含"样本外收益可复利串联"这一假定）。
 - **策略级 PBO**（López de Prado 2017 CSCV）：终态因子集 × OFAT 风控邻域
   （`1 + Σᵢ(|空间ᵢ|−1)` 档）逐档全样本回测，比较样本内冠军在样本外的相对排名，
   `PBO = P(logit ω̂ ≤ 0)`，门槛 `{STRATEGY_PBO.get('pbo_threshold')}`。
-  族退化（档数 <3、前置条件不满足）时页面顶部会显形为 `pseudo`。
+  族退化（档数 <3、前置条件不满足）时页面顶部会显形为 `pseudo`，且**不喂给
+  重挖触发器**：触发器按"指标缺失"处理，退化轮不参与 DSR/PBO 联动判据。
 - **截面组合**：`top_k={PORTFOLIO.get('top_k')}`、
   `max_turnover={PORTFOLIO.get('max_turnover')}`、
   `lot_size={PORTFOLIO.get('lot_size')}`；信号是长表，

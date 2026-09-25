@@ -30,6 +30,11 @@ ETF 池本身不含指数，缺它会在 running 步末尾抛
 excess_return 出不来（09-22 20:56 那轮实测）。故额外 dump 宽基指数的 features，
 但**不写进任何 instruments/<market>.txt**：指数不是可选标的，混进池子会污染
 横截面 IC，也让 Alpha158 把指数当成一只 ETF。
+
+基准的 CSV 缓存（`data/index_cache/`）跟 ETF 镜像一样是**增量贴新**，不是"存在
+即复用"：ETF 日历由 `update_etf_daily.py` 每天往前推，基准若钉在旧一天，末日就会
+读成 NaN 的 $open/$close（09-24 实测 SH000300 停在 09-22 而日历已到 09-23）。
+判据复用日线日更那一条，见 `fetch_benchmarks`。
 用法：
     cd etf/v1/src && /usr/bin/python3.10 data/dump_qlib_bin.py [--out DIR]
 """
@@ -116,22 +121,45 @@ def fetch_index(sina_code: str):
 
 
 def fetch_benchmarks(cache_dir: str) -> dict:
-    """基准指数日线 {标的名: DataFrame}，CSV 落缓存以免每次 dump 都联网"""
+    """基准指数日线 {标的名: DataFrame}，CSV 落缓存并逐日增量追加
+
+    缓存不是"有就不再拉"：指数也要跟着行情日历往前走，否则 ETF 日历补到新一天、
+    基准那几只的 bin 仍停在旧一天，qlib 读出来末日 $open/$close 全是 NaN，
+    持仓回测的超额收益在最后一天算不出来（09-24 实测 SH000300 停在 09-22 而
+    日历已到 09-23）。追加走 `update_etf_daily.append_tail` 同一条判据：先在
+    重叠尾段比收盘价，rel ≤ APPEND_TOL(1e-6) 才认定同口径、只贴末日之后的新行，
+    对不上或源不可达就退回旧缓存，历史一格都不改。
+    """
+    from update_etf_daily import append_tail
+
     os.makedirs(cache_dir, exist_ok=True)
     out = {}
     for inst, sina_code in BENCHMARK_INDEXES.items():
         path = os.path.join(cache_dir, f"{inst}.csv")
-        df = None
+        cached = None
         if os.path.exists(path) and os.path.getsize(path) > 1024:
-            df = pd.read_csv(path, encoding="utf-8-sig", parse_dates=["date"])
-        if df is None or df.empty:
-            df = fetch_index(sina_code)
-            if df is None or df.empty:
+            cached = pd.read_csv(path, encoding="utf-8-sig", parse_dates=["date"])
+        fresh = fetch_index(sina_code)
+        if fresh is None or fresh.empty:
+            if cached is None or cached.empty:
                 print(f"  ⚠️ 缺基准 {inst}：running 步的持仓回测会继续报 "
                       f"The benchmark ['{inst}'] does not exist")
                 continue
-            df.to_csv(path, index=False, encoding="utf-8-sig")
-        out[inst] = df.set_index("date").sort_index()
+            print(f"  ⚠️ 基准 {inst} 拉取失败，沿用旧缓存"
+                  f"（末日 {cached['date'].max():%Y-%m-%d}）")
+        elif cached is None or cached.empty:
+            fresh.to_csv(path, index=False, encoding="utf-8-sig")
+            cached = fresh
+        else:
+            status, added, rel = append_tail(path, fresh)
+            if status == "mismatch":
+                print(f"  ⚠️ 基准 {inst} 重叠段对不上（rel={rel:.1e}），"
+                      f"不追加，末日仍是 {cached['date'].max():%Y-%m-%d}")
+            elif added:
+                print(f"  基准 {inst} 追加 {added} 行 → "
+                      f"{pd.read_csv(path, parse_dates=['date'])['date'].max():%Y-%m-%d}")
+            cached = pd.read_csv(path, encoding="utf-8-sig", parse_dates=["date"])
+        out[inst] = cached.set_index("date").sort_index()
     return out
 
 

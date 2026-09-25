@@ -41,6 +41,50 @@ RISK_KEY_MAP = {
     "max_trades_per_day": "max_orders_per_day",
 }
 
+# 每个落地键的取值区间 [lo, hi]。为什么不止查类型：`JOINT_LLM["enabled"]` 时
+# risk_params 出自 joint_optimizer.py:68 的 `{**RISK_CONTROL, **risk}` ——
+# LLM 给的风控数字**原样生效**（同一函数里 ortho 那半有 clamp[0.3,0.9] 与方法
+# 白名单，risk 这半没有）。"冠军由代码按 DSR 选"救不了这一项：代码选的是轮次，
+# 赢的那轮风控数字仍是 LLM 打的字。越界的后果是风控**静默失效**而不是报错：
+# daily_stop_loss 只要为正数，live_risk.py:41 的 `r <= p["daily_stop_loss"]`
+# 永不成立 = 日止损关闭；NaN 会让所有比较短路。
+RISK_BOUNDS = {
+    # 止损/熔断语义是"跌到该幅度即停"，必须为负
+    "daily_stop_loss": (-0.50, -0.005),
+    "max_drawdown_stop": (-0.80, -0.02),
+    # 单仓比例 >1 隐含加杠杆，≤0 则是永不建仓
+    "max_position_ratio": (0.05, 1.00),
+    "max_orders_per_day": (1, 50),
+    # 上限 10080 分钟 = 7 天挂钟：下面 cooldown_days 的换算口径是 ×24×60
+    # （整段非交易时段都算），研究侧 5 个交易日 → 7200 分钟是合法长冷却，
+    # 卡到一天会把正常口径误判成越界
+    "cooldown_minutes": (1, 10080),
+}
+
+# 这两个键在 LIVE_RISK 里是整数计数（订单数/分钟数），小数无意义
+RISK_INT_KEYS = {"max_orders_per_day", "cooldown_minutes"}
+
+
+def sanitize_live_risk(key, v):
+    """实盘风控键的区间校验：合格返回数值，越界/非数值返回 None（调用方保留现值）。
+
+    bool 要显式挡（`isinstance(True, int)` 为真），NaN/inf 也要挡。"""
+    if key not in RISK_BOUNDS:
+        return None
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    if not np.isfinite(v):
+        return None
+    if key in RISK_INT_KEYS and not float(v).is_integer():
+        return None
+    lo, hi = RISK_BOUNDS[key]
+    if not lo <= v <= hi:
+        print(f"  ⚠️ 风控 {key}={v} 越出实盘可接受区间 [{lo}, {hi}]，"
+              f"不落地，沿用现值 {LIVE_RISK.get(key)}"
+              f"（调参产物含不可信数字：联合优化开着时 risk 段来自 LLM）")
+        return None
+    return int(v) if key in RISK_INT_KEYS else float(v)
+
 
 def apply_optimized_config(cfg):
     """把研究管线的调参产物落到实盘配置，返回 factor_weights。
@@ -53,21 +97,25 @@ def apply_optimized_config(cfg):
         return {}
     rp = cfg.get("risk_params") or {}
     for src, dst in RISK_KEY_MAP.items():
-        v = rp.get(src)
-        if isinstance(v, (int, float)):
-            print(f"  风控 {dst}: {LIVE_RISK.get(dst)} → {v}（研究调参）")
-            LIVE_RISK[dst] = v
+        v = sanitize_live_risk(dst, rp.get(src))
+        if v is None:
+            continue
+        print(f"  风控 {dst}: {LIVE_RISK.get(dst)} → {v}（研究调参）")
+        LIVE_RISK[dst] = v
     # 冷却口径换算：实盘熔断按挂钟时间判定
     # （live_risk: cooldown_until = now + timedelta(minutes=...)），
     # 而研究侧按交易日计数。×24×60 把整段非交易时段（夜间/周末）也算进冷却，
     # 比"交易日×240 分钟"更长——风控参数宁长勿短，短了会在研究判定
     # 仍该观望时就重新进场。
     cd = rp.get("cooldown_days")
-    if isinstance(cd, (int, float)):
-        minutes = int(cd * 24 * 60)
-        print(f"  风控 cooldown_minutes: {LIVE_RISK.get('cooldown_minutes')}"
-              f" → {minutes}（研究 cooldown_days={cd}，按挂钟时间计）")
-        LIVE_RISK["cooldown_minutes"] = minutes
+    if not isinstance(cd, bool) and isinstance(cd, (int, float)) \
+            and np.isfinite(cd):
+        minutes = sanitize_live_risk("cooldown_minutes", int(cd * 24 * 60))
+        if minutes is not None:
+            print(f"  风控 cooldown_minutes: "
+                  f"{LIVE_RISK.get('cooldown_minutes')} → {minutes}"
+                  f"（研究 cooldown_days={cd}，按挂钟时间计）")
+            LIVE_RISK["cooldown_minutes"] = minutes
     w = cfg.get("factor_weights") or {}
     if w:
         print(f"  因子权重: 取研究侧 ICIR 权重 {len(w)} 个 "

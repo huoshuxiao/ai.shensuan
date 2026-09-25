@@ -100,8 +100,67 @@ def test_stage_validation_passes_fold_index_into_mining(pool, monkeypatch,
     assert seen["n"] > 0 and "genetic" in seen["sources"]
 
 
+@pytest.fixture
+def tmp_state(monkeypatch, tmp_path):
+    """把重挖状态指到 tmp：`stage_lifecycle` 里的触发器会 record+save，
+    用默认路径跑测试等于每跑一次测试就往生产账上写一轮"恶化/未恶化"，
+    把连续计数与 Δ 基准冲掉（ReminingState 的 path 是默认参数，
+    绑死在函数定义上，只能替换类本身）。"""
+    import remining_state as rs_mod
+    from remining_state import ReminingState as _Real
+    path = str(tmp_path / "remining_state_test.json")
+    monkeypatch.setattr(rs_mod, "ReminingState",
+                        lambda *a, **k: _Real(path=path))
+    return path
+
+
+def test_trigger_feeds_merged_oos_dsr(pool, monkeypatch, tmp_state):
+    """重挖触发器吃**合并样本外 DSR**；walk-forward 没跑出这条读数时才退回
+    全样本 DSR（09-24 定档：判据要落在样本外证据上）。"""
+    import trigger_logic as tl_mod
+    import auto_remining as ar_mod
+    seen = {}
+
+    class TriggerSpy:
+        def __init__(self, state=None):
+            seen["state"] = state
+
+        def check(self, dsr_now, pbo_now, current_bar=None):
+            seen["dsr_now"] = dsr_now
+            seen["pbo_now"] = pbo_now
+            return {"triggered": False, "bad_this_round": False,
+                    "consecutive": 0, "reason": "测试用"}
+
+    class LoopStub:
+        def __init__(self, mine_fn, evaluate_fn, params=None, state=None):
+            pass
+
+        def run_once(self, **kw):
+            return {"triggered": False, "reason": "测试用：不触发"}
+
+        def get_log_df(self):
+            return pd.DataFrame()
+
+    monkeypatch.setattr(tl_mod, "DualIndicatorTrigger", TriggerSpy)
+    monkeypatch.setattr(ar_mod, "AutoReminingLoop", LoopStub)
+    monkeypatch.setitem(AUTO_REMINING, "enabled", True)
+    monkeypatch.setitem(FACTOR_DECAY, "enabled", False)
+    idx = pool[next(iter(pool))].index
+
+    main.stage_lifecycle([], pool, None, idx, None, dsr_now=0.0041,
+                         pbo_now=0.6571, pbo_trend=None, dsr_oos=0.0390)
+    assert seen["dsr_now"] == pytest.approx(0.0390), \
+        "有合并样本外 DSR 时必须喂它，而不是全样本那条"
+    assert seen["pbo_now"] == pytest.approx(0.6571)
+
+    main.stage_lifecycle([], pool, None, idx, None, dsr_now=0.0041,
+                         pbo_now=0.6571, pbo_trend=None)
+    assert seen["dsr_now"] == pytest.approx(0.0041), \
+        "walk-forward 缺席时应退回全样本 DSR（保持旧行为，不出 None）"
+
+
 def test_stage_lifecycle_remining_uses_engines_not_registry_only(
-        pool, monkeypatch, small_gp):
+        pool, monkeypatch, small_gp, tmp_state):
     """重挖回调走引擎集合，且 DSR/PBO 结论作为 indicator 传给闭环（断点 3）。"""
     import auto_remining as ar_mod
     import factor_genetic

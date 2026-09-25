@@ -62,9 +62,87 @@ def mine_factors(pool):
 
 
 def select_factors(factors, min_ic=0.005):
+    """因子入池判据：研究段的主门槛，`|mean_ic| >= min_ic` 者留、按 `|mean_ic|`
+    降序返回。
+
+    公式（`mean_ic` 的原始出处，见本文件注册表挖掘段与 `recount_foreign_ic`）：
+        ic_i     = corr(factor_i, close_i.pct_change().shift(-1))   # 逐标的
+        mean_ic  = (1/N) · Σ_i ic_i                                 # 本池均值
+        std_ic   = σ(ic_i)，icir = mean_ic / (std_ic + 1e-9)
+    读作"该因子值对次日收益的截面相关，在本池各标的上取算术均值"。
+
+    两条前提决定这个数能不能信，都不由本函数校验，改动上游时务必保住：
+    1. 多源里**同名跨源**的因子到这里时 `mean_ic` 已被
+       `multi_source_mining.merge_factors` 换成按 source 权重
+       （official 1.2 / llm 1.0 / genetic 0.9 / simple 0.8）的加权均值
+       （覆盖发生在 :155），不再是纯截面均值；单边来源保持原值
+       （另附 `weighted_ic`，:146）。
+    2. 容器自报的 IC 必须在进入这里之前就被本池重算掉
+       （`recount_foreign_ic`），否则这道闸量的是别人沙箱里的数。
+
+    前面还有一道同值地板 `MULTI_SOURCE["min_ic_per_source"] = 0.005`
+    （逐源筛，`multi_source_mining.py:190`），调这里绕不过它。
+
+    用绝对值而非符号：负 IC 是可用的反向信号——打分侧按因子权重加权，实盘侧
+    按 `|ic|` 排序取前 10（`run_live.py:161-162`），两头都不要求关系朝上。
+    所以这道闸只问"有没有稳定关系"，不问"关系朝哪边"。"""
     factors = [f for f in factors if abs(f.get("mean_ic", 0)) >= min_ic]
     factors.sort(key=lambda x: abs(x["mean_ic"]), reverse=True)
     return factors
+
+
+def recount_foreign_ic(factors, pool):
+    """把"外来 IC"就地重算：容器自报的 mean_ic 不许当准入判据。
+
+    `common/src/core/rdagent_facade.py:12-28` 的 `_official_to_impl` 走的是一
+    条不重算的路：它把容器 factors.json 里的**单个** mean_ic 逐标的复制进
+    `impl[code]["ic"]`（:20），于是这类因子的逐标的 IC 是同一个数。正常路径
+    （`multi_source_mining._attach_impl`、本文件注册表挖掘、
+    `llm_factor_agent._evaluate`）都在本池逐标的求 IC，逐标的值必然有离散。
+    判据取这个性质而不是认 `source` 字段：旁路那条压根不写 source，而 GP 系
+    产物同样可能缺字段 —— 认字段会漏放，认"逐标的 IC 全等"不会。
+
+    重算直接用 `impl` 里已求值好的因子序列配本池次日收益，与 main 里注册表
+    挖掘同一口径（`compute_ic(f, close.pct_change().shift(-1))`）；不靠表达式
+    —— `_official_to_impl` 把容器给的 expr 就地求值，落库的字典只留
+    name/mean_ic/icir/impl，表达式本身不往下传，所以"按 expr 重算"这条路走不通。
+    一条都重算不出来的因子直接丢：验不了的候选没有入场资格。
+    逐标的只有一条时无法判别（自报值与重算值在那个截面上同形），保持原样。
+    """
+    out, n_fixed, n_dropped = [], 0, 0
+    for f in factors or []:
+        impl = f.get("impl") or {}
+        ics = [v.get("ic") for v in impl.values()
+               if isinstance(v, dict) and v.get("ic") is not None]
+        if not (len(ics) > 1 and len(set(ics)) == 1):
+            out.append(f)
+            continue
+        fresh, new_impl = [], {}
+        for code, v in impl.items():
+            df = pool.get(code)
+            if df is None or not isinstance(v, dict):
+                continue
+            if v.get("factor") is None:
+                continue
+            ic = compute_ic(v["factor"], df["close"].pct_change().shift(-1))
+            if not np.isnan(ic):
+                v["ic"] = float(ic)
+                new_impl[code] = v
+                fresh.append(float(ic))
+        if not fresh:
+            n_dropped += 1
+            continue
+        mean_ic = float(np.mean(fresh))
+        std_ic = float(np.std(fresh)) if len(fresh) > 1 else 1.0
+        f["mean_ic"] = mean_ic
+        f["icir"] = mean_ic / (std_ic + 1e-9)
+        f["impl"] = new_impl
+        n_fixed += 1
+        out.append(f)
+    if n_fixed or n_dropped:
+        print(f"  ⚠️ 外来 IC 重算：{n_fixed} 条已按本池覆盖、"
+              f"{n_dropped} 条无法重算已剔除（容器自报口径不作准入判据）")
+    return out
 
 
 def mine_with_engines(pool, engines, tag="", path_prefix=None):
@@ -93,7 +171,7 @@ def mine_with_engines(pool, engines, tag="", path_prefix=None):
     if "multi_source" in engines:
         def _ms():
             from rdagent_facade import mine_factors_multi_source
-            return mine_factors_multi_source(pool)
+            return recount_foreign_ic(mine_factors_multi_source(pool), pool)
         got.extend(safe_stage(f"多源挖掘 {tag}".strip(), _ms) or [])
 
     if "mogp" in engines:
@@ -161,7 +239,8 @@ def stage_mining(pool, raw_factors, tc):
     if MULTI_SOURCE["enabled"]:
         def _ms():
             from rdagent_facade import mine_factors_multi_source
-            got = mine_factors_multi_source(pool) or []
+            got = recount_foreign_ic(
+                mine_factors_multi_source(pool) or [], pool)
             if got:
                 tc.add(len(got))
                 raw_factors.extend(got)
@@ -218,8 +297,24 @@ def stage_library_and_clustering(raw_factors, pool):
         def _lib():
             from factor_library import get_library
             lib = get_library()
-            lib.batch_upsert(raw_factors, source="pipeline")
+            # source 用因子自带的引擎标记（simple/genetic/mogp/hybrid/
+            # official/llm…），缺标记才落 pipeline：一刀切 "pipeline" 会把
+            # hybrid_0、mogp_3 这类 GP 系产物抹成同名，事后追不回是谁产出的
+            # （09-25 实测库 35 条里 24 条都写着 pipeline，其中含 GP 系）。
+            # 走 extra 是因为 factor_library.upsert 的已存在分支只吃 extra
+            # （:52-53），顶层 source 参数仅在新增那一次写进字典（:57）——
+            # 存量那 24 条要靠这里逐轮改回来。
+            srcs = set()
+            for f in raw_factors:
+                src = f.get("source") or "pipeline"
+                srcs.add(src)
+                lib.upsert(f.get("name", "unknown"), f.get("expr", ""),
+                           f.get("mean_ic", f.get("ic", 0.0)),
+                           f.get("icir", 0.0), src,
+                           extra={"source": src})
             lib.save_markdown()
+            print(f"  📚 因子库更新: +{len(raw_factors)} "
+                  f"(来源={'/'.join(sorted(srcs))})")
             print(f"  因子库: {len(lib.factors)} 条")
         safe_stage("因子库入库", _lib)
 
@@ -276,8 +371,13 @@ def stage_orthogonalize(raw_factors, pool, universe, all_ts):
 
 def stage_validation(raw_factors, pool, universe, all_ts, eq, tc,
                      factors=None, weights=None, risk_params=None):
+    # walk-forward 的合并样本外 DSR：重挖触发器优先吃这条（见 stage_lifecycle）
+    dsr_oos = None
+
     def _wf():
         from walk_forward import walk_forward_run
+
+        nonlocal dsr_oos
 
         def factor_fn(p, idx, fold=None):
             return mine_with_engines(
@@ -295,24 +395,42 @@ def stage_validation(raw_factors, pool, universe, all_ts, eq, tc,
             f"{RESULTS_DIR}/walk_forward_{FREQ}.csv",
             index=False, encoding="utf-8-sig")
         # 跨折汇总（验证段合计长度、夏普跨折 std、正夏普折数）不在这里另落一份：
-        # 它们全是折表的纯函数，多看板/入口各算一次即可，两个出处只会漂
+        # 它们全是折表的纯函数，多看板/入口各算一次即可，两个出处只会漂。
+        # 例外是合并样本外 DSR —— 它要各折的原始逐 bar 收益（折表里没有），
+        # 不单独落盘这条可判定的读数就只存在于那一轮 stdout 里
+        if wf.get("merged_oos_dsr"):
+            pd.DataFrame([wf["merged_oos_dsr"]]).to_csv(
+                f"{RESULTS_DIR}/walk_forward_oos_{FREQ}.csv",
+                index=False, encoding="utf-8-sig")
+            dsr_oos = float(wf["merged_oos_dsr"].get("dsr", 0))
     if WALK_FORWARD["enabled"]:
         safe_stage("Walk-forward 验证", _wf)
 
     pbo_now = None
+    # 喂给重挖触发器的那个 PBO：与 pbo_now 分开。伪变体族（或样本不足/配置不足）
+    # 时它是 None，让 DualIndicatorTrigger 走"指标缺失"分支 —— 伪变体族只测
+    # 结论对微小扰动的敏感度、不含参数选择偏差，却同样以 passed=True 的形态
+    # 进入判据，退化轮不该参与重挖决策。只在 ETF 侧传参处拦：
+    # common/src/trigger_logic.py 股票线同用，不动共享层。
+    pbo_for_trigger = None
 
     def _pbo():
-        nonlocal pbo_now
+        nonlocal pbo_now, pbo_for_trigger
         from strategy_pbo import strategy_level_pbo
         configs = _pbo_config_family()
         res = strategy_level_pbo(eq, configs=configs)
         pbo_now = float(res.get("pbo", 1))
+        # 只有真实配置族才计分；family 取值见 strategy_pbo：real/pseudo/None
+        trigger_val = (pbo_now if res.get("config_family") == "real"
+                       else None)
+        pbo_for_trigger = trigger_val
         with open(PBO_RESULT_FILE, "w", encoding="utf-8") as f:
             json.dump(res, f, ensure_ascii=False, indent=2,
                       default=str)
         print(f"  PBO={pbo_now:.4f}  "
               f"配置族={res.get('config_family')}×{res.get('n_configs')}  "
-              f"通过={res.get('passed')}")
+              f"通过={res.get('passed')}  "
+              f"触发器取值={'缺失（退化族不喂）' if trigger_val is None else round(trigger_val, 4)}")
 
     def _pbo_config_family():
         """构造真实配置族的收益矩阵，供 CSCV 判断"挑参数"这件事本身
@@ -392,7 +510,7 @@ def stage_validation(raw_factors, pool, universe, all_ts, eq, tc,
                           for _, r in comb.iterrows()))
     if MULTI_STRATEGY["enabled"]:
         safe_stage("多策略并行回测", _multi)
-    return pbo_now, pbo_trend
+    return pbo_now, pbo_trend, pbo_for_trigger, dsr_oos
 
 
 def stage_analysis(factors, weights, pool, universe, all_ts):
@@ -435,7 +553,17 @@ def stage_analysis(factors, weights, pool, universe, all_ts):
 
 
 def stage_lifecycle(factors, pool, universe, all_ts, risk_params,
-                    dsr_now, pbo_now, pbo_trend):
+                    dsr_now, pbo_now, pbo_trend, dsr_oos=None):
+    """生命周期与闭环。喂给重挖触发器的两条指标都在这里定：
+    - `pbo_now` 必须是**真实配置族**算出的 PBO，族退化时传 None（走
+      DualIndicatorTrigger 的"指标缺失"分支，本轮不参与判据）；
+    - `dsr_oos` 是 walk-forward 的合并样本外 DSR，有就优先吃它，没有
+      （walk-forward 关掉/没跑出段）才退回全样本 DSR `dsr_now`。
+    落盘与看板读的仍是各自原文件，不受这里的选择影响。"""
+    # 触发器实际吃的那条 DSR：样本外证据比"全样本 + 试验次数校正"更严格，
+    # 后者仍带着挑因子的选择偏差
+    dsr_for_trigger = dsr_oos if dsr_oos is not None else dsr_now
+    dsr_src = ("合并样本外" if dsr_oos is not None else "全样本")
     alerts = []
 
     def _monitor():
@@ -459,12 +587,18 @@ def stage_lifecycle(factors, pool, universe, all_ts, risk_params,
         check = {}
         if TRIGGER_LOGIC["enabled"]:
             check = DualIndicatorTrigger(state=state).check(
-                dsr_now=dsr_now, pbo_now=pbo_now,
+                dsr_now=dsr_for_trigger, pbo_now=pbo_now,
                 current_bar=len(all_ts)) or {}
             print(f"  DSR/PBO 联动: 本轮恶化={check.get('bad_this_round')} "
                   f"连续 {check.get('consecutive')}/"
                   f"{TRIGGER_LOGIC['consecutive_rounds']} 轮 → "
                   f"触发={check.get('triggered')}（{check.get('reason')}）")
+            # 两条 DSR 都打出来：换口径之后要能一眼看出结论是"换了才翻"
+            # 还是"本来就该翻"
+            print(f"    喂入 DSR={dsr_for_trigger:.4f}［{dsr_src}］  "
+                  f"（全样本 {dsr_now:.4f} / 合并样本外 "
+                  f"{'—' if dsr_oos is None else f'{dsr_oos:.4f}'}）  "
+                  f"喂入 PBO={'缺失' if pbo_now is None else round(pbo_now, 4)}")
         loop = AutoReminingLoop(
             mine_fn=lambda p: mine_with_engines(
                 p, AUTO_REMINING.get("remining_engines"), tag="重挖",
@@ -560,10 +694,9 @@ def main():
 
     # 8. 验证（walk-forward / PBO / 多策略）
     print("\n[8/9] 稳健性验证...")
-    pbo_now, pbo_trend = stage_validation(raw_factors, pool, universe,
-                                          all_ts, eq, tc,
-                                          factors=factors, weights=weights,
-                                          risk_params=risk_params)
+    pbo_now, pbo_trend, pbo_for_trigger, dsr_oos = stage_validation(
+        raw_factors, pool, universe, all_ts, eq, tc,
+        factors=factors, weights=weights, risk_params=risk_params)
 
     # 全样本 DSR 必须排在验证之后：折内挖因子是往同一个 tc 上累加试验次数
     # （walk_forward 的 tc.add），先算的话门槛用的是"本折之前"的计数，
@@ -584,7 +717,8 @@ def main():
     print("\n[9/9] 分析与反馈闭环...")
     stage_analysis(factors, weights, pool, universe, all_ts)
     stage_lifecycle(factors, pool, universe, all_ts, risk_params,
-                    float(dsr_res.get("dsr", 0)), pbo_now, pbo_trend)
+                    float(dsr_res.get("dsr", 0)), pbo_for_trigger, pbo_trend,
+                    dsr_oos=dsr_oos)
 
     def _plot():
         from plot import plot_equity

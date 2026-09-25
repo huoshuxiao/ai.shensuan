@@ -122,7 +122,7 @@ ASHARE_SCREEN_QUANTILE = float(os.environ.get("STOCK_SCREEN_QUANTILE", "0.8"))
 ASHARE_SCREEN_RULES = os.environ.get(
     "STOCK_SCREEN_RULES", "level,volatility,momentum,ratio")
 # 量能构造吃哪一套成交量口径。面板的 $volume 不是真实手数，而是**复权成交量**
-# = 真实手数 / $factor（09-23 探针 shell/probe_live_sources4_0923.py 逐票证成：
+# = 真实手数 / $factor（09-23 探针 shell/stock/probe_live_sources4_0923.py 逐票证成：
 # 54 只票跨 $factor 0.007~1.24，V·f/L=1.0000 全中，corr(log(V/L), log f) = -1.000）。
 # 默认 "adj" = 面板原值，与历史基线、RD-Agent 沙箱、factors.json 的 expr 同一套口径；
 # "real" 把 DSL 里的 volume 绑成 $volume*$factor（真实手数），只为口径复核对照跑而设，
@@ -176,7 +176,7 @@ ASHARE_BUY_MIN_HITS = int(os.environ.get("STOCK_BUY_MIN_HITS", "3"))
 # 用户 09-24 明确：**个人账户科创板 / 创业板 / 北交所均有权限**。这条事实有两处后果，
 # 都在执行层，都不改排序判据：
 #  ① 原来第三道执行闸用**单一** ASHARE_PORT_LIMIT_UP=0.095 判「贴涨停」，那是主板 ±10%
-#     的近似。对另外三段它是误伤：全面板实测（shell/probe_board_limits_0924.py），
+#     的近似。对另外三段它是误伤：全面板实测（shell/stock/probe_board_limits_0924.py），
 #     涨幅过 0.095 的格子里有 **81%（科创）/ 85%（创业）/ 82%（北交）** 离自己的涨停
 #     还远 —— 也就是说这道闸系统性地丢掉本账户明明买得进的那三段票。
 #     09-23 当日**并集保留池**（2928 只）涨幅最高只有 7.25%，看着一只都没咬到；但

@@ -32,14 +32,14 @@
     adjclose           = close × 首日盘面价            （未归一的后复权价）
     change             = close.pct_change()            （复权日收益）
 证据分两层，别混着引用：
-    价格侧：shell/probe_spot_vs_bin_0924.py —— 09-23 的 bulk 快照逐票复现 bin 的
+    价格侧：shell/stock/probe_spot_vs_bin_0924.py —— 09-23 的 bulk 快照逐票复现 bin 的
         09-22 盘面收盘，5553 只票 p95 相对差 8.8e-08。
-    量额侧：shell/probe_volume_vs_external_0924.py —— 拿新浪裸接口取 **同一天
+    量额侧：shell/stock/probe_volume_vs_external_0924.py —— 拿新浪裸接口取 **同一天
         (09-22)** 的真实成交量，9 只票（f 从 0.0177 到 0.602）逐票
         volume÷(真实手数/f) ≡ 1.0、amount÷(元/1000) 0.974~1.008、
         vwap÷(真均价×f) 同量级。这条是独立判据；原先那份
         「amount÷(close×volume×100)=0.001」是拿 bin 自己的 volume 反推 amount，
-        循环论证，不能当 volume 口径的依据（shell/probe_volume_unit_0924.py
+        循环论证，不能当 volume 口径的依据（shell/stock/probe_volume_unit_0924.py
         判据二也同理：w·V=10A 只是包内恒等式）。
 
 新一天 factor 从哪来（不需要任何外部复权因子接口）

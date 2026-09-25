@@ -35,6 +35,7 @@
 import _bootstrap  # noqa: F401  (必须最先导入：裸模块名导入的 sys.path 引导)
 
 import glob
+import io
 import os
 import re
 import sys
@@ -73,19 +74,27 @@ def load_fills(path):
                          f"按模板注释把成交逐笔录进去再跑。")
     # utf-8-sig：Excel 存的 CSV 带 BOM，不吞掉的话首列名会变成 '\ufeff日期'
     # comment='#'：模板里那行写法说明是 # 开头，读的时候当注释丢掉
-    df = pd.read_csv(path, encoding="utf-8-sig", dtype={"代码": str},
+    # 一次读进内存、同一份文本既喂给 read_csv 也用来数行号，两边不会看到不同的文件
+    with open(path, encoding="utf-8-sig") as fh:
+        text = fh.read()
+    df = pd.read_csv(io.StringIO(text), dtype={"代码": str},
                      comment="#", keep_default_na=False, na_values=[""])
     missing = [c for c in REQUIRED if c not in df.columns]
     if missing:
         raise SystemExit(f"[账本] {path} 缺列 {missing}，表头必须是：日期,代码,方向,成交价,数量[,费用,备注]")
+    # 行号 = 文件里数得着的那一行。用 index+2 推算只在「表头 + 一行注释」时碰巧对，
+    # 而这两件事都归使用的人管：模板那行 # 注释被 comment='#' 丢掉 ⇒ 每条报错都往前
+    # 错一行，指到的不是要改的那一行。改成从原文按 pandas 的同一套规则（跳空行、
+    # 跳 # 注释）数一遍，中途插的注释行也不会再把行号带歪。
+    body = [k for k, ln in enumerate(text.splitlines(), 1)
+            if ln.strip() and not ln.lstrip().startswith("#")][1:]      # [0] 是表头
+    df["row"] = body
     df = df.dropna(how="all").reset_index(drop=True)
     df["代码"] = df["代码"].astype(str).str.strip().str.upper()
     df["方向原文"] = df["方向"].astype(str).str.strip()
     # 未知方向映射成 NaN，交给 build_book 带行号报错（这里不猜，猜错就是记错账）
     df["side"] = df["方向原文"].str.lower().map(SIDES)
     df["day"] = pd.to_datetime(df["日期"].astype(str).str.strip(), errors="coerce")
-    # 行号 +2：表头第 1 行，注释行已被 comment='#' 丢掉，index 从 0 起
-    df["row"] = df.index + 2
     return df.sort_values(["day", "row"], kind="stable").reset_index(drop=True)
 
 
@@ -289,8 +298,12 @@ def main():
         return 1
 
     os.makedirs(os.path.dirname(ASHARE_POSITION_OUT), exist_ok=True)
-    pos.to_csv(ASHARE_POSITION_OUT, index=False, encoding="utf-8-sig")
-    pd.DataFrame([acct]).to_csv(ASHARE_ACCOUNT_OUT, index=False, encoding="utf-8-sig")
+    # 落盘保留四位小数：`cost/qty` 这类除法的二进制尾巴（39.279999999999994）会让人
+    # 以为数据坏了，而这一张表是给人手工打开看的。四位 = 分位的十万分之一，
+    # 判据全在 build_book 内部算完才到这里，所以这纯粹是显示精度，不改任何账
+    pos.to_csv(ASHARE_POSITION_OUT, index=False, encoding="utf-8-sig", float_format="%.4f")
+    pd.DataFrame([acct]).to_csv(ASHARE_ACCOUNT_OUT, index=False, encoding="utf-8-sig",
+                                float_format="%.4f")
 
     pd.set_option("display.width", 220)
     pd.set_option("display.unicode.east_asian_width", True)

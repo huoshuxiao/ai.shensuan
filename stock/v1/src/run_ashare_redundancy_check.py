@@ -56,24 +56,38 @@ FACTORS_JSON = os.environ.get(
 # STOCK_RED_CANDIDATES=<json> 跑一遍，把 >=0.99 的从名单里划掉。
 CANDIDATES_JSON = os.environ.get("STOCK_RED_CANDIDATES", "")
 
-# 默认候选 = 当前 CANDIDATE LIST（2026-09-23 版），表达式按主线 DSL 写
-# （factor_dsl.FACTOR_DSL 里 max/min 钉死作用于 close，故成交量极值走 Series 方法）
+# 默认候选 = 当前 CANDIDATE LIST（2026-09-25 版，按 NEAR_DUP=0.90 重出），表达式按主线
+# DSL 写（factor_dsl.FACTOR_DSL 里 max/min 钉死作用于 close，故成交量极值走 Series 方法）
 DEFAULT_CANDIDATES = [
-    {"name": "20-day MIN of Volume", "expr": "volume.rolling(20).min()"},
-    {"name": "5-day MIN of Volume", "expr": "volume.rolling(5).min()"},
-    {"name": "5-day STD of Volume over 20-day STD of Volume",
-     "expr": "ts_std(volume,5)/ts_std(volume,20)"},
-    {"name": "5-day SMA of Price over 20-day SMA of Price",
-     "expr": "ma(df,5)/ma(df,20)"},
+    # 名单前四：比值族里最独立的两条 + 跨窗比值 + 唯一活下来的非比值名
     {"name": "20-day STD of Price over 20-day SMA of Price",
      "expr": "std(df,20)/ma(df,20)"},
-    # 对照组：09-23 曾被当作「新信息」提进清单、实测是重复的两个，留在默认里当回归
-    {"name": "[对照] 20-day MAX of Volume", "expr": "volume.rolling(20).max()"},
-    {"name": "[对照] 5-day MAX of Volume", "expr": "volume.rolling(5).max()"},
+    {"name": "20-day STD of Volume over 20-day SMA of Volume",
+     "expr": "ts_std(volume,20)/ts_mean(volume,20)"},
+    {"name": "5-day STD of Volume over 20-day STD of Volume",
+     "expr": "ts_std(volume,5)/ts_std(volume,20)"},
+    {"name": "10-day MOM of Volume", "expr": "volume/delay(volume,10)-1"},
+    # 对照组：09-24 实测落在 0.90~0.99 危险区、被本线政策闸（不是 rdagent 的 0.99 硬闸）
+    # 挡掉的三条。留在默认里当**政策回归针**：谁把 NEAR_DUP 拨回 0.95，这里就会从
+    # 「危险区(同簇)」翻成「可提名」，一眼看得见翻闸的后果
+    {"name": "[对照] 20-day MIN of Volume", "expr": "volume.rolling(20).min()"},
+    {"name": "[对照] 60-day SMA of Volume", "expr": "ts_mean(volume,60)"},
+    {"name": "[对照] 20-day SMA of Volume（在库 #18，逐字重提）",
+     "expr": "ts_mean(volume,20)"},
 ]
 
-# 危险区下界：0.95~0.99 不触发 rdagent 去重，但与在库因子已是同一簇，留着只是碰运气
-NEAR_DUP = 0.95
+# 危险区下界：0.90~0.99 不触发 rdagent 去重，但与在库因子已是同一簇，留着只是碰运气。
+# 09-24 用户裁决从 0.95 收到 0.90，理由是 0.95 那一档**实测挡不住真实同簇**：待买入轴
+# `STD(Volume,20)` 的非自身最近邻全是量能族（`SMA(Vol,10)` 0.9266、`SMA(Vol,20)` 0.9262、
+# `STD(Vol,10)` 0.9137、`SMA(Vol,5)` 0.9088，见 data/results/
+# ashare_redundancy_axis_std20_detail.csv），**四条全在旧闸之下** ⇒ 「同族换一个窗口」
+# 这类提名在 0.95 档会顺利过关，而它的 IC 早被库内那几条定了。0.90 是把这些读数
+# 全罩住的最紧的一档（最低那条 0.9088 之上），再低就开始误伤真正的比值构造
+# （`STD(Vol,5)/STD(Vol,20)` 实测 0.604，是名单里最独立的一条非自身族比值）。
+# 09-24 那批（2793 有效日，面板到 2026-09-24）还给了这条政策**唯一一条直接生效证据**：
+# `SMA(Volume,60)` 对在库 `SMA(Volume,20)` = **0.9409** ——旧闸 0.95 会放它进 CANDIDATE
+# LIST，新闸把它挡在危险区。产物 `data/results/ashare_redundancy_policy090*.csv`。
+NEAR_DUP = 0.90
 
 
 def load_library():

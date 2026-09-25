@@ -13,7 +13,7 @@ import pytest
 from config import WALK_FORWARD, LOOKBACK_BARS
 from frequency_adapter import get_adapter
 from walk_forward import make_splits, _dsr_from_equity, walk_forward_run
-from synth import make_daily_pool
+from synth import make_daily_pool, wf_pool_bars
 
 
 def _fake_factor(pool, tag="gp_fake"):
@@ -60,7 +60,7 @@ def test_make_splits_keeps_embargo_gap():
 
 
 def test_factor_fn_gets_fold_index_and_train_only_data():
-    pool = make_daily_pool(n_codes=3, n_bars=1200)
+    pool = make_daily_pool(n_codes=3, n_bars=wf_pool_bars())
     ts = pool[next(iter(pool))].index
     splits = make_splits(ts)
     calls = []
@@ -82,7 +82,7 @@ def test_factor_fn_gets_fold_index_and_train_only_data():
 def test_fold_stats_record_factor_sources():
     """折内统计必须留下"本折到底验了哪些来源"的痕迹，
     否则退化回只验注册表基线时无人察觉。"""
-    pool = make_daily_pool(n_codes=3, n_bars=1200)
+    pool = make_daily_pool(n_codes=3, n_bars=wf_pool_bars())
     wf = walk_forward_run(
         pool, None,
         lambda p, idx, fold=None: [_fake_factor(p)],
@@ -110,7 +110,7 @@ def test_fold_dsr_annualization_uses_daily_adapter():
 def test_summary_reports_validation_span_and_no_fold_pbo():
     """折与折的测试段互不相交，喂进 CSCV 只会得到切分假象（3 折实测
     PBO=0.9444）。汇总必须出"验证段有多长"这类可核查读数，且不再出 PBO。"""
-    pool = make_daily_pool(n_codes=3, n_bars=1200)
+    pool = make_daily_pool(n_codes=3, n_bars=wf_pool_bars())
     total_bars = len(pool[next(iter(pool))].index)
     wf = walk_forward_run(
         pool, None,
@@ -125,12 +125,38 @@ def test_summary_reports_validation_span_and_no_fold_pbo():
     assert all(r["n_trials"] >= 1 for r in wf["folds"])
 
 
+def test_merged_oos_dsr_spans_all_segments():
+    """合并样本外检验：把互不相交的各折测试收益拼成一条序列再算 DSR。
+    单折 T 太短 ⇒ 运气门槛被推到年化 4.33（现状几何），拼接后 T 是各段之和，
+    这条链上只有它可判定 —— 因此它必须出现，且样本数明显大于任一单折。"""
+    pool = make_daily_pool(n_codes=3, n_bars=wf_pool_bars())
+    wf = walk_forward_run(
+        pool, None,
+        lambda p, idx, fold=None: [_fake_factor(p)],
+        _fake_backtest, trial_counter=None)
+    merged = wf["merged_oos_dsr"]
+    assert merged and "dsr" in merged
+    n_folds = len(wf["folds"])
+    assert merged["n_segments"] == n_folds
+    # 每段拼进来时丢掉首根 bar（净值起点无收益）
+    assert merged["n_samples"] == sum(r["测试段bar数"]
+                                      for r in wf["folds"]) - n_folds
+    assert merged["n_samples"] > max(r["测试段bar数"] for r in wf["folds"])
+    s = wf["summary"]
+    assert s["合并样本外bar"] == merged["n_samples"]
+    assert s["合并DSR通过"] == bool(merged["passed"])
+    # 门槛随 T 变：拼接段比任何单折长，所以运气门槛必须更低
+    assert merged["sr0_annual"] < min(
+        r["运气门槛年化"] for r in wf["folds"])
+
+
 def test_fold_with_no_factors_is_skipped():
-    pool = make_daily_pool(n_codes=3, n_bars=1200)
+    pool = make_daily_pool(n_codes=3, n_bars=wf_pool_bars())
     wf = walk_forward_run(pool, None, lambda p, idx, fold=None: [],
                           _fake_backtest, trial_counter=None)
     assert wf["folds"] == []
     assert wf["summary"] == {}
+    assert wf["merged_oos_dsr"] == {}
 
 
 def test_train_length_gate_skips_short_folds():

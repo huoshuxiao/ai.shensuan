@@ -38,7 +38,17 @@ def daily_data_update():
 
 
 def daily_feedback():
-    _run("run_feedback.py", "--auto", "--llm", "daily")
+    """日更：反馈闭环 + 当日日报 + 只评当日这 1 份日报的自评。
+
+    `--monthly-days 1` 是刻意收窄的：09-25 实测本机纯 CPU qwen3.5:9b 单份日报
+    自评 268.7s，共享层默认的 20 份 ≈1.5 小时，挂在 15:30 这一档会把日更拖死。
+    历史不靠单次批量攒，而是 `llm_selfreport.save_self_eval_dims` 按日期 upsert
+    累积（共享层 `SelfEvaluator._save` 是整表覆写，每天只评 1 份会把旧行冲掉）。
+    自评排在 `--llm daily` 之后是必需的：当日快照 `report_daily_<date>.json`
+    由前一步生成，反过来排就会评到昨天的快照。"""
+    _run("run_feedback.py", "--auto", "--llm", "daily",
+         "--self-eval", "--monthly-days", "1")
+
 
 
 def weekly_retrain():

@@ -64,7 +64,7 @@ Price，与量能毫无关系）同表四组中位 +2.3%~+3.1% 且换手只有 0
 对照产物：`data/results/ashare_portfolio_eval.csv`（面板量，生产口径，涨停闸 `board`）
 与 `ashare_portfolio_eval_realvol.csv`（真手数，复核口径），开关 `ASHARE_VOL_BASIS`；
 同一批表另存两份闸门口径 —— `*_flat.csv`（⑯⑰ 那批结论当时的 flat 档，无 `gate` 列）
-与 `*_dated.csv`（回测专用的按日期分档），换闸的钱见 `shell/probe_gate_dates_0924.py`。
+与 `*_dated.csv`（回测专用的按日期分档），换闸的钱见 `shell/stock/probe_gate_dates_0924.py`。
 
 四条构造互相独立（判重口径实测，data/results/ashare_redundancy_check.csv 与
 ashare_factor_eval.csv）：
@@ -86,7 +86,7 @@ ashare_factor_eval.csv）：
 中位 0.99~1.01（抽样按 $factor 十分位分层，覆盖 0.0070~1.2402 两头），而 ÷（盘面价×$volume×100）
 那版逐票散布 **177 倍、0/54 命中**；等价地 V×$factor/L = 1.0000 逐票精确、
 corr(log(V/L), log $factor) = **-1.000**。按此口径 09-22 全市场成交额合计 **2.14 万亿**。
-来路：shell/probe_units_0923.py（第一批，单位结论已被修正）、probe_live_sources4_0923.py
+来路：shell/stock/probe_units_0923.py（第一批，单位结论已被修正）、probe_live_sources4_0923.py
 （第二批，定性）、probe_factor_steps / probe_return_outliers（$factor 台阶）。由此五条推论：
     1) 容量闸门 ASHARE_PORT_MIN_AMOUNT 现在按**真钱**计，阈值的对外含义成立。上一版写的是
        「只在本数据集内成立」，因为那时用 盘面价×$volume，那版把 09-22 全市场算成 53.7 万亿
@@ -107,11 +107,11 @@ corr(log(V/L), log $factor) = **-1.000**。按此口径 09-22 全市场成交额
        未裁剪 +19.82% vs 当日中位 -0.52%；全历史没有第二天抬过 0.5pp）。板块分布
        BJ 69 / SZ 15 / SH 6 —— 九成在北交所。不切日期的全 h5 口径是 92 个。
        （09-23 曾记成 326，那是把「|复权开盘收益|>30%」的 3906 个格子与另一套判据混
-       起来的错数，09-24 用 shell/count_fake_steps_0924.py 按生产代码重算定在 90。）
+       起来的错数，09-24 用 shell/stock/count_fake_steps_0924.py 按生产代码重算定在 90。）
        判据：真实除权必在盘面价上留下同幅缺口，注册制新股首周的真暴涨则复权与盘面同时越界
        —— 「只有复权侧越界」就等价于「这是数据不是行情」。
        build_matrices 据此加了 RET_LIMIT 裁剪，上面第 2 段的组合层判据一律用裁剪后的数。
-       来路：shell/probe_units_0923.py、probe_units2/3、probe_factor_steps_0923.py、
+       来路：shell/stock/probe_units_0923.py、probe_units2/3、probe_factor_steps_0923.py、
        probe_return_outliers_0923.py。
     5) 同一道护栏已抽成 guard_ret 供截面评估共用，但**它对截面 IC 几乎没有影响，这本身是
        一条判据**：21 因子全市场实跑，cs_rank_ic 位移 ≤7e-9、cs_ic ≤6.1e-5、ts_ic ≤1.4e-7
@@ -197,7 +197,7 @@ def load_industry_map(path=None, max_age=ASHARE_INDUSTRY_MAX_AGE):
 
     口径取舍（09-24）：落盘表的 `行业` 列是「新浪 49 板块为主、缺的用证监会一级兜底」
     的**合并列**。集中度**分析**必须两套分开数（分类粒度不同会把一个实体行业拆成两个
-    名字，见 shell/industry_concentration_0924.py 的 --mixed），但**去重约束**用合并列
+    名字，见 shell/stock/industry_concentration_0924.py 的 --mixed），但**去重约束**用合并列
     反而更保守：证监会那 18 类更粗 ⇒ 更容易判成同行业 ⇒ 只会多拆散，不会漏拆。
     """
     p = path or os.environ.get("STOCK_INDUSTRY_CSV") or ASHARE_INDUSTRY_CSV
@@ -664,7 +664,7 @@ def buy_candidates(s, mtx, rule_mats, pool, keep,
     第三道闸为什么按板块分档而不是一个阈值通吃（09-24，用户确认个人户三段均有权限）：
     原先固定 `ASHARE_PORT_LIMIT_UP=0.095` 是主板 ±10% 的近似，对科创板/创业板（±20%）
     和北交所（±30%）就是误伤 —— 全面板实测「涨幅过 0.095」的格子里 81%~85% 离自己的
-    涨停还远（`shell/probe_board_limits_0924.py`）。这笔误伤**当天就显形过**：09-23 那道
+    涨停还远（`shell/stock/probe_board_limits_0924.py`）。这笔误伤**当天就显形过**：09-23 那道
     追涨停闸在 flat 档挡下 40 只、board 档只挡 29 只（`n_chase`，同一天同一份快照），
     不是「保留池最高涨幅 7.25% 所以一只没咬到」——那句已按实测作废。
 
@@ -898,6 +898,13 @@ def order_candidates(buy, industry=None, top_n=ASHARE_ORDER_TOP_N,
              "n_industry_used": len(n_ind),
              "n_unknown": int((out["行业"] == INDUSTRY_UNKNOWN).sum()) if len(out) else 0,
              "industry_available": bool(len(ind)),
-             "n_skipped": len(skipped), "skipped": skipped[:12],
+             "n_skipped": len(skipped),
+             # 跳过明细**不截断**：09-24 ㉒ 那一场 42 只跳过只留了前 12 条，事后想复盘
+             # 「到底跳过了谁」做不到 —— 而名次的深尾恰恰是这两条分散约束花掉的
+             # 队首信息所在。贪心扫描在取满 top_n 那一名就停，所以这份明细天然是
+             # 「扫过的范围内全部被跳过者」，不是抽样；扫到哪一名另记 scan_depth
+             "skipped": skipped,
+             "scan_depth": int(max([p["obs_rank"] for p in picked]
+                                   + [x["rank"] for x in skipped] + [0])),
              "weight_sum": float(out["weight"].sum()) if len(out) else 0.0}
     return out, stats

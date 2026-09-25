@@ -1,13 +1,25 @@
 # -*- coding: utf-8 -*-
 """股票线看板：`streamlit run app.py`（在 stock/v1/src 下起）。
 
-只读 CSV，不重算任何东西：所有数字都由四个入口产出——
+只读 CSV 出数，不重算任何东西（下面「两个写动作」那段除外）：所有数字都由四个入口产出——
   run_ashare_daily_signal.py → data/results/daily_signal/{signal,buy}_YYYYMMDD.csv
                                + meta_YYYYMMDD.json（当日各环节计数）
   run_ashare_position.py     → data/live/{positions,account}.csv
   run_ashare_factor_eval.py / run_ashare_portfolio_eval.py /
   run_ashare_redundancy_check.py → data/results/ashare_*.csv
 所以看板与命令行永远一致；看板上有异议就是入口有 bug，而不是这里算了两套。
+
+**页面上只有两个写动作，两个都不在本页重算判据**：
+① 「录一笔成交」（在「💼 持仓」页，09-24 #117）：把一行流水**追加**进
+   `manual_fills.csv`，然后用子进程调 `run_ashare_position.py` 原入口出账，再把那一层的
+   原始输出贴回来。平均成本、T+1、费率补算、盘外价报警这些判据**一个字都不在页面重算**
+   （同一个账有两个判据来源，是这类系统最贵的东西）。为什么用子进程而不是 import 进来跑：
+   出账要读 0.8GB 日线面板估值，那是几十秒（本机实测两笔流水 36 秒）和两三个 GB；
+   看板是长驻进程，不能为了一次录入把面板常驻在自己内存里。
+② 「跑今天这场日更」（页顶那一格，09-24 #118）：`start_new_session` 起一个**分离进程**
+   跑 `run_ashare_daily_chain.py`，页面只贴它自己写的那份日志。四步顺序、三道闸、跨步
+   验收全在链路入口（㉔），这一页不判「该不该跑」——盘中点进去，让链路的第①步（快照→bin）
+   那道 15:00 收盘闸去拒，原话会贴回这一格的日志里。
 
 **本页给的是「剔除名单 + 待买入短名单」两份，且全是收盘后日线口径，不做盘中分析**
 （判据来自已落库的 daily_pv.h5，页面上一行盘中价都不读；日更没跑，看到的就还是昨天）。
@@ -19,10 +31,14 @@
 不构成收益承诺。
 """
 
+import csv
 import glob
+import io
 import json
 import os
 import re
+import subprocess
+import sys
 from datetime import date, datetime
 
 import _bootstrap  # noqa: F401  必须先于项目模块导入
@@ -39,7 +55,7 @@ from config import (ASHARE_ACCOUNT_OUT, ASHARE_BOARD_LIMIT_SINCE, ASHARE_BOARD_L
                     ASHARE_ORDER_MAX_PER_INDUSTRY, ASHARE_ORDER_MAX_PER_BOARD,
                     ASHARE_LIMIT_NEAR, ASHARE_TRADABLE_GATE,
                     ASHARE_SCREEN_QUANTILE, ASHARE_SIGNAL_DIR,
-                    RDAGENT_QLIB_PROVIDER, RESULTS_DIR)
+                    LOG_DIR, RDAGENT_QLIB_PROVIDER, RESULTS_DIR)
 # 口径表里那行「涨停闸吃哪一套阈值」的文字**不让本页自己拼**：回测横幅、日频打印、
 # 本页三处都调 ashare_screen.gate_desc()，同一份构造。分开拼迟早出现某一处写的
 # 和实跑的不是一档（09-24 真撞过一次：文档说 board、config 里那行重复定义把默认
@@ -242,10 +258,259 @@ def ledger_hint():
         "   ```\n"
         "   代码 = 面板 instrument（SH/SZ/BJ + 6 位）；成交价用**盘面真实价**（非复权价）；"
         "买入数量必须是 100 的整数倍；**分红记成一行「入金」**，不然长持分红股收益会算少。\n"
-        f"2. 在 `stock/v1/src` 下跑 `python run_ashare_position.py`"
-        "（一条流水不合法就带行号报错、**整轮不出账**，页面上也就不会看到半对的账）。\n"
-        "3. 回到本页，「💼 持仓」会跟着出持仓表、市值分布和账户汇总。\n\n"
+        f"2. 点本页「✍️ 录成交 / 出账」里的**只重新出账**（或在 `stock/v1/src` 下跑 "
+        "`python run_ashare_position.py`）"
+        "—— 一条流水不合法就带行号报错、**整轮不出账**，页面上也就不会看到半对的账。\n"
+        "3. 出账成功后本页会自己刷新，「💼 持仓」跟着出持仓表、市值分布和账户汇总。\n\n"
         "现金流水没录期初本金时，现金是买入占款、总资产无意义 —— 先把本金记一行。")
+
+
+# ---------- 成交录入：本页唯一的写动作（追加一行流水 + 子进程调既有出账入口） ----------
+SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+FILL_SIDES = ["买入", "卖出", "入金", "出金"]
+
+
+def fill_candidates():
+    """代码下拉的候选 = 今天可能要下的单（观察名单）+ 手上已有的仓。
+    只是**给候选不是白名单**：三段板块都有权限，手输任何 SH/SZ/BJ 代码都收。"""
+    got = []
+    if bfiles:
+        try:
+            got += [str(x).strip().upper() for x in pd.read_csv(bfiles[-1], dtype=str)["code"]]
+        except Exception:
+            pass                       # 名单读不动就让候选为空，手输这条路还在
+    if positions is not None and len(positions):
+        got += [str(x).strip().upper() for x in positions["代码"]]
+    return sorted(set(got))
+
+
+def last_fill_line():
+    """账本里**物理最后一条数据行**的文本（不含表头、不含 `#` 注释、不含空行）
+
+    判重为什么要读到文件里而不是记在 `st.session_state`：session_state 是**每次刷新
+    重来**的，第一次点击写下的那一行在下一次 rerun 还在，但只要人换一页、按一下 F5
+    就清零 ⇒ 隔一次刷新把同一笔录两遍，页面挡不住（09-24 ㉕ 遗留第 ② 条）。而「这一行
+    和账本最后一行逐字相同」这个判据不受页面生命周期影响，而且和手工编辑 CSV 的形态
+    一致 —— 手工追加时肉眼比对的就是这一行。
+    """
+    if not os.path.exists(ASHARE_FILLS_CSV):
+        return None
+    with open(ASHARE_FILLS_CSV, encoding="utf-8", errors="replace") as fh:
+        body = [ln.strip() for ln in fh.read().splitlines()
+                if ln.strip() and not ln.lstrip().startswith("#")]
+    # 第一行是表头，不是流水 —— 与出账入口 `load_fills` 数行号时用的是同一条规则
+    return body[-1] if len(body) > 1 else None
+
+
+def append_fill(cells):
+    """追加一行流水。返回 (写进去的那行文本, 说明)；被挡下时第一样是 None。
+
+    出账失败**不撤这一行**：`run_ashare_position.py` 的语义是「报错带行号、整轮不出账，
+    坏行留在文件里等人改」，页面在这儿替它把行删掉，反而会吃掉一笔真成交（比如成交日
+    晚于面板尽头那种「数据还没更」的情况）。要挡的只有录两遍这一种。
+    """
+    buf = io.StringIO()
+    csv.writer(buf, lineterminator="").writerow(cells)      # 与 out 里同样的最小引号规则
+    line = buf.getvalue()
+    if line == last_fill_line():
+        return None, ("这一行与**账本里最后一条流水**逐字相同 ⇒ 已挡下（防一次双击或刷新后"
+                      "再点一次，把一笔成交录成两笔）。真的有两笔一模一样的成交：把备注写开"
+                      "再点，比如「第二笔」——备注算这一行的一部分，写了就不算重复。")
+    if not os.path.exists(ASHARE_FILLS_CSV):
+        # 表头与那行 # 写法说明由出账入口自己生成 —— 页面不重抄一遍表头
+        import run_ashare_position as pos_entry
+        pos_entry.template(ASHARE_FILLS_CSV)
+    with open(ASHARE_FILLS_CSV, "a", encoding="utf-8", newline="") as fh:
+        fh.write(line + "\n")
+    return line, ""
+
+
+def settle_book(live=None):
+    """子进程跑得出账入口，**逐行**回显它的 stdout，拿回退出码 + 全文
+
+    为什么是 `Popen` 逐行读而不是 `subprocess.run(stdout=PIPE)`：这一趟实测 36 秒，
+    整段捕获等于在这 36 秒里页面一个字节都看不到，人只能对着转圈的 spinner 猜它是
+    卡了还是在算（09-24 ㉕ 遗留第 ③ 条）。逐行读、每行刷新一次调用方给的
+    `st.empty()` 容器，跑的过程中就看得到它走到哪一步。
+    仍然不 import 进来跑：出账要读 0.8GB 日线面板给持仓估值，那是几十秒和两三个 GB，
+    看板是长驻进程，不该为一次录入把面板常驻。判据单点在入口那一层，这里零重算。
+    """
+    buf = []
+    with subprocess.Popen([sys.executable, os.path.join(SRC_DIR, "run_ashare_position.py")],
+                          cwd=SRC_DIR, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                          text=True, encoding="utf-8", errors="replace", bufsize=1) as p:
+        for ln in p.stdout:
+            buf.append(ln.rstrip("\n"))
+            if live is not None:
+                live.code("\n".join(buf[-14:]) or "（还没打出第一行：正在读 0.8GB 面板）",
+                          language="text")
+        rc = p.wait()
+    return rc, "\n".join(buf).strip()
+
+
+def show_fill_result():
+    """把上一次出账的结果贴在这一页顶部（rerun 之后 session_state 里那条是一次性的）"""
+    r = st.session_state.pop("fill_result", None)
+    if not r:
+        return
+    rc, out = r
+    (st.error if rc else st.success)(
+        f"出账入口退出码 {rc} ⇒ " + ("**本轮没出账**：持仓/账户 CSV 一个字节都没改，"
+                                    "上面/下面是它原话，按行号改完再点「只重新出账」。"
+                                    if rc else "持仓表与账户汇总已刷新（本段下方就是它那一轮的原始输出）。"))
+    st.code(out or "（这一层没有任何输出）", language="text")
+
+
+# ---------- 日更链路唤起：按钮只做「起一个分离进程 + 贴回它自己的日志」 ----------
+CHAIN_ENTRY = os.path.join(SRC_DIR, "run_ashare_daily_chain.py")
+CHAIN_LOG = os.path.join(LOG_DIR, "chain_from_dash.log")       # 只留最近那一场
+LINE_DATA_DIR = os.path.abspath(os.path.join(SRC_DIR, "..", "data"))
+# ② 那一层的落点**不让本页重新拼**：直接拿链路入口自己用的那个常量（它是从
+# `RDAGENT_OUTPUT_DIR` 拼出来的，不吃 `STOCK_DAILY_H5` 覆写 ⇒ 在这里自己拼一遍就会
+# 出现「页面念的路径和实际被写的路径不是同一个」，而这一格唯一的作用就是说清写到哪）
+# 取消标记同理：语义（在**步与步之间**停、不在一步中间动手）在链路入口里，这里只写文件
+from run_ashare_daily_chain import CANCEL_FLAG, H5 as CHAIN_H5   # noqa: E402
+
+
+def chain_targets():
+    """这一场会写的三个落点，**读进程里真实生效的那三个值**，不读环境变量名
+
+    为什么不用 `any(k.startswith("STOCK_"))` 当判据：本线 config 自己会往进程里注入
+    `STOCK_LLM_BASE_URL` / `STOCK_LLM_MODEL`（LLM 兼容开关那条），所以「看到 STOCK_ 就当
+    冒烟档」会在**每一次生产渲染**上报假警（09-24 无覆写 AppTest 实测就是这个红法）。
+    子进程确实继承本进程环境 ⇒ 覆写会跟着下去，但要看穿它只能念落点本身。
+    注意 ② 那一行**不吃 `STOCK_*` 覆写**（路径由 `RDAGENT_OUTPUT_DIR` 定）⇒ 冒烟档里它照样
+    指生产，这不是 bug 是 ㉔ 就量下的事实（那一层唯一躲不开的共享写）。
+    """
+    return (("① bin 与日历", RDAGENT_QLIB_PROVIDER),
+            ("② 面板 h5", CHAIN_H5),
+            ("③④ 当日名单", ASHARE_SIGNAL_DIR))
+
+
+def chain_procs():
+    """现在有哪些进程在跑这条链路 —— **不分谁起的**，命令行手敲的那一场也算
+
+    不另记一份 pid 状态文件：页面自己记，就会有「记的和真实在跑的对不上」那一刻，
+    而这一格要防的恰恰是两场同时跑（② 每天全量重生成 0.8GB 面板，两遍并起就是内存
+    事故）。进程表本身就是唯一权威，扫一遍比维护一份文件便宜也不会说谎。
+    """
+    name = os.path.basename(CHAIN_ENTRY)
+    got = []
+    for d in os.listdir("/proc"):
+        if not d.isdigit():
+            continue
+        try:
+            with open(f"/proc/{d}/cmdline", "rb") as fh:
+                argv = [a for a in fh.read().decode("utf-8", "replace").split("\x00") if a]
+        except OSError:                      # 读的瞬间那一进程退了 / 不是自己的进程
+            continue
+        if any(os.path.basename(a) == name for a in argv):
+            got.append((int(d), " ".join(argv)))
+    return got
+
+
+def start_chain(dry_run):
+    """分离进程起链路：`start_new_session` 让它不在这个会话/终端退出时被一起带走
+
+    不用 `Popen(...).wait()`，也不放 `st.spinner` 里同步跑：这一场要**一两分钟起、机器忙的时候
+    四分钟**（09-24 从这一格实跑两遍：② 36/81s、③ 43/74s、④ 42/65s ⇒ 整链 115s 与 211s；
+    ㉔ 命令行那一次 120/79/61s。同一套判据三遍三个数，花的是页缓存冷热和机器上还有谁 ⇒
+    **别把任何一个当常量**），同步跑等于把整个看板冻在那儿几分钟，而且**关掉页面那一进程就断**。
+    子进程的退出码从另一个进程 wait 不到，所以判成没成就只看日志尾巴上那句 `[链路完成]`
+    （链路的规矩是任一验收不过就当场 exit≠0，原话走 stderr，这里并流进同一份日志）。
+    """
+    os.makedirs(LOG_DIR, exist_ok=True)
+    # 上一场遗留的中止请求不带进这一场（链路在步边界看到这张条子就会停，而这一场是
+    # 人刚刚按下去要跑的 ⇒ 那张条子一定是旧的）。链路自己只在触发时删它，删旧账这件事归起手续
+    if os.path.exists(CANCEL_FLAG):
+        os.remove(CANCEL_FLAG)
+    cmd = [sys.executable, CHAIN_ENTRY] + (["--dry-run"] if dry_run else [])
+    with open(CHAIN_LOG, "wb") as fh:        # 起点截断：别把上一场的尾巴混进这一场
+        subprocess.Popen(cmd, cwd=SRC_DIR, stdin=subprocess.DEVNULL,
+                         stdout=fh, stderr=subprocess.STDOUT,
+                         start_new_session=True)
+
+
+@st.fragment(run_every=15 if chain_procs() else None)
+def chain_panel():
+    with st.container(border=True):
+        procs = chain_procs()
+        t1, t2 = st.columns([3, 5])
+        t1.markdown("🌙 **收盘后日更链路**　① 快照→bin → ② 面板 → ③ 名单 → ④ 次日真账")
+        t2.caption("四步顺序、三道闸、跨步验收全在 `run_ashare_daily_chain.py`（㉔），"
+                   "这一格只起进程、只贴它自己写的日志，一个字都不重算。")
+        cancel_pending = os.path.exists(CANCEL_FLAG)
+        if procs:
+            st.info("　".join(f"pid {p}" for p, _ in procs)
+                    + " 正在跑这一场 ⇒ 按钮锁住（两场并起会把 ② 那 0.8GB 面板重生成跑两遍）。"
+                    "关掉本页不影响它。"
+                    + ("" if len(procs) == 1 else "　注意：同时不止一场，先去命令行看一眼"))
+            # 取消的语义在链路入口里（`check_cancel`）：**不再起下一步**，正在跑的那一步
+            # 把它自己的验收跑完。这里只写那张条子，不复制一份判据 —— 命令行起的那一场
+            # 也认同一个文件，谁按的都行。不做「立刻 kill」：① 在按票 append bin、
+            # ② 在重写 0.8GB 面板，拦腰打断留的是半成品，而这条链值钱就值钱在
+            # 「要么整条走完、要么半条链的产物不留给看板」（㉔）
+            x1, x2 = st.columns([2, 8])
+            if x1.button("请求中止", disabled=cancel_pending,
+                         help="跑完当前这一步就不再起下一步；已跑完的步骤产物照旧有效"):
+                with open(CANCEL_FLAG, "w", encoding="utf-8") as fh:
+                    fh.write(f"requested from dashboard at {datetime.now().isoformat()}\n")
+                st.rerun()
+            if cancel_pending:
+                x2.caption(f"中止请求已写下（"
+                           f"{datetime.fromtimestamp(os.path.getmtime(CANCEL_FLAG)):%H:%M:%S}）"
+                           "⇒ 链路会在下一个步边界看到这张条子后停下，最坏等一步的实测时长"
+                           "（② 36~120s、③ 43~79s、④ 42~61s）。要收回这个请求：删掉 "
+                           f"`{CANCEL_FLAG}`")
+            else:
+                x2.caption("这一场已经在跑 ⇒ 想停只能等它跑完或按「请求中止」；关掉本页不影响它。")
+        tail = []
+        if os.path.exists(CHAIN_LOG):
+            with open(CHAIN_LOG, encoding="utf-8", errors="replace") as fh:
+                tail = [ln for ln in fh.read().splitlines() if ln.strip()]
+            st.caption(f"本页最近一场：起于 "
+                       f"{datetime.fromtimestamp(os.path.getmtime(CHAIN_LOG)):%m-%d %H:%M}"
+                       f"（日志 {CHAIN_LOG}）　"
+                       + ("🟢 还在跑" if procs else
+                          ("✅ 打出了 `[链路完成]`" if "[链路完成]" in "\n".join(tail)
+                           else ("⏹ 按请求中止 ⇒ 后面的步骤没跑（已跑完的那几步产物有效）"
+                                 if "[已按请求中止]" in "\n".join(tail)
+                                 else "⛔ 已结束但**没打出** `[链路完成]` ⇒ 看下面的原话"))))
+        else:
+            st.caption("还没从本页跑过。第一次点之前先看一眼下面这三行落点：链路会把当日快照 "
+                       "append 进 qlib bin（写前自动备份，坏了用 "
+                       "`data/update_qlib_bin_daily.py --rollback` 还原）、重写面板 h5、"
+                       "覆盖当日 `signal/buy/order` 三份名单。")
+        targets = chain_targets()
+        off = [(k, p) for k, p in targets
+               if not os.path.abspath(p).startswith(LINE_DATA_DIR + os.sep)]
+        for k, p in targets:
+            st.caption(("⚠️ " if any(k2 == k for k2, _ in off) else "　") + f"{k}：" + f"`{p}`")
+        if off:
+            st.error("从这里起的链路会写到**本线 `data/` 目录之外**（上面打 ⚠️ 的那几个落点）⇒ "
+                     "这是冒烟档，不是生产那一场。子进程继承本看板进程的环境，覆写会跟着下去；"
+                     "要跑生产那一场，请用无覆写的看板实例或直接命令行。")
+        dry = st.toggle("只跑 ① 的 dry-run（快照只算不写；① 无事可做时整链就停）",
+                        value=False, disabled=bool(procs),
+                        help="链路自带的排练档 `--dry-run`：一个字节都不动")
+        b1, b2 = st.columns([2, 8])
+        if b1.button("跑今天这场日更", type="primary", disabled=bool(procs),
+                     help="15:00 之前点会被 ① 的收盘闸当场拒掉，原话就贴在下面这段日志里"):
+            start_chain(dry)
+            st.rerun()
+        if tail:
+            marks = [ln for ln in tail if ln.startswith(("[前置体检]", "[验收", "[链路完成]",
+                                                          "[链路中断]", "[已按请求中止]", "[① 跳过]",
+                                                          "[停在这里]", "[② 自报]", "[产物 ③]",
+                                                          "Traceback"))]
+            for ln in (marks or tail)[-9:]:
+                st.code(ln, language="text")
+            with st.expander(f"这一场的完整日志（{len(tail)} 行）"):
+                st.code("\n".join(tail), language="text")
+        if not procs and tail and "[链路完成]" in "\n".join(tail):
+            if b2.button("名单已更新 ⇒ 刷新整页", help="清掉本页的 CSV 缓存，重读新名单"):
+                load_csv.clear()
+                st.rerun()
 
 
 # ---------- 顶部指标条 ----------
@@ -267,7 +532,7 @@ elif flat:
                "这是状态不是故障。下面这些信号数字与有没有建仓无关，照旧是真实日线口径")
 else:
     st.caption(f"有 **{n_fills} 笔成交还没出账**（账户文件不存在）—— "
-               "在 `stock/v1/src` 下跑 `python run_ashare_position.py` 后本页会跟着更新")
+               "到「💼 持仓」那一页点「只重新出账」，或跑 `run_ashare_position.py`")
 
 if sfiles:
     dtag = os.path.basename(sfiles[-1])[7:15]
@@ -300,11 +565,13 @@ if sfiles:
         lag = (date.today() - pe).days
         st.caption(f"面板末格 {m['panel_end']}（距今 {lag} 天）　"
                    + ("✅ 收盘后日更已跑" if lag <= 4 else
-                      f"⚠️ 面板已 {lag} 天没更新——先跑 "
-                      "`python data/update_qlib_bin_daily.py` 再跑日频入口，"
+                      f"⚠️ 面板已 {lag} 天没更新——点下面那一格的「跑今天这场日更」，"
                       "本页不做盘中分析，看到的仍是这份旧名单"))
 else:
-    st.info("还没有日频信号名单——先跑 `python run_ashare_daily_signal.py`")
+    st.info("还没有日频信号名单——点下面那一格的「跑今天这场日更」"
+            "（或命令行跑 `python run_ashare_daily_signal.py`）")
+
+chain_panel()
 
 st.divider()
 
@@ -318,6 +585,7 @@ tabs = st.tabs(["💼 持仓", "🛒 待买入名单" + ("（已过期）" if _b
 
 # ---------- 持仓 ----------
 with tabs[0]:
+    show_fill_result()
     if positions is None or not len(positions):
         # 三种空分开写：空仓（真状态）≠ 流水录了没出账 ≠ 账本没生成
         if has_book:
@@ -330,15 +598,12 @@ with tabs[0]:
                     "空仓期这一页真正能用的是另外两件事：**「🛒 待买入名单」**给今天开盘前"
                     "该人工复核的那一批（排队顺序，不是收益承诺），**「🚫 今日剔除名单」**"
                     "给已经确定不该碰的那批。录了第一笔成交并出账之后，这一页才会长出"
-                    "持仓表、市值分布与账户汇总。")
-            with st.expander("要建仓时：成交怎么录、录完跑什么"):
-                st.markdown(ledger_hint())
+                    "持仓表、市值分布与账户汇总。（往下那一块「✍️ 录成交 / 出账」"
+                    "就是录第一笔的地方，不用去终端。）")
         else:
             st.warning(fills_msg or
-                       f"有 **{n_fills} 笔**流水但账户文件还不存在 —— 在 `stock/v1/src` "
-                       "下跑 `python run_ashare_position.py` 出账（不合法的行会带行号报错、"
-                       "整轮不出账）")
-            st.markdown(ledger_hint())
+                       f"有 **{n_fills} 笔**流水但账户文件还不存在 —— 点下面那一块里的"
+                       "「只重新出账」就出账（不合法的行会带行号报错、整轮不出账）")
     else:
         if "今日信号" in positions.columns:
             hit = positions[positions["今日信号"].astype(str).str.startswith("剔除")]
@@ -365,6 +630,67 @@ with tabs[0]:
                    f"本页显示的就是那份账 —— 先看这一行，别把演示账当真账）"
                    f"　估值口径：面板最后一日的**盘面真实价**（复权价 ÷ factor），"
                    f"与券商行情一致；分红需手工记为「入金」，否则长持分红股收益会被算少。")
+
+    # ---- 录一笔成交：下单动作本身在券商 App 里做，这里收的是「下完之后那一步」 ----
+    with st.container(border=True):
+        st.markdown("#### ✍️ 录成交 / 出账")
+        st.caption(f"这一页唯一的写动作：把一行流水**追加**进 `{ASHARE_FILLS_CSV}`，"
+                   "再用子进程调 `run_ashare_position.py` 出账 —— 平均成本、T+1、费率补算、"
+                   "盘外价报警那些判据**一个都不在这里重算**，页面只负责写一行和贴回原话。"
+                   "这个文件是你的财务数据，不进版本库。")
+        cands = fill_candidates()
+        with st.form("fill_form", clear_on_submit=True):
+            q1, q2, q3, q4 = st.columns(4)
+            f_day = q1.date_input("成交日期", value=date.today(),
+                                  help="必须 ≤ 面板最后一日，否则出账会报「账没法估」")
+            pick = q2.selectbox("代码", ["（手输）"] + cands,
+                                help="候选 = 今日观察名单 + 现有持仓；不是白名单，手输也收")
+            f_code = q2.text_input("代码 SH/SZ/BJ + 6 位", value="",
+                                   disabled=pick != "（手输）")
+            f_side = q3.selectbox("方向", FILL_SIDES)
+            f_qty = q4.number_input("数量（股）/ 现金金额", min_value=0.0, step=100.0,
+                                    format="%.2f",
+                                    help="买入须是 100 的整数倍；入金/出金这一列填现金额")
+            w1, w2, w3 = st.columns(3)
+            f_px = w1.number_input("成交价（盘面真实价，非复权价）", min_value=0.0,
+                                   step=0.01, format="%.3f",
+                                   help="入金/出金留 0")
+            f_fee = w2.number_input("费用（元）", min_value=0.0, step=1.0, format="%.2f",
+                                    help="留 0 = 按标准费率补（佣金万 2.5 最低 5 元 + 卖出印花税万 5），"
+                                         "交割单下来后请把实际费用回填")
+            f_note = w3.text_input("备注")
+            if st.form_submit_button("录入并出账", type="primary"):
+                code = (pick if pick != "（手输）" else f_code).strip().upper()
+                if not code:
+                    st.error("代码是空的 ⇒ 这一行没写进流水。")
+                else:
+                    g = lambda v: f"{v:.10g}" if v > 0 else ""
+                    cells = [f_day.isoformat(), code, f_side, g(f_px), g(f_qty),
+                             g(f_fee), f_note.strip()]
+                    line, why = append_fill(cells)
+                    if line is None:
+                        st.warning(why)
+                    else:
+                        box = st.empty()
+                        box.caption("出账中（子进程要读一遍日线面板给持仓估值，实测两笔流水"
+                                    " 36 秒）……下面这段是它的原话，一行一行长出来")
+                        rc, out = settle_book(live=box)
+                        load_csv.clear()
+                        st.session_state["fill_result"] = (rc, out)
+                        st.rerun()
+        b1, b2 = st.columns([1, 5])
+        if b1.button("只重新出账", help="改完流水文件之后用这个，不再追加新行"):
+            box2 = st.empty()
+            box2.caption("出账中（同上，36 秒量级）……")
+            rc, out = settle_book(live=box2)
+            load_csv.clear()
+            st.session_state["fill_result"] = (rc, out)
+            st.rerun()
+        b2.caption("出账失败时那一行**留在流水里**（入口的语义是「带行号报错、整轮不出账，"
+                   "等人改完再跑」），按报错里的行号编辑文件后再点「只重新出账」。"
+                   "要手工批量录，仍然直接编辑那个 CSV，两边判据一致。")
+        with st.expander("流水文件的写法（与 CSV 手工录入同一套）"):
+            st.markdown(ledger_hint())
 
 # ---------- 待买入名单 ----------
 with tabs[1]:
@@ -727,7 +1053,7 @@ with tabs[7]:
 |---|---|---|
 | 源数据 | `daily_pv.h5`（RD-Agent 循环实现因子时读的同一份） | 研究与实盘同源，结论才可对照 |
 | 面板价 | **复权价**；盘面价 = 复权价 ÷ `$factor` | 收益序列必须无除息跳空；报价列给人看，用盘面价 |
-| 成交额 | **复权价 × `$volume` × 100**。`$volume` 不是手，是**复权成交量** = 真实手数 ÷ `$factor` | 绝对判据（09-23 探针 `shell/probe_live_sources4_0923.py`）：拿新浪自报成交额对着除，此式 54/54 只票比值落 0.99~1.01（抽样按 `$factor` 十分位分层，覆盖 0.0070~1.24），「盘面价×`$volume`」那版逐票散布 **177 倍、0/54 命中**。09-22 全市场按此口径 = **2.14 万亿** |
+| 成交额 | **复权价 × `$volume` × 100**。`$volume` 不是手，是**复权成交量** = 真实手数 ÷ `$factor` | 绝对判据（09-23 探针 `shell/stock/probe_live_sources4_0923.py`）：拿新浪自报成交额对着除，此式 54/54 只票比值落 0.99~1.01（抽样按 `$factor` 十分位分层，覆盖 0.0070~1.24），「盘面价×`$volume`」那版逐票散布 **177 倍、0/54 命中**。09-22 全市场按此口径 = **2.14 万亿** |
 | 流动性闸门 | 20 日均成交额 ≥ {ASHARE_PORT_MIN_AMOUNT:.0e} 元 | 这条 09-23 折过一次返：中途把公式「修」成盘面价×量，方向反了（等于给成交额再乘 1/`$factor`），闸门对老票放水。按闸门用的 **20 日均额**口径，09-22 实测 **261 只**真成交额不足 2000 万元的票被错放行、反向只错挡 3 只（与日频名单 5484→5226 行的逐行差一一对上）；按单日成交额则是 359 / 1 |
 | ⚠️ 已知口径缺陷 | `$volume` 内含 1/`$factor`：票级 1/`$factor` 中位 **8.4**、p99 **143**、最大 **1152** ⇒ 「放量」里混着复权基准，`$factor` 小（涨幅大或分红多）的票被系统性看成高量能 | **成交额修对 ≠ 量能构造干净。**四条构造仍按面板口径（`STOCK_VOL_BASIS=adj`，与历史基线和 RD-Agent 沙箱同源），真手数口径的对照复核走 `STOCK_VOL_BASIS=real`。本模块先前那句「量能族只用 `$volume`，不含价格与 `$factor`，不受失真影响」**是错的，已作废** |
 | 收益护栏 | 复权开盘收益与盘面开盘收益对看：**只有复权侧**超 ±30% 者裁回 ±30%（`RET_LIMIT`） | 生产切片 90 个 (票,日) 命中（BJ 69 / SZ 15 / SH 6；09-23 记的 326 是错数，已按生产代码重算）。**2023-10-16 一天 64 只**，等权日收益被凭空抬 **+19.89pp**（未裁剪 +19.82% vs 当日中位 −0.52%），全历史没有第二天抬过 0.5pp。真实除权必在盘面价留同幅缺口，新股首周的真暴涨两套价同时越界，故「只有复权侧越界」= `$factor` 的假台阶而非行情 |
@@ -737,7 +1063,7 @@ with tabs[7]:
 | 剔除阈值（「不该买」这张域） | 池内截面分位 ≥ {ASHARE_SCREEN_QUANTILE:.0%}，启用构造取**并集**（≥1 条判响即剔） | 09-24 组合层实测（`board` 档，表内 `gate` 列当前 = `{ARCH_GATE}`）：并集在减法腿值 **+6.46%/年**，最佳单条只有 +4.37%（边际 水平 +1.11 > 动量 +0.72 > 波动 +0.25 > 比 -0.03pp）⇒ 这张域保持并集，一条都不撤。`data/results/ashare_portfolio_exclusion.csv` |
 | 待买入剔除闸 | 同一批构造、同一个分位阈值，但要 **≥{ASHARE_BUY_MIN_HITS} 条一致判响**才挡（`STOCK_BUY_MIN_HITS`，拨回 1 = 两处统一） | 把上面那张并集掩码直接压在名单上是**净负**：按现轴 `{BUY_EXPR}` 实测 +1.39% → **-3.98%**、单程换手 0.186 → 0.433（换轴前那根 `STD($volume,20)` 只从 +0.95% 打到 -0.39%，所以**换轴之后这道分强度比换轴前更吃重**）。机制也换了：排序轴现在**就是**「量能水平」那条构造，一根轴的低分端不可能同时是自己的高分端 ⇒ 水平/波动两条对这份名单实测为零贡献（「单条·量能水平」与不剔除逐字相同，两个「留一」行都和 ≥1 那一行逐字相同），名单上的伤害 **100% 来自动量（-2.03%）与比值（-1.89%）**。≥3 那档与不剔除差在小数点第 6 位（≥4 才逐字相同），≥2 就开始付钱（-0.84%）。`ashare_portfolio_buylist.csv`（旧轴账单另存 `_std20axis.csv`） |
 | 待买入排序轴 | 待买入域内 `{BUY_EXPR}` **升序**取前 {ASHARE_BUY_TOP_N} 名，等权。**09-24 换过轴**（用户裁决）：旧轴 `STD($volume,20)` | 换的理由是同簇那条在三档上都不差于旧轴且换手只有其一半多：`SMA(Vol,20)` top50/100/200 = +1.39%/+1.59%/+1.58%、换手 0.186/0.176/0.162，旧轴 = +0.95%/+2.31%/+3.70%、换手 0.311/0.282/0.257（`ashare_portfolio_eval.csv`，`gate` 列当前 = `{ARCH_GATE}`）。⚠️ 两点边界：① 换轴是**改判据**，所以 ⑮ 那套剔除强度账单已按新轴全窗口重跑，别拿旧账单的钱读新名单；② 名单入口那一层只在 top50 档量过，拨大 `STOCK_BUY_TOP_N` 要连同剔除闸重量。样本内、未过准入链，且与表内「低价股」对照分不开（对照 top50 +3.56%、换手只有 1/3）⇒ 它交出来的是**待人工复核的排队顺序**，不是收益承诺。详见「🛒 待买入名单」页脚 |
-| 待买入执行闸 | 在排序之前再叠三道：当日无成交/停牌、收盘涨幅 ≥ **本板块限幅 × {ASHARE_LIMIT_NEAR:.0%}**（不追）、名称含 ST/*ST | 前两道是「买不买得到」，第三道判据来自当日收盘快照的「名称」列（历史日无快照则不跑，页顶会黄条提示）。限幅按板块分档：{' / '.join(f'{k} {v * ASHARE_LIMIT_NEAR:.1%}' for k, v in ASHARE_BOARD_LIMIT_UP.items())}。09-24 探针 `shell/probe_board_limits_0924.py` 实测：过去用单一 {ASHARE_PORT_LIMIT_UP:.1%} 时，历史被挡下的三段票里 **81~85%** 离自己的涨停还远得很（科创 10066/12419、创业 46859/55367、北交 5382/6533）——那笔误伤恰好落在三个有权限的板块上。回测的第 4 道闸走**同一个开关** `STOCK_TRADABLE_GATE`，两条路径不许各拿一份判据。三档里 `dated` 是回测复现历史规则用的，日频那一侧它和 `board` 逐字相同（见上两行） |
+| 待买入执行闸 | 在排序之前再叠三道：当日无成交/停牌、收盘涨幅 ≥ **本板块限幅 × {ASHARE_LIMIT_NEAR:.0%}**（不追）、名称含 ST/*ST | 前两道是「买不买得到」，第三道判据来自当日收盘快照的「名称」列（历史日无快照则不跑，页顶会黄条提示）。限幅按板块分档：{' / '.join(f'{k} {v * ASHARE_LIMIT_NEAR:.1%}' for k, v in ASHARE_BOARD_LIMIT_UP.items())}。09-24 探针 `shell/stock/probe_board_limits_0924.py` 实测：过去用单一 {ASHARE_PORT_LIMIT_UP:.1%} 时，历史被挡下的三段票里 **81~85%** 离自己的涨停还远得很（科创 10066/12419、创业 46859/55367、北交 5382/6533）——那笔误伤恰好落在三个有权限的板块上。回测的第 4 道闸走**同一个开关** `STOCK_TRADABLE_GATE`，两条路径不许各拿一份判据。三档里 `dated` 是回测复现历史规则用的，日频那一侧它和 `board` 逐字相同（见上两行） |
 | 下单层 | 从待买入名单按名次往下扫，同板块 ≤ {ASHARE_ORDER_MAX_PER_BOARD} 只、同行业 ≤ {ASHARE_ORDER_MAX_PER_INDUSTRY} 只，凑满 {ASHARE_ORDER_TOP_N} 只即停，每槽 {100 / ASHARE_ORDER_TOP_N:.0f}%（凑不满的余量是现金，不自动放宽） | 这一层**只解决「一次下得完」**，不参与判据：名单的排序轴一个字没改。板块与行业都是分散度约束、不是白名单——科创板/创业板/北交所均有权限，所以没有任何一段被拉黑；映射缺的行业（值「未知」）也不参与去重，否则北交所会被 85% 的映射缺口代理排除 |
 | 费率 | 佣金万 2.5 双边（最低 5 元）+ 印花税万 5（卖出） | 回测用综合单边 15bp（含滑点万 10） |
 | T+1 / 整手 | 买入须为 100 股整数倍；当日买入不可当日卖出 | 账本按日初持仓快照校验 |

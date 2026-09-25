@@ -1272,13 +1272,13 @@
   "5-day SMA of Price": {
     "name": "5-day SMA of Price",
     "expr": "ma(df,5)",
-    "ic": -0.07160095667459415,
-    "icir": -1.9115887536023657,
+    "ic": -0.06231258820154218,
+    "icir": -1.5347675420027374,
     "source": "official",
     "status": "active",
     "first_seen": "2026-09-25 03:10:24",
-    "last_seen": "2026-09-25 06:40:50",
-    "update_count": 4,
+    "last_seen": "2026-09-25 08:08:32",
+    "update_count": 5,
     "ic_history": [
       {
         "time": "2026-09-25 03:10:24",
@@ -1299,6 +1299,11 @@
         "time": "2026-09-25 06:40:50",
         "ic": -0.07160095667459415,
         "icir": -1.9115887536023657
+      },
+      {
+        "time": "2026-09-25 08:08:32",
+        "ic": -0.06231258820154218,
+        "icir": -1.5347675420027374
       }
     ],
     "market": "etf"
@@ -1306,13 +1311,13 @@
   "1-day SMA of Price over 60-day MAX of Price": {
     "name": "1-day SMA of Price over 60-day MAX of Price",
     "expr": "(ma(df,1))/(max(df,60))",
-    "ic": -0.06698047065851577,
-    "icir": -1.4323902928165966,
+    "ic": -0.0397529579162019,
+    "icir": -1.101079343479111,
     "source": "official",
     "status": "active",
     "first_seen": "2026-09-25 03:10:24",
-    "last_seen": "2026-09-25 06:40:50",
-    "update_count": 4,
+    "last_seen": "2026-09-25 08:08:32",
+    "update_count": 5,
     "ic_history": [
       {
         "time": "2026-09-25 03:10:24",
@@ -1333,6 +1338,11 @@
         "time": "2026-09-25 06:40:50",
         "ic": -0.06698047065851577,
         "icir": -1.4323902928165966
+      },
+      {
+        "time": "2026-09-25 08:08:32",
+        "ic": -0.0397529579162019,
+        "icir": -1.101079343479111
       }
     ],
     "market": "etf"
@@ -1371,6 +1381,25 @@
         "time": "2026-09-25 06:40:50",
         "ic": -0.029166632021001376,
         "icir": -0.7767486568765019
+      }
+    ],
+    "market": "etf"
+  },
+  "1-day SMA of Price over 20-day MAX of Price": {
+    "name": "1-day SMA of Price over 20-day MAX of Price",
+    "expr": "(ma(df,1))/(max(df,20))",
+    "ic": -0.04162008903418817,
+    "icir": -1.0348083076334869,
+    "source": "official",
+    "status": "active",
+    "first_seen": "2026-09-25 08:08:32",
+    "last_seen": "2026-09-25 08:08:32",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-09-25 08:08:32",
+        "ic": -0.04162008903418817,
+        "icir": -1.0348083076334869
       }
     ],
     "market": "etf"

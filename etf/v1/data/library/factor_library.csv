@@ -28,7 +28,8 @@ hybrid_9,LLM-遗传混合因子10号,"(delta(ts_std(ts_sum(volume, 240), 20), 24
 volatility_20,20日低波动,,-0.0159,-0.5012,pipeline,etf,active,2026-09-24 09:31:34,2026-09-25 03:10:30,9
 momentum_20,20日动量,,-0.0054,-0.184,pipeline,etf,active,2026-09-24 09:31:34,2026-09-25 03:10:30,9
 hybrid_5,LLM-遗传混合因子6号,"(-delta(close, 3)) / (ma(df, 10) + 1e-9)",0.019,0.0,pipeline,etf,active,2026-09-24 18:50:54,2026-09-25 00:27:58,2
-5-day SMA of Price,"均线(数据,5)","ma(df,5)",-0.0716,-1.9116,official,etf,active,2026-09-25 03:10:24,2026-09-25 06:40:50,4
-1-day SMA of Price over 60-day MAX of Price,"(均线(数据,1))/(区间最高(数据,60))","(ma(df,1))/(max(df,60))",-0.067,-1.4324,official,etf,active,2026-09-25 03:10:24,2026-09-25 06:40:50,4
+5-day SMA of Price,"均线(数据,5)","ma(df,5)",-0.0623,-1.5348,official,etf,active,2026-09-25 03:10:24,2026-09-25 08:08:32,5
+1-day SMA of Price over 60-day MAX of Price,"(均线(数据,1))/(区间最高(数据,60))","(ma(df,1))/(max(df,60))",-0.0398,-1.1011,official,etf,active,2026-09-25 03:10:24,2026-09-25 08:08:32,5
 vol_20,20日低波动(模板),"-ts_std(returns, 20)",-0.0331,-1.4971,llm,etf,active,2026-09-25 05:13:18,2026-09-25 05:13:18,1
 10-day SMA of Volume,"滚动均值(成交量,10)","ts_mean(volume,10)",-0.0292,-0.7767,official,etf,active,2026-09-25 06:40:50,2026-09-25 06:40:50,1
+1-day SMA of Price over 20-day MAX of Price,"(均线(数据,1))/(区间最高(数据,20))","(ma(df,1))/(max(df,20))",-0.0416,-1.0348,official,etf,active,2026-09-25 08:08:32,2026-09-25 08:08:32,1

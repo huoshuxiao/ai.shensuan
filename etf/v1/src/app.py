@@ -2,6 +2,7 @@
 """ETF 研究看板：`streamlit run app.py`（工作目录 etf/v1/src）
 
 这一页只读，不产生任何文件；所有数字都来自主线落盘的产物，页上不重算判据。
+**不接下单**：`src/live/` 的真实委托代码不在本页的调用链上，最后一节只读影子盘落盘的 csv。
 
 为什么页首第一行是「数据新鲜度」而不是收益
 ------------------------------------------
@@ -32,9 +33,20 @@ from config import (CACHE_DIR, DSR, FACTOR_LIBRARY, FREQ, PORTFOLIO,
 from factor_naming import cn_name, METRIC_GLOSSARY
 from llm_selfreport import (decision_tally, harvest_vs_library,
                             self_report_mtime)
+# 反馈闭环 / 影子盘监控两块各自仍可单独 `streamlit run`；这里只 import 它们的
+# render() 当两节用，合一张看板。set_page_config 只能有一次，留给宿主页面。
+from app_feedback import render as render_feedback
+from app_live import render as render_live
 
 st.set_page_config(page_title="ETF 量化看板", layout="wide")
 st.title("📊 ETF 量化系统看板")
+# 对外表述是合规边界，不是装饰：这条线曾经有一个 tab 叫「实盘监控」，读起来像在替人下单。
+st.caption("**辅助决策，不自动实盘。** ETF 线完全不接下单：本看板与全部 `src/` 入口都不向券商"
+           "发委托，`src/live/` 里的 qmt / easytrader 委托代码**没有接进本页**，"
+           "`run_live.py` 只跑本机影子盘（paper 账户自己记账，账户号是占位符）。"
+           "真实成交一律由人在券商端手工下单、手工录回；不存储券商账号密码；只用公开/授权数据。"
+           "页上每个数字都是**已落盘产物**的读数（`data/results/`、`data/live/`），"
+           "**收盘后日线口径，不做盘中分析**，也不是收益承诺。")
 
 
 @st.cache_data(ttl=30)
@@ -156,7 +168,8 @@ if dsr_df is not None and not dsr_df.empty:
 
 # ---------- tabs ----------
 tabs = st.tabs(["📈 净值", "💼 持仓与交易", "🎯 统计验证", "🧪 ETF 风险",
-                "🧬 因子", "⚙️ 配置与生命周期", "📖 口径"])
+                "🧬 因子", "⚙️ 配置与生命周期", "📖 口径",
+                "🔄 反馈闭环", "📡 影子盘监控"])
 
 with tabs[0]:
     if eq_df is None or eq_df.empty:
@@ -648,3 +661,11 @@ with tabs[6]:
 """)
     st.caption("本页不产生文件、不改判据。所有数字来自 `data/results/` 与 "
                "`data/risk/`，口径以 `src/` 里的实现为准。")
+
+# ---------- 以下两节原样来自 app_feedback.py / app_live.py ----------
+# 页内还各自带一层子页签（反馈 12 个 / 影子盘 3 个），所以整块交给 render() 画。
+with tabs[7]:
+    render_feedback()
+
+with tabs[8]:
+    render_live()

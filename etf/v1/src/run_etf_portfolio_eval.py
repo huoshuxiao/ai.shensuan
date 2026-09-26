@@ -1,20 +1,29 @@
 # -*- coding: utf-8 -*-
 """ETF 全市场池组合层评估入口 —— 准入链第二环。
 
-一句话：把第一环里 |RankICIR| 最高的几条因子按 ICIR 加权合成一个打分，然后**真的**
+一句话：把第一环的候选**按族**合成一个打分（族内全员等权、族间一票一权），然后**真的**
 每 hold 天按分数买前 k 只、付手续费，看能不能变成钱。回答的是
 「IC 好看 ≠ 能赚钱」这一问 —— 分层收益是逐日再平衡的纸面数，只有这里是可交易口径。
 
 合成与回放口径
 --------------
-    合成打分   S_{t,i} = Σ_j w_j·sign(IC_j)·rank_pct_i(F_{t,i})    rank_pct ∈ (0,1]
-               先按 |RankICIR| 取前 PICK(=3×TOP) 条做初选，**合成前逐日截面秩相关判重**
-               （|corr| >= RED_BAR 的后来者撤下），最后最多留 TOP 条、权重重新归一：
-               w_j = |RankICIR_j| / Σ_k |RankICIR_k|。
-               为什么必须判重：icir_weights 只按各自名次排序，同族变体的名次天然挨着，
-               09-24 实测「前 5 条」全是量能一族的副本（两两秩相关 0.943~0.987）——
-               等于一条因子抄五遍取平均，合成净年化比它最好的零件还低 1.34pp/年。
-               另要求 |RankICIR| >= 0.05：不设下限的话"最好的 5 条"可能全是噪声。
+    合成层级   ETF_COMPOSITE_LEVEL（默认 family）：
+        family  族层（现行）：先族内合成再族间合成，见下面两条
+        factor  因子层（旧口径，保留作对照）：|RankICIR| 前 PICK → 判重 → 前 TOP、权重 ∝ |RankICIR|
+    族内合成   同一族的候选**全员**等权、按各自 RankIC 符号翻向：
+                   F^{族}_{t,i} = mean_{j∈族} sign(IC_j)·rank_pct_i(F_{t,i})
+               为什么全员不设 |ICIR| 门槛：#41 路径⑥七折样本外实测，族内全员 34.81%、
+               族内先过 |RankICIR|≥0.05 反而 **24.18%**（最差折 −7.2%、回撤 −35.5%）⇒ 门槛判死。
+               为什么族内等权而不是按 |ICIR| 给权：#40 首轮实测那条 |ICIR| 排第一的量能因子
+               独占 40.1% 权重、自己单跑只有 9.46%（|ICIR|/|IC|=9.2 是"稳而不强"）。
+    族间合成   每条族分数再做一次日内百分位秩、然后等权平均 ⇒ **一族一票**：
+                   S_{t,i} = mean_f rank_pct_i(F^f_{t,i})
+               为什么改到族这一层：按条发席位时同族变体名次天然挨着，09-24 实测"前 5 条"
+               全是量能一族副本；#41 实测八族配平**样本外 34.81%（七折全正、七折全跑赢可投域、
+               最差折 +0.69%）** vs 现行因子层尺子同口径 22.61% ⇒ +12.2pp。
+               族这一层天然替掉了"同族副本"问题，`RED_BAR` 判重在因子层路径上照旧生效。
+               注意：族层合成**允许跑输最强单族**（全样本 43.42% < 单族·反转 57.82%）——
+               一族一票买的是"不押注单一逻辑"，不是收益最大化；验收看样本外那笔账。
     建仓时序   信号日 s 收盘算分 → s+1 **开盘**建仓 → 持有 hold 日到下一信号日开盘
                用开盘价而非收盘价：本线实盘也是人工下单，收盘集合竞价成交价不可控
     日收益     p_d = Σ_i A_{i,d}·r^open_{i,d} - Σ_{i∈买入} c_i/k - Σ_{i∈卖出} c_i/k'
@@ -39,7 +48,16 @@
 只用全池当基准会把大量根本买不到的僵尸基算进基准、把超额系统性压低；
 另附 510300（沪深 300ETF）买入持有作第三条参照。
 
-只读：不写因子库、不触发 git 提交。产物
+基准给两条，差在哪一目了然
+--------------------------
+    ew_all      全池等权（不筛不扣费）—— "跑赢市场平均没有"
+    ew_universe 过完闸门（次新/容量/连续低量）的可投域等权 —— "跑赢真正买得到的那部分市场没有"
+只用全池当基准会把大量根本买不到的僵尸基算进基准、把超额系统性压低；
+另附 510300（沪深 300ETF）买入持有作第三条参照。
+
+只读：不写因子库、不触发 git 提交。产物（默认 family 层级每张表 29 行 =
+13 个标签 × 两个 k（族间合成 1 + 单族 8 + 因子层合成对照 1 + 单因子 3）= 26 行，
+再 + 3 行基准；`ETF_COMPOSITE_LEVEL=factor` 那一路只有 7 个标签 × 2 + 3 = 11 行）
     data/results/etf_portfolio_eval.csv           各组合 × 各 k 的绩效
     data/results/etf_portfolio_eval_yearly.csv    分年度复利收益
 """
@@ -65,8 +83,12 @@ TOP = int(os.environ.get("ETF_COMPOSITE_TOP", str(EA.COMPOSITE_TOP)))
 # TOP 条。初选必须比终选宽，否则「前 5 条」实测全是量能一族的五个副本
 # （09-24：两两秩相关 0.943~0.987），判重之后合成就只剩一条因子了。
 PICK = int(os.environ.get("ETF_COMPOSITE_PICK", str(TOP * 3)))
-# 除合成组合外，单独回放哪几条因子（看"合成有没有跑赢它的零件"）
+# 除合成组合外，单独回放哪几条因子（零件行，判据的对照面见下面 runs 组装处）
 SINGLE_TOP = int(os.environ.get("ETF_SINGLE_TOP", "3"))
+# 合成发生在哪一层：family = 一族一票（现行，#41 路径⑤）；factor = 旧的按条发席位
+COMPOSITE_LEVEL = os.environ.get("ETF_COMPOSITE_LEVEL", "family").strip().lower()
+if COMPOSITE_LEVEL not in ("family", "factor"):
+    raise SystemExit(f"[口径] ETF_COMPOSITE_LEVEL 只认 family|factor，收到 {COMPOSITE_LEVEL!r}")
 
 
 def pick_from_eval(path, top=TOP, primary=PRIMARY_H):
@@ -74,6 +96,8 @@ def pick_from_eval(path, top=TOP, primary=PRIMARY_H):
 
     本环**不重算 IC**，只认第一环那张表：两环共用同一份 csv，才不会出现
     "因子层说 0.06、组合层用的是另一批因子"这种自相矛盾的产物。
+    指标表里带 `family`（环 1 的族列），族层合成靠它分组；缺列的旧表会落到"未标族"一组，
+    那等于整张表一票 —— 读数会立刻不对劲，不会静默出错。
     """
     if not os.path.exists(path):
         raise SystemExit(f"[输入缺失] 先跑 run_etf_factor_eval.py 生成 {path}")
@@ -84,9 +108,27 @@ def pick_from_eval(path, top=TOP, primary=PRIMARY_H):
         raise SystemExit("[输入] 第一环产物里没有可用因子（全被判不可求值）")
     specs = EA.specs_from_rows(ok[["name", "expr"]].to_dict("records"), family="候选")
     stats = {r["name"]: {"rank_ic": r[f"rank_ic_h{primary}"],
-                         "rank_icir": r[key], "expr": r["expr"]}
+                         "rank_icir": r[key], "expr": r["expr"],
+                         "family": r.get("family") or "未标族"}
              for _, r in ok.iterrows()}
     return specs, stats
+
+
+def build_family_scores(facs, stats):
+    """因子表 → 族内全员等权合成 → (族名 → 打分表, 族名 → 成员名单)。
+
+    族内一律**不设 IC 门槛**、全员一票（实测见模块 docstring）；每条成员按自己的
+    RankIC 符号翻向，与因子层合成同一口径。
+    """
+    members = {}
+    for n, st in stats.items():
+        if n in facs:
+            members.setdefault(st.get("family") or "未标族", []).append(n)
+    scores = {}
+    for f, ms in sorted(members.items()):
+        scores[f] = EA.composite_score(
+            facs, {n: float(np.sign(stats[n]["rank_ic"])) / len(ms) for n in ms})[0]
+    return scores, members
 
 
 def bench_ret(m, code=EA.BENCH_CODE):
@@ -155,23 +197,31 @@ def main():
     for k, v in EA.run_params().items():
         print(f"  {k:14s} = {v}")
     print(f"  primary_h      = {PRIMARY_H}")
+    print(f"  合成层级       = {COMPOSITE_LEVEL}"
+          + ("（族内全员等权 → 族间一族一票）" if COMPOSITE_LEVEL == "family"
+             else f"（旧口径：|RankICIR| 前 {PICK} → 判重 → 前 {TOP}，权重 ∝ |RankICIR|）"))
 
     specs, stats = pick_from_eval(EVAL_CSV, TOP, PRIMARY_H)
     names = {EA.spec_name(s) for s in specs}
     weights, detail = EA.icir_weights(stats, top=PICK)
     if not weights:
-        raise SystemExit("[合成] 没有一条因子过 |ICIR| 下限 —— 本池此刻无因子可用，"
-                         "这本身就是结论，不做组合回放")
-    print(f"\n[初选] {len(names)} 条候选中按 |RankICIR@h{PRIMARY_H}| >= 0.05 取 "
-          f"{len(weights)} 条（负 IC 已翻向），判重前的名单：")
-    for d in detail:
-        print(f"    {d['name']:<22s} w={d['weight']:+.3f}  "
-              f"RankICIR={d['icir']:+.3f}  RankIC={d['rank_ic']:+.4f}  {d['expr']}")
+        if COMPOSITE_LEVEL == "factor":
+            raise SystemExit("[合成] 没有一条因子过 |ICIR| 下限 —— 本池此刻无因子可用，"
+                             "这本身就是结论，不做组合回放")
+        print("\n[因子层对照] 没有一条因子过 |ICIR| 下限 —— 只跳过对照行，族层照合成")
+    else:
+        print(f"\n[初选] {len(names)} 条候选中按 |RankICIR@h{PRIMARY_H}| >= 0.05 取 "
+              f"{len(weights)} 条（负 IC 已翻向），判重前的名单：")
+        for d in detail:
+            print(f"    {d['name']:<22s} w={d['weight']:+.3f}  "
+                  f"RankICIR={d['icir']:+.3f}  RankIC={d['rank_ic']:+.4f}  {d['expr']}")
 
     pool = EA.load_pool()
     m = EA.take_window(EA.build_matrices(pool))
     print(f"[截面厚度] {EA.thickness_report(m)}")
-    use = [s for s in specs if EA.spec_name(s) in set(weights)]
+    # 族层合成要吃全部候选（一族一票），因子层只吃终选那几条
+    need = set(stats) if COMPOSITE_LEVEL == "family" else set(weights)
+    use = [s for s in specs if EA.spec_name(s) in need]
     facs_full = EA.evaluate_factors(pool, use)
     facs = {k: EA.slice_to_start(v, EA.EVAL_START) for k, v in facs_full.items()}
     missing = [EA.spec_name(s) for s in use if EA.spec_name(s) not in facs]
@@ -179,24 +229,54 @@ def main():
         raise SystemExit(f"[求值] 第一环能算、第二环算不出的因子：{missing}（口径漂移）")
     del facs_full, pool
 
-    kept, dropped = dedupe_by_corr(facs, weights, keep_max=TOP)
-    if dropped:
-        print(f"\n[判重] 初选 {len(weights)} 条 → 撤下 {len(dropped)} 条"
-              f"（|逐日截面秩相关| >= {EA.RED_BAR}）：")
-        for n, vs, c in dropped:
-            print(f"    ✂️ 撤下 {n}" +
-                  (f"：与已留的 {vs} 秩相关 {c:+.3f}" if vs else "：终选名额已满"))
-    tot = sum(abs(v) for v in kept.values()) or 1.0
-    weights = {k: v / tot for k, v in kept.items()}
-    print(f"[终选] 合成实际用 {len(weights)} 条（权重已按 |RankICIR| 重新归一）：")
-    for nm, w in weights.items():
-        print(f"    {nm:<22s} w={w:+.3f}  RankICIR={stats[nm]['rank_icir']:+.3f}")
+    if weights:
+        kept, dropped = dedupe_by_corr(facs, weights, keep_max=TOP)
+        if dropped:
+            print(f"\n[判重] 初选 {len(weights)} 条 → 撤下 {len(dropped)} 条"
+                  f"（|逐日截面秩相关| >= {EA.RED_BAR}）：")
+            for n, vs, c in dropped:
+                print(f"    ✂️ 撤下 {n}" +
+                      (f"：与已留的 {vs} 秩相关 {c:+.3f}" if vs else "：终选名额已满"))
+        tot = sum(abs(v) for v in kept.values()) or 1.0
+        weights = {k: v / tot for k, v in kept.items()}
+        print(f"[终选] 因子层合成用 {len(weights)} 条（权重已按 |RankICIR| 重新归一）：")
+        for nm, w in weights.items():
+            print(f"    {nm:<22s} w={w:+.3f}  RankICIR={stats[nm]['rank_icir']:+.3f}")
 
     days = m["close"].index
-    score, used = EA.composite_score(facs, weights)
-    # 单因子也各自回放一遍：合成必须打赢它的零件，否则"合成"只是把噪声平均了一下。
+    runs = []
+    if COMPOSITE_LEVEL == "family":
+        fam_scores, fam_members = build_family_scores(facs, stats)
+        score, used = EA.composite_score(
+            fam_scores, {f: 1.0 / len(fam_scores) for f in fam_scores})
+        print(f"\n[族层合成] {len(fam_scores)} 族 × {sum(len(v) for v in fam_members.values())} "
+              f"条候选，一族一票（族内全员等权、按 RankIC 符号翻向）：")
+        for f, ms in fam_members.items():
+            print(f"    {f:<5s} {len(ms)} 条：" + " ".join(ms))
+        _pc, _sc = EA.cs_corr_mean(fam_scores, min_cs=EA.MIN_CS, verbose=False)
+        if len(_sc) > 1:
+            off = _sc.where(~np.eye(len(_sc), dtype=bool), np.nan)
+            i, j = np.unravel_index(int(np.nanargmax(off.abs().to_numpy())), off.shape)
+            print(f"    [族间秩相关] 最高一对 = {off.index[i]} × {off.columns[j]}："
+                  f"|corr|={float(off.iloc[i, j]):.3f}（只报读数；一族一票，"
+                  f"裁决权在环 3 判重）")
+
+        runs.append((f"族间合成·{len(used)}族等权", score))
+        for f, sc in fam_scores.items():
+            runs.append((f"单族·{f}({len(fam_members[f])}条)", sc))
+        if weights:
+            fs, used_f = EA.composite_score(facs, weights)
+            runs.append((f"因子层合成·{len(used_f)}条(旧口径对照)", fs))
+    else:
+        score, used = EA.composite_score(facs, weights)
+        runs.append(("合成·" + "+".join(used), score))
+    # 单因子也各自回放一遍，作"合成有没有跑赢它的零件"的读数。注意这条判据在两层上
+    # 含义不同：因子层（旧口径）合成跑输自己最好的零件 = 权重发错，那是要修的 bug；
+    # 族层（现行）合成**本来就允许**跑输最强单族（全样本 43.42% < 单族·反转 57.82%），
+    # 因为"一族一票"买的不是收益最大化而是"不把仓位押在一条因子上"——
+    # 判据放在样本外那条账上（#41 七折：八族配平 34.81% vs 挑族 34.91%，
+    # 而"只用过去挑最强那一族"没有稳定赢法，详见 CHANGELOG 09-26 节）。
     # 单因子那一行按各自 IC 的符号翻向（负 IC 的因子做多低分侧），与合成口径一致。
-    runs = [("合成·" + "+".join(used), score)]
     for nm in list(weights)[:SINGLE_TOP]:
         runs.append((f"单因子·{nm}", facs[nm] * float(np.sign(stats[nm]["rank_ic"]))
                      if np.isfinite(stats[nm]["rank_ic"]) else facs[nm]))
@@ -221,11 +301,14 @@ def main():
 
     rows, yearly_cols = [], {}
     for label, sc in runs:
+        kind = ("family_composite" if label.startswith("族间合成") else
+                "family" if label.startswith("单族") else
+                "composite" if label.startswith(("合成", "因子层合成")) else "single")
         for k in EA.TOP_K:
             net, gross, s = EA.topk_rebalance(sc, m, days, k=k, hold=EA.HOLD)
             st = EA.portfolio_stats(net, name=f"{label} k={k}")
-            st.update({"kind": "composite" if label.startswith("合成") else "single",
-                       "label": label, "k": k, "hold": EA.HOLD,
+            st.update({"kind": kind, "label": label, "k": k, "hold": EA.HOLD,
+                       "composite_level": COMPOSITE_LEVEL,
                        "cost_one_way": EA.COST_ONE_WAY,
                        "cost_mode": EA.COST_MODE,
                        "avg_cost_one_way": s["avg_cost_one_way"],
@@ -270,7 +353,7 @@ def main():
               f"夏普 {st['sharpe']:.2f} 回撤 {st['max_drawdown']:.1%}")
 
     res = pd.DataFrame(rows)
-    front = ["label", "kind", "k", "hold", "ann_return", "gross_ann_return",
+    front = ["label", "kind", "composite_level", "k", "hold", "ann_return", "gross_ann_return",
              "ann_vol", "sharpe", "max_drawdown", "turnover_per_rebal",
              "turnover_ann", "excess_ew_universe_ann", "excess_ew_universe_ir",
              "excess_ew_all_ann", f"excess_{EA.BENCH_CODE}_ann",

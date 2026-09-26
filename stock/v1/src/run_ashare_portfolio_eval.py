@@ -50,13 +50,16 @@ from config import (RDAGENT_OUTPUT_DIR, ASHARE_PORT_START,
                     ASHARE_EXCL_OUT, ASHARE_BUYLIST_OUT,
                     ASHARE_SCREEN_QUANTILE, ASHARE_BUY_TOP_N,
                     ASHARE_BUY_MIN_HITS,
-                    ASHARE_TRADABLE_GATE)
+                    ASHARE_TRADABLE_GATE, ASHARE_LIST_SCHEME, ASHARE_LIST_QUOTA)
 # 数据装载 / 派生宽表 / 因子求值 / 可交易闸门整段搬到 strategy/ashare_screen.py，
 # 与日频信号入口共用同一份实现：闸门口径出现第二种写法，回测结论就作废了
 # VOLUME_RULES 同样只认这一份 —— 本脚本要量的是**生产在用的那四条**剔除构造，
 # 在这里另抄一遍窗口就等于量了一个不存在的东西（09-24 P0 就是这么发现的：
 # 生产「量能水平」是 SMA(Volume,20)，而主表历史行只跑过 5 日与 10 日窗）
+# apply_board_quota 同理：名单形状（全局前 n / 板块配额）若在回测里另抄一份，
+# 39 行账单量的就不是实盘那份名单
 from ashare_screen import (BENCH, BUY_EXPR, RULE_EXPRS, VOLUME_RULES,
+                           apply_board_quota, board_of, list_desc,
                            build_matrices, factor_matrices, gate_desc,
                            load_panel, tradable_mask)
 
@@ -113,6 +116,10 @@ def run_signal(f, col_of, days, mtx, n, hold, universe, quintiles=0, allow=None)
     qw = [np.zeros((len(days), f.shape[1]), dtype="float32")
           for _ in range(quintiles)] if quintiles else []
     prev, phis, n_rebal, amounts, limits = None, [], 0, [], []
+    # 名单生成规则与实盘**同一个出口**（apply_board_quota）：板块名按列算一次，
+    # 每个调仓日只做一次 reindex，免得几千次 board_of × 570 日 × 几十行回放大乘法
+    board_all = pd.Series([board_of(c) for c in f.columns], index=f.columns)
+    n_short = 0
     for i in range(0, len(days) - hold - 1, hold):
         s, d1, j = days[i], days[i + 1], i + 1
         ok, n_limit = tradable_mask(s, d1, f, mtx)
@@ -121,7 +128,10 @@ def run_signal(f, col_of, days, mtx, n, hold, universe, quintiles=0, allow=None)
         cand = f.loc[s].where(ok).dropna()
         if len(cand) < n:
             continue
-        basket = list(cand.sort_values().index[:n])       # 低分侧 = 做多侧
+        ordered = cand.sort_values()                 # 低分侧 = 做多侧
+        basket, lst = apply_board_quota(ordered.index, n,
+                                        boards=board_all.reindex(ordered.index).to_numpy())
+        n_short += int(lst["n_short"])
         phi = 1.0 if prev is None else 1.0 - len(set(prev) & set(basket)) / n
         cost[j] += 2 * ASHARE_PORT_COST_ONE_WAY * phi     # 双边：买新 + 卖旧
         lo, hi = j + 1, min(j + 1 + hold, len(days))
@@ -142,6 +152,10 @@ def run_signal(f, col_of, days, mtx, n, hold, universe, quintiles=0, allow=None)
     gross = pd.Series((w * mtx["ret_open0"].values).sum(axis=1), index=days)
     port = gross - cost
     st = _stats(f, days, n_rebal, port, amounts, phis, limits, universe, gross)
+    # 名单没凑满 top_n 的次数：`global` 档恒为 0（不足 n 只已经在上面 continue 了），
+    # `quota` 档它也应当恒为 0（回填保证凑满）—— 不为 0 就说明席位+回填仍不够，
+    # 而这一行的 1/n 权重是按满仓算的，那一格就悄悄变成留现金了。宁可让它可见
+    st["n_list_short"] = int(n_short)
     qs = [pd.Series((m * mtx["ret_open0"].values).sum(axis=1), index=days)
           for m in qw]
     return port, st, qs
@@ -441,10 +455,13 @@ def main():
     bl = pd.DataFrame(buylist_rows(fms, col_of, days, mtx, universe, bench,
                                           allows, ASHARE_BUY_TOP_N))
     bl.insert(0, "gate", ASHARE_TRADABLE_GATE)      # 同上：口径随行自报
-    print(f"\n===== P0 短名单在不同剔除形态下（{BUY_EXPR} 升序取前 "
-          f"{ASHARE_BUY_TOP_N}，扣双边 {ASHARE_PORT_COST_ONE_WAY:.4f}）=====")
+    # list_scheme 只标在**取了前 n 只**的两张表上：减法腿（ex）是整池等权，不经过
+    # apply_board_quota，给它加一列常量等于伪造「这一行也踩过配额口径」的读感
+    bl.insert(1, "list_scheme", ASHARE_LIST_SCHEME)
+    print(f"\n===== P0 短名单在不同剔除形态下（名单口径 = {list_desc()}，"
+          f"前 {ASHARE_BUY_TOP_N} 只，扣双边 {ASHARE_PORT_COST_ONE_WAY:.4f}）=====")
     print(bl[["variant", "kind", "top_n", "n_rebal", "universe", "ann_return",
-              "ann_return_gross", "sharpe", "one_way_turnover",
+              "ann_return_gross", "sharpe", "one_way_turnover", "n_list_short",
               "avg_amount_20d", "excess_univ_ew_ann", "excess_univ_ew_ir",
               "excess_sh000300_ann"]]
           .to_string(index=False, float_format=lambda v: f"{v:.4f}"))
@@ -454,6 +471,8 @@ def main():
     # 涨停闸吃哪一档是**运行级**属性，写在每一行上：同一张表里混了 flat 与 board
     # 两种口径的数，事后没人看得出来（09-24 把 board 设成默认之后的防线）
     res.insert(0, "gate", ASHARE_TRADABLE_GATE)
+    # 名单形状同样是运行级属性（09-25 起 global/quota 两套口径都有归档表在跑）
+    res.insert(1, "list_scheme", ASHARE_LIST_SCHEME)
     pd.set_option("display.width", 260)
     pd.set_option("display.max_columns", 60)
     show = ["signal", "kind", "top_n", "n_rebal", "universe", "ann_return",
@@ -462,18 +481,26 @@ def main():
             "excess_sh000300_ann", "q5_ann", "excl_worst_vs_pool_ann",
             "avg_amount_20d", "avg_blocked_limit_up"]
     show = [c for c in show if c in res.columns]
-    # 口径描述来自 ashare_screen.gate_desc()：三档共用一个构造函数，别在这儿写第二份
+    # 口径描述来自 ashare_screen 的 gate_desc() / list_desc()：两套口径各只有一个出处，
+    # 表头、日频入口、看板都从那里念，别在这儿写第二份
     print(f"\n===== A 股组合层验证（{ASHARE_PORT_START} 起 · 持有 {ASHARE_PORT_HOLD} 日"
           f" · 单边费率 {ASHARE_PORT_COST_ONE_WAY:.4f} · 做多低分侧 · "
-          f"基准=可投资域等权 · 涨停闸={gate_desc()}）=====")
+          f"基准=可投资域等权 · 涨停闸={gate_desc()} · 名单={list_desc()}）=====")
     print(res[show].to_string(index=False, float_format=lambda v: f"{v:.4f}"))
 
     yr = pd.concat({k: v for k, v in yearly.items()})
-    print("\n===== 分年度（净收益 vs 可投资域等权；中间档规模）=====")
+    print("\n===== 分年度（净收益 vs 可投资域等权；中间档规模；"
+          f"名单口径 = {ASHARE_LIST_SCHEME}）=====")
     print(yr.unstack(0)[["port", "excess"]].to_string(
         float_format=lambda v: f"{v:.4f}"))
     res.to_csv(ASHARE_PORT_OUT, index=False)
     yr.to_csv(ASHARE_PORT_OUT.replace(".csv", "_yearly.csv"))
+    # 复现某一场跑批要**两个**开关，只拨 STOCK_TRADABLE_GATE 会静默算出另一份名单
+    print(f"[口径] 复现本表请同时设 STOCK_TRADABLE_GATE={ASHARE_TRADABLE_GATE} "
+          f"STOCK_LIST_SCHEME={ASHARE_LIST_SCHEME}"
+          + (f" STOCK_LIST_QUOTA={'/'.join(str(v) for v in ASHARE_LIST_QUOTA.values())}"
+             if ASHARE_LIST_SCHEME == "quota" else "")
+          + f"；产物行内 gate / list_scheme 两列就是这两件事的自报")
     print(f"\n[输出] {ASHARE_PORT_OUT}"
           f"（分年度见 {ASHARE_PORT_OUT.replace('.csv', '_yearly.csv')}）\n"
           f"[输出] {ASHARE_EXCL_OUT}（减法腿增益）\n"

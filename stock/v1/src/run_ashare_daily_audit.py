@@ -53,9 +53,9 @@ import pandas as pd
 
 from config import (ASHARE_BOARD_LIMIT_UP, ASHARE_SIGNAL_DIR, ASHARE_SNAPSHOT_DIR)
 import ashare_screen as scr
-from ashare_screen import (VOLUME_RULES, board_of, build_matrices, factor_matrices,
-                           gate_vector, guard_ret, load_panel, tradable_mask,
-                           volume_exclusion)
+from ashare_screen import (VOLUME_RULES, board_of, build_matrices, buy_extra_block,
+                           factor_matrices, gate_vector, guard_ret, load_panel,
+                           tradable_mask, volume_exclusion)
 
 NEAR = 0.99          # 判「封死」的贴板容差，比执行闸的 0.95 更严：那是真买不进
 
@@ -95,7 +95,7 @@ def next_snapshot_tag(t_tag):
     return nxt[0] if nxt else None
 
 
-def recompute_blocked(s, mtx, rm, axis, quantile, min_hits):
+def recompute_blocked(s, mtx, rm, axis, quantile, min_hits, extra_names=""):
     """复算 T 日的候选漏斗与被挡集合：与 `buy_candidates` 同一条路，一个判据都不重抄"""
     cl, raw, vol = mtx["close"], mtx["raw_price"], mtx["volume"]
     cols = cl.columns
@@ -105,6 +105,10 @@ def recompute_blocked(s, mtx, rm, axis, quantile, min_hits):
     _keep, detail = volume_exclusion(rm, s, pool, quantile)
     n_hit = detail["n_hit"].reindex(pool.index).fillna(0)
     keep_buy = pool & (n_hit < min_hits)               # 待买入那道「较松」的共识闸
+    # 名单层独立闸**跟着这一场的 meta 走**：09-26 之前那几天根本没有这道闸，
+    # 拿今天的判据去复算昨天的名单就会对账失败（而且失败得像是生产算错了）
+    blocked, _fired = buy_extra_block(rm, s, pool, quantile, names=extra_names)
+    keep_buy = keep_buy & ~blocked
 
     v = rm[axis].loc[s].reindex(cols).astype("float32")
     step1 = pool & keep_buy & v.notna()
@@ -161,6 +165,8 @@ def audit_one(t_tag, mtx, rm, out_rows):
     mb = meta["buy"]
     axis, quantile = mb["expr"], float(meta["quantile"])
     min_hits = int(mb["buy_min_hits"])
+    extra = meta.get("buy_extra_rules", [])           # 缺键 = 那一场还没有独立闸
+    extra_names = ",".join(r["key"] for r in extra)
     archived_gate = meta.get("tradable_gate")
     if archived_gate != scr.ASHARE_TRADABLE_GATE:
         # 审计的是**那一天**的判据：进程档与产物档不一致时按产物走，并说出来
@@ -169,10 +175,11 @@ def audit_one(t_tag, mtx, rm, out_rows):
         scr.ASHARE_TRADABLE_GATE = archived_gate
     print(f"\n################ 场次 {t_tag}　"
           f"axis={axis}　gate={archived_gate}　quantile={quantile}　"
-          f"buy_min_hits={min_hits}　入线值={mb['quiet_cut']:,.1f} ################")
+          f"buy_min_hits={min_hits}　独立闸={extra_names or '无'}　"
+          f"入线值={mb['quiet_cut']:,.1f} ################")
 
     s = pd.Timestamp(f"{t_tag[:4]}-{t_tag[4:6]}-{t_tag[6:]}")
-    r = recompute_blocked(s, mtx, rm, axis, quantile, min_hits)
+    r = recompute_blocked(s, mtx, rm, axis, quantile, min_hits, extra_names)
     print(f"[复算] n_step1={int(r['step1'].sum())} n_traded={int(r['traded'].sum())} "
           f"n_chase={int(r['chase'].sum())}　（生产 meta："
           f"{mb['n_step1']}/{mb['n_traded']}/{mb['n_chase']}）")
@@ -271,11 +278,15 @@ def main():
     mtx = build_matrices(wide)
     del wide
     # 一次求值覆盖所有场次用到的轴：旧场次可能是换轴前那根，跟着 meta 走
-    axes = set()
+    axes, extra_exprs = set(), set()
     for t in ss:
-        axes.add(json.load(open(os.path.join(ASHARE_SIGNAL_DIR, f"meta_{t}.json")))["buy"]["expr"])
-    exprs = {e for _k, _n, e, _d in scr.active_rules()} | axes | {VOLUME_RULES[0][2]}
-    print(f"[求值] {len(exprs)} 条表达式（该场轴 + 启用剔除构造 + 闸门基准）")
+        m = json.load(open(os.path.join(ASHARE_SIGNAL_DIR, f"meta_{t}.json")))
+        axes.add(m["buy"]["expr"])
+        extra_exprs |= {r["expr"] for r in m.get("buy_extra_rules", [])}
+    exprs = (({e for _k, _n, e, _d in scr.active_rules()} | axes | extra_exprs
+              | {VOLUME_RULES[0][2]}))
+    print(f"[求值] {len(exprs)} 条表达式（该场轴 + 启用剔除构造 + 闸门基准"
+          f"{' + 名单独立闸' if extra_exprs else ''}）")
     rm = factor_matrices(sorted(exprs), mtx)
 
     rows, bad = [], []

@@ -134,8 +134,16 @@ def guarded_ret(p):
                      (cl / p["factor"].astype("float64")).pct_change(fill_method=None))
 
 
-def evaluate(pool, tasks):
-    """对每个因子表达式做两套口径的评估，返回指标行列表"""
+def evaluate(pool, tasks, series_sink=None):
+    """对每个因子表达式做两套口径的评估，返回指标行列表
+
+    series_sink: 可选的空 dict。传进来就顺手把**逐日截面 IC 序列**按
+        {因子名: {"pearson": Series, "rank": Series}} 收好。
+        为什么是「收集」而不是「让调用方自己再算一遍」：这两条序列本来就在
+        这里算出来（daily_cross_ic），只是过去的代码只留了均值和 ICIR 就丢掉。
+        想按别的窗口再看「稳不稳」，唯一不引入第二份尺子的做法就是把原序列交出去。
+        默认 None ⇒ 老调用方行为与返回值完全不变。
+    """
     # 前向收益 = 次日收盘收益 r_{t+1} = P_{t+1}/P_t - 1，与 _attach_impl 同式
     # （fill_method=None 关掉 pad 填充，否则停牌缺口会变成假收益）。
     # 每只票只算一次：截面标签与逐票时序 IC 用同一条收益，且省下按表达式重复
@@ -173,6 +181,8 @@ def evaluate(pool, tasks):
             .swaplevel().sort_index().astype("float64")
         del acc[name]
         cs_p, cs_s = daily_cross_ic(long, fwd_long, MIN_CS)
+        if series_sink is not None:
+            series_sink[name] = {"pearson": cs_p, "rank": cs_s}
         ics = np.array(ts_ic[name], dtype="float64")
         rows.append({
             "name": name, "expr": t["expr"], "status": "ok",

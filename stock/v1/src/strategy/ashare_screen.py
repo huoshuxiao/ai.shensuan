@@ -7,13 +7,14 @@
 所以整段搬到这里，回测入口与本模块的日频入口 import 同一份实现。
 
 量能族只做**剔除**，不做多头腿。依据（data/results/ashare_portfolio_eval.csv，
-**涨停闸 `board` 档 = 现在的默认档**；39 行 = 13 构造 × top50/100/200，扣双边 15bp
-后相对同域等权池的年化超额）：量能族截面 IC 为负（放量/爆量是反向指标），
-于是「做多低分侧」= 买最冷门的那批。全表中位只有 **-0.98%**（20 行为负），落在
-量能族自己那 24 行上更低（-3.57%，17 行为负）；而**低价股对照**（MA/VWAP/MAX of
-Price，与量能毫无关系）同表四组中位 +2.3%~+3.1% 且换手只有 0.08~0.10，量能侧换手
-0.16~1.00；动量与比值两条低分侧更是 -14%~-30%。也就是说低量能侧那点
-收益是「买冷门/低价一角」的 beta，不是量能自带的信息，多头腿没有独立依据。
+**涨停闸 `board` + 名单形状 `quota` = 现在的默认档**；39 行 = 13 构造 ×
+top50/100/200，扣双边 15bp 后相对同域等权池的年化超额）：量能族截面 IC 为负
+（放量/爆量是反向指标），于是「做多低分侧」= 买最冷门的那批。全表中位只有
+**-1.25%**（20 行为负），落在量能族自己那 24 行上更低（-3.69%，17 行为负）；
+而**低价股对照**（MA/VWAP/MAX of Price，与量能毫无关系）同表四组中位
++2.6%~+3.4% 且换手只有 0.08~0.12，量能侧换手 0.17~0.99；动量与比值两条低分侧
+更是 -12%~-28%。也就是说低量能侧那点收益是「买冷门/低价一角」的 beta，
+不是量能自带的信息，多头腿没有独立依据。
 反过来「把最响的那 20% 从可投池里踢掉」有独立依据，而且**扛住了两次口径修正**：
 
 | 判据（年化超额，top50/100/200 相同） | 面板量 `$volume` | 真手数 `$volume×$factor` |
@@ -25,8 +26,8 @@ Price，与量能毫无关系）同表四组中位 +2.3%~+3.1% 且换手只有 0
 
 即：把 `$volume` 换成语义正确的真手数，剔除增益只让掉 0.2pp（4%），Q5 仍是最差组
 （STD5 -0.0405 → -0.0333）；而多头腿在闸门那次口径修正后从中位 +0.0223 掉到
-**-0.0140**（当时表是 36 行 = 12 构造 × 3 档，flat 档；现表 39 行、`board` 档 -0.0098，
-20 行为负没变）。所以本模块的输出分两条，各自踩着不同强度的证据，
+**-0.0140**（当时表是 36 行 = 12 构造 × 3 档，flat 档；现表 39 行、`board`+`quota`
+档 -0.0125，20 行为负没变）。所以本模块的输出分两条，各自踩着不同强度的证据，
 **连「剔谁」这一环在两条上用的强度都不一样**（09-24 的 ⑮P0 实测 + ⑰P3 落地）：
 
 * **剔谁（`volume_exclusion`）**：载荷结论。四条构造取并集踢掉最响的 20%，
@@ -35,36 +36,56 @@ Price，与量能毫无关系）同表四组中位 +2.3%~+3.1% 且换手只有 0
   等于没动）。并集比最佳单条强 **+6.46% vs +4.37%/年**（`board` 档，即现在的默认档），
   所以这张「不该买」的域保持 ≥1 条即剔。
   函数同时给出 `n_hit`（当日几条构造一致判响）——它是下一条的入口判据。
-* **买谁的顺序（`buy_candidates`）**：只有一根排序轴，做多 SMA(Volume,20) 低分侧，
-  top50/100/200 年化超额 +1.39%/+1.59%/+1.58%（`board` 档，即现在的归档基线）。
-  **09-24 换轴**：这根轴此前是 STD(Volume,20)（+0.95%/+2.31%/+3.70%），换过来的理由是
-  生产名单那一档（top50）三项全胜、且换手 0.186 vs 0.311（费用直接省一半），
-  再加 2021 之后六年 4/6 为正 vs 旧轴 2/6 —— 换轴的完整账单与代价见
-  `buy_candidates` docstring 与 CHANGELOG ㉑。它在「多头腿中位为负」那张表里
-  属于**为正的少数**（量能族那 24 行里只有 7 行为正：这同簇两条构造各三档 = 6 行，
-  截面 spearman 0.93~0.95，剩 1 行是 `SMA(Volume,10)`@top200 的 +0.26%），
-  别写成「唯一为正」。代价也说清：全窗口 top100/200
-  两档仍是旧轴更高（+2.31%/+3.70%），所以**放大持仓数要重量这条**；而「低价股」
-  对照 MA(Price,5) 换轴之后在**三档全部**盖过排序轴（+3.56%/+2.73%/+2.18%、
-  换手只有 0.08~0.10），本轴没走准入链，与低价/冷门那角 beta 分不开。
-  所以交出来的叫**待买入短名单**（人工先核这一批），不叫买入信号。
+* **买谁的顺序（`buy_candidates` + `apply_board_quota`）**：排序轴只有一根，做多
+  SMA(Volume,20) 低分侧；名单形状 09-25 起是板块配额（默认 主 20 / 创 10 / 科 10 / 北 10，
+  段内仍按这根轴升序，凑不满回填）。现档（`board` + `quota`）top50/100/200 年化超额
+  **+0.11% / +1.25% / +1.54%**、IR +0.01~+0.17、单程换手 0.168~0.223。
+  **09-24 换轴**：这根轴此前是 STD(Volume,20)（同档 +1.00%/+1.73%/+3.69%、换手
+  0.263~0.341），当时换的理由是在**全局前 50 名**那份名单上量的：top50 三项全胜
+  （+1.55% vs +1.09%）、换手 0.186 vs 0.311（费用直接省一半），再加 2021 之后六年
+  4/6 为正 vs 旧轴 2/6 —— 完整账单与代价见 `buy_candidates` docstring 与 CHANGELOG ㉑。
+  ⚠️ 09-25 换名单形状后**连 top50 这一档也翻了**（本轴 +0.11% < 旧轴 +1.00%），
+  本轴在 50 只这一层只剩换手优势；没翻的是「2021 起 4/6 为正」那条（两种形状下都成立）。
+  它在「多头腿中位为负」那张表里属于**为正的少数**（量能族那 24 行里只有 7 行为正：
+  这同簇两条构造各三档 = 6 行，截面 spearman 0.93~0.95，剩 1 行是
+  `SMA(Volume,10)`@top200 的 +0.20%），别写成「唯一为正」。代价也说清：现档三档
+  **全部**是旧轴更高，所以**放大持仓数要重量这条**；而「低价股」对照 MA(Price,5)
+  在**三档全部**盖过排序轴（+3.10%/+3.12%/+2.71%、换手只有 0.08~0.11），本轴没走
+  准入链，与低价/冷门那角 beta 分不开。所以交出来的叫**待买入短名单**（人工先核这
+  一批），不叫买入信号。
   措辞按 09-24 的指示改：本线此前定的是「只出剔除、不出买入」，现改为「剔除 +
   一根实测为正的轴排出短名单」，判定依据与限制一律写在看板「待买入名单」页上。
-  **同一张并集掩码直接压在名单上是净负的，而且换轴之后这笔钱大了 4 倍**（现轴
-  `ts_mean(volume,20)`：参照 +1.39% → 并集 ≥1 **-3.98%**、单程换手 0.186 → 0.433，
-  差 5.4pp/年；换轴前的旧轴是 +0.95% → -0.39%、换手 0.31→0.48，只差 1.3pp。
-  账单 `ashare_portfolio_buylist.csv`，旧轴那份 `_std20axis.csv`），所以名单入口只挡
-  `n_hit >= ASHARE_BUY_MIN_HITS`（默认 3 条一致判响的共识爆量）；这一档与「完全不挡」
-  差在年化的小数点第 6 位 —— 换轴前是**逐字相同**，换轴后不再是，但仍是道几乎
-  没咬过票的保险。**机制也换了**：旧轴那句「与量能水平 spearman 0.93~0.95 所以两条
-  不咬名单」已作废（排序轴现在就**是**水平那条），新账单给的是恒等式：「单条·量能水平」
-  与不剔除逐字相同 ⇒ 一根轴的低分端不可能同时是自己的高分端，这条在名单上恒空操作；
-  名单上的伤害 100% 来自与水平近乎正交的**量能动量（-2.03%）与量能比（-1.89%）**。
+  **同一张并集掩码直接压在名单上是净负的**（现轴现形状：参照 +0.11% → 并集 ≥1
+  **-2.79%**、单程换手 0.223 → 0.465，差 2.9pp/年；同网格的全局前 50 名档是
+  +1.55% → -3.78%、换手 0.186 → 0.433，差 5.3pp；09-24 换轴前在旧轴 + 全局档量到
+  +0.95% → -0.39%，差 1.3pp。账单 `ashare_portfolio_buylist.csv`，旧轴那份
+  `_std20axis.csv`、全局档同日对照 `_globalctrl_0925.csv`），所以名单入口只挡
+  `n_hit >= ASHARE_BUY_MIN_HITS`（默认 3 条一致判响的共识爆量）；这一档比不挡只高
+  0.17pp（≥4 档再高 0.01pp，读不出方向），仍是道几乎没咬过票的保险。
+  **机制要说准，两句旧话在配额档下都要改口**：① 「与量能水平 spearman 0.93~0.95
+  所以两条不咬名单」早就作废（排序轴现在就**是**水平那条）；② 09-24 那句「单条·量能水平
+  与不剔除**逐字相同** ⇒ 一根轴的低分端不可能同时是自己的高分端，这条在名单上恒空操作」
+  是全局档的读数，配额档下这两行反而**略高于参照**（+0.51% / +0.30%）—— 不是构造变强了，
+  是剔除改变了「回填席位补进谁」。名单上的伤害**全部**来自与水平近乎正交的
+  **量能动量（-1.85%）与量能比（-2.08%）** 这两条。
+  **名单层另有一道独立闸**（09-26 接，`BUY_EXTRA_RULES`）：它**不进**上面那个 `n_hit`
+  计数，只在共识闸放行之后再单独否决一次 —— 现启用的一条是「下影深度」
+  `(-1.0*((low / close)))` 的池内高分端（≥80% 分位挡掉，即「当日最低价相对收盘砸得
+  最深的那两成」）。为什么要单独一组而不是塞进 `VOLUME_RULES`：并进那四条会把共识计数
+  整体抬高，实测名单超额 +0.28% → +0.04%（≥1 档 -3.22%），独立叠上来才是 +1.04%/年
+  （**样本内**、配额档 top50、570 个调仓日、扣双边 15bp）。它不改「不该买」那张域，
+  也不改减法腿；开关 `STOCK_BUY_EXTRA_RULES`（空串关掉），当日咬了几只在 `buy_stats`
+  的 `n_extra_in_pool` / `n_extra_net`。这条表达式**吃 `low`**，09-26 之前求值环境把
+  high/low 绑成收盘占位（CHANGELOG ㉞），它会被压成常量 −1.0 ⇒ 接线排在那次修复之后。
 
-对照产物：`data/results/ashare_portfolio_eval.csv`（面板量，生产口径，涨停闸 `board`）
-与 `ashare_portfolio_eval_realvol.csv`（真手数，复核口径），开关 `ASHARE_VOL_BASIS`；
-同一批表另存两份闸门口径 —— `*_flat.csv`（⑯⑰ 那批结论当时的 flat 档，无 `gate` 列）
-与 `*_dated.csv`（回测专用的按日期分档），换闸的钱见 `shell/stock/probe_gate_dates_0924.py`。
+对照产物：`data/results/ashare_portfolio_eval.csv`（面板量，生产口径，涨停闸 `board`、
+名单形状 `quota`）与 `ashare_portfolio_eval_realvol.csv`（真手数，复核口径），开关
+`ASHARE_VOL_BASIS`；同一批表另存两份闸门口径 —— `*_flat.csv`（⑯⑰ 那批结论当时的
+flat 档，无 `gate` 列）与 `*_dated.csv`（回测专用的按日期分档），换闸的钱见
+`shell/stock/probe_gate_dates_0924.py`。名单形状 09-25 换配额后又另存两份：
+`*_globalctrl_0925.csv`（**同日**跑的全局前 50 名档，570 天同网格，是配额结论的
+对照组）与 `*_globalrank.csv`（09-24 那批 569 天，只作历史留档，**不能**当对照 ——
+差一天调仓日两批数字就不可逐格比）。对照脚本 `shell/stock/quota_vs_global_ctrl_0925.py`。
 
 四条构造互相独立（判重口径实测，data/results/ashare_redundancy_check.csv 与
 ashare_factor_eval.csv）：
@@ -137,7 +158,9 @@ from config import (ASHARE_DAILY_H5, ASHARE_FACTORS_JSON, ASHARE_PORT_START,
                     ASHARE_PORT_MIN_AMOUNT, ASHARE_PORT_MIN_LISTED,
                     ASHARE_PORT_LIMIT_UP, ASHARE_SAMPLE,
                     ASHARE_SCREEN_QUANTILE, ASHARE_SCREEN_RULES,
+                    ASHARE_BUY_EXTRA_RULES,
                     ASHARE_VOL_BASIS, ASHARE_BUY_TOP_N, ASHARE_BUY_MIN_HITS,
+                    ASHARE_LIST_SCHEME, ASHARE_LIST_QUOTA,
                     ASHARE_BOARD_LIMIT_UP, ASHARE_BOARD_LIMIT_SINCE, ASHARE_LIMIT_NEAR,
                     ASHARE_TRADABLE_GATE,
                     ASHARE_INDUSTRY_CSV, ASHARE_INDUSTRY_MAX_AGE,
@@ -232,6 +255,23 @@ VOLUME_RULES = [
 ]
 RULE_EXPRS = [e for _k, _n, e, _d in VOLUME_RULES]
 
+# ---------- 名单层的**独立**额外闸（09-26 接，不进上面那张并集） ----------
+# 为什么单独一组：实测这两条路的方向是反的（配额档 top50、570 个调仓日、扣双边 15bp，
+# `shell/stock/a158_five_rule_ctrl_0926.py`）。把本条并进那四条 → 名单超额
+# +0.28%（现口径）跌到 +0.04%（≥3 档）甚至 -3.22%（≥1 档）；让它独立只挡名单入口
+# → +1.04%。道理在计数上：并集那道闸挡的是「命中几条」，一条一踢池内 20% 的构造
+# 会把 n_hit 整体抬高、把「≥3 条一致判响」这层共识冲淡；独立成闸则只在自己的
+# 那一维上筛，不动共识计数。
+# 表达式吃 `low`：本模块 09-26 之前把 high/low 绑成 close 的占位（CHANGELOG ㉞），
+# 这条式子当时会被压成常量 -1.0 ⇒ 接线必须在那次修复之后，且**只有**环 2 之后重跑
+# 过的归档表能拿来引这个数。
+BUY_EXTRA_RULES = [
+    ("low0", "下影深度", "(-1.0*((low / close)))",
+     "排序等价于 1 − 当日最低价/收盘：分位越高 = 盘中砸得越深，名单不接这种票"),
+]
+BUY_EXTRA_KEYS = {k for k, _n, _e, _d in BUY_EXTRA_RULES}
+BUY_EXTRA_EXPRS = [e for _k, _n, e, _d in BUY_EXTRA_RULES]
+
 # 待买入名单的排序轴。**09-24 换轴**（用户裁决）：从 `ts_std(volume,20)`（量能波动）
 # 换成 `ts_mean(volume,20)`（量能水平）—— 也就是与上面 `level` 那条**同一个表达式**，
 # 方向相反：高分端（热门）踢掉，低分端（冷门）买。这不是笔误，是「一根轴两头用」，
@@ -239,6 +279,12 @@ RULE_EXPRS = [e for _k, _n, e, _d in VOLUME_RULES]
 # 为什么换：组合层 top50（= 生产名单那一档）三项全胜现用旧轴（超额 +1.39% vs +0.95%、
 # IR +0.110 vs +0.080、单程换手 0.186 vs 0.311），且分年度在 2021 之后是 4/6 年为正、
 # 六年平均 +3.1%/年，而旧轴同段 2/6、平均 -0.7%/年 —— 旧轴的超额集中在 2015~2020。
+# ⚠️ 上面那两行是**换轴当天**（09-24）在「全局前 50 名」那份名单上量的，09-25 名单形状
+# 换成板块配额后 top50 这一档已经翻掉：配额档 `SMA(Volume,20)` = +0.11%/+1.25%/+1.54%
+# 全部低于旧轴 +1.00%/+1.73%/+3.69%，本轴在 50 只这一层只剩换手优势（0.223 vs 0.341）；
+# 没翻的是分年度那条（配额档实测 4/6 为正、均值 +2.1%/年，旧轴 2/6、-1.3%/年）。
+# 轴**没有再换回去**：换成配额是 09-25 用户的裁决（拿 5 席下单层 +1.34pp/年、5 席凑满率
+# 75.3% → 100% 换 50 只篮子 -1.44pp/年），而这两笔账踩着的是同一根轴。
 # 中文名仍叫「安静度」：语义从「波动小所以安静」变成「没人交易所以安静」，
 # 每日 CSV 的列名与 meta 的 `expr` 字段一起构成口径凭据（跨日比列前先核对 expr）。
 BUY_EXPR = "ts_mean(volume,20)"
@@ -331,7 +377,7 @@ def library_screen_link(path=None):
 
 
 def load_panel():
-    """读源数据转宽表，返回 (个股 open/close/volume 宽表, 基准开盘价序列)"""
+    """读源数据转宽表，返回 (个股 open/high/low/close/volume/factor 宽表, 基准开盘价序列)"""
     print(f"[数据] 读取 {ASHARE_DAILY_H5}（约 0.8GB）...")
     t0 = time.time()
     raw = pd.read_hdf(ASHARE_DAILY_H5, key="data")
@@ -367,8 +413,8 @@ def load_panel():
 
     wide = {}
     # factor 也一起转宽表：面板价是**复权价**（SH600519 面板 304.93 vs 盘面 1253.79），
-    # 人工下单要看的是真实报价，raw = 复权价 / $factor
-    for f in ("open", "close", "volume", "factor"):
+    # 人工下单要看真实报价，raw = 复权价 / $factor；high/low 一并转（各 99MB）
+    for f in ("open", "high", "low", "close", "volume", "factor"):
         m = df[f].unstack("instrument")
         wide[f] = m.reindex(columns=stocks).astype("float32")
         del m
@@ -424,8 +470,8 @@ def build_matrices(wide):
     # 盘面价折回 float32 存：这张是 float64 会多占 140MB，而它只用来给人照着下单，
     # float32 的 7 位有效数字对 3 位小数的报价足够
     raw = (cl / fc.where(fc > 0)).astype("float32")
-    return {"open": op, "close": cl, "volume": vol, "ret_open": ret,
-            "ret_open0": ret.fillna(0.0),
+    return {"open": op, "high": wide["high"], "low": wide["low"], "close": cl,
+            "volume": vol, "ret_open": ret, "ret_open0": ret.fillna(0.0),
             "listed_days": cl.notna().cumsum(),
             "raw_price": raw,
             # 真实手数 = $volume × $factor（面板量是复权成交量，判据见上面 amount20 那段）
@@ -437,8 +483,8 @@ def build_matrices(wide):
 def factor_matrices(exprs, mtx):
     """按主线 DSL 逐标的求值因子（与截面评估同一条求值路径，不另写一套）
 
-    safe_eval 的求值环境会绑定 open/high/low/close/volume 五个裸名列，缺任一列
-    即整式抛错，故本批表达式虽不用 high/low，仍按「等于 close」补齐占位。
+    safe_eval 的求值环境会绑定 open/high/low/close/volume 五个裸名列，缺任一列即整式抛
+    错，故五列一律喂面板真值（09-26 前 high/low 用 close 顶替，吃这两列的式子会被压成常量）。
 
     DSL 里 `volume` 绑哪一张表由 ASHARE_VOL_BASIS 决定：adj = 面板 $volume（复权成交
     量，与历史基线、RD-Agent 沙箱同口径），real = volume_real（真实手数）。换 basis
@@ -447,8 +493,8 @@ def factor_matrices(exprs, mtx):
     out = {e: {} for e in exprs}
     for code in mtx["close"].columns:
         cl = mtx["close"][code]
-        df = pd.DataFrame({"open": mtx["open"][code], "high": cl, "low": cl,
-                           "close": cl, "volume": vol[code]})
+        df = pd.DataFrame({"open": mtx["open"][code], "high": mtx["high"][code],
+                           "low": mtx["low"][code], "close": cl, "volume": vol[code]})
         for e in exprs:
             try:
                 out[e][code] = safe_eval(e, df)
@@ -638,6 +684,137 @@ def volume_exclusion(rule_mats, s, pool, quantile=ASHARE_SCREEN_QUANTILE):
     return keep, detail
 
 
+def active_buy_extra_rules(names=ASHARE_BUY_EXTRA_RULES):
+    """启用哪几条名单层独立闸（默认 = STOCK_BUY_EXTRA_RULES，空串 = 关掉本特性）
+
+    与 `active_rules` 分开两张表是有意的：那张表里加一条会**同时**改域和名单，
+    这张表里加一条只改名单入口，两者的账单不能混读。
+    """
+    want = [x.strip() for x in str(names).split(",") if x.strip()]
+    unknown = {x for x in want if x not in BUY_EXTRA_KEYS}
+    if unknown:
+        raise SystemExit(f"[名单额外闸] STOCK_BUY_EXTRA_RULES 含未知构造 {sorted(unknown)}，"
+                         f"可选 {sorted(BUY_EXTRA_KEYS)} 或空串（关掉）")
+    return [r for r in BUY_EXTRA_RULES if r[0] in want]
+
+
+def buy_extra_block(rule_mats, s, pool, quantile=ASHARE_SCREEN_QUANTILE,
+                    names=ASHARE_BUY_EXTRA_RULES):
+    """信号日 s 的名单层独立闸：返回 (blocked 布尔 Series, {中文名: 池内命中只数})
+
+        pct_i = rank_{j∈pool}(F_{j,s}) / |pool|        挡 ⇔ pct_i >= quantile
+
+    与 `volume_exclusion` **同式同阈值**（同一个 `ASHARE_SCREEN_QUANTILE`，池内算分位），
+    差别只在结果怎么用：这里不累加 n_hit、不动保留池，命中即单独挡在待买入名单之外，
+    所以既不会被共识强度（`ASHARE_BUY_MIN_HITS`）稀释，也不会改「不该买」那张域。
+    当日无值（不可求值 / 整列缺数据）按「判不了就不挡」放过，与量能构造同一立场。
+    但**整条表达式没被送进 `factor_matrices`** 时直接报错而不是静默放过 —— 一道闸
+    悄悄失效 = 名单形状变了却没人看得见，那是假读数。
+    """
+    blocked = pd.Series(False, index=pool.index)
+    fired = {}
+    for _k, cn, e, _d in active_buy_extra_rules(names):
+        f = rule_mats.get(e)
+        if f is None:
+            raise SystemExit(f"[名单额外闸] 因子矩阵里没有 {e}（{cn}）："
+                             f"入口需把 BUY_EXTRA_EXPRS 一起送进 factor_matrices")
+        if s not in f.index:
+            fired[cn] = 0
+            continue
+        pct = f.loc[s].reindex(pool.index).where(pool).rank(pct=True)
+        hit = pct.notna() & (pct >= quantile)
+        fired[cn] = int(hit.sum())
+        blocked |= hit
+    return blocked, fired
+
+
+def apply_board_quota(order, top_n=ASHARE_BUY_TOP_N, boards=None):
+    """在**已按排序轴升序**的候选上生成观察名单（09-25 选项E；两套口径共用这一个出口）
+
+        席位   quota[板块] = 该段最多取几只（保底席位，判据在 config 的
+               ASHARE_LIST_SCHEME 那段，含它的实测账单与「配额够不满」那条真相）
+        选取   依序扫 order：该段未满席位就收下，已满就跳过，直到取满 top_n
+        回填   扫完仍不足 top_n（某段供给不够）⇒ 拿被跳过里最安静的补满
+        名次   最终名单**按轴重排** —— 配额只决定「谁进名单」，不改「谁在前」
+
+    `ASHARE_LIST_SCHEME = "global"` 时退化成 `order[:top_n]`，即 09-25 之前的旧口径。
+    实盘入口（`buy_candidates`）与组合层回测（`run_ashare_portfolio_eval.run_signal`）
+    **都从这里出**，所以两边不可能算出不同形状的名单；要换口径只有改 config 一条路。
+
+    两条边界要写清楚，别把这一层的席位读成硬约束：
+    1. **回填之后某段可以超过自己的席位**（全市场只剩一段时必然发生）。这一层的席位
+       是「保底 + 平时封顶」，不是硬顶；真·硬顶在下单层（`ASHARE_ORDER_MAX_PER_BOARD`）。
+    2. **配额够不满是常态不是意外**：科创板日均供给 0.51 只、北交所 2.2 只（席位各 10）
+       ⇒ 名单里那两段几乎天天靠回填，`n_backfilled` 与 `quota_unmet` 就是专门把这件事
+       报出来的列。看板与入口不许把它读成「四段均衡」。
+
+    `boards` 传与 `order` 等长的板块数组（回测热路径上预先按列算好，省掉每调仓日
+    重算几千次 `board_of`）；日频一天一次，留 None 现场算即可。
+    """
+    codes = list(order)
+    bd = list(boards) if boards is not None else [board_of(c) for c in codes]
+    if ASHARE_LIST_SCHEME != "quota":
+        head = codes[:top_n]
+        nb = _board_counts(head, bd[:len(head)])
+        # 键与 quota 档**完全对齐**：入口与看板念的是同一份 stats，少一个键就要在
+        # 那边写 .get(...) 兜底，而兜掉的那个键恰恰是「席位有没有货」这条读数
+        return head, {"scheme": ASHARE_LIST_SCHEME, "quota": {}, "n_list": len(head),
+                      "n_backfilled": 0, "n_short": int(top_n - len(head)),
+                      "n_by_board": nb, "n_leg_by_board": dict(nb),
+                      "quota_unmet": {}}
+    quota = ASHARE_LIST_QUOTA
+    taken = {b: 0 for b in quota}
+    keep_pos, skip_pos = [], []
+    for p, b in enumerate(bd):
+        if len(keep_pos) >= top_n:
+            break
+        if taken.get(b, 0) < quota.get(b, 0):
+            taken[b] += 1
+            keep_pos.append(p)
+        else:
+            skip_pos.append(p)
+    n_back = max(top_n - len(keep_pos), 0)
+    if n_back:                                   # 回填：被跳过的按轴升序补到队尾
+        keep_pos += skip_pos[:n_back]
+    keep_pos.sort()                              # 名次只认轴，不认进来的先后
+    head = [codes[p] for p in keep_pos]
+    n_by = _board_counts(head, [bd[p] for p in keep_pos])
+    return head, {
+        "scheme": "quota", "quota": dict(quota), "n_list": len(head),
+        "n_backfilled": int(n_back), "n_short": int(top_n - len(head)),
+        # 席位这一格**自己**填了几只（回填的不算）—— 缺它就只能读最终构成，
+        # 而最终构成里主板那 36 只有一大半是回填来的，会读成「主板席位很足」
+        "n_leg_by_board": dict(taken),
+        "n_by_board": n_by,
+        # 段名 + 席位腿没填满 = 那一段**没有货**（不是"没给席位"）。
+        # 腿不足时该段候选已被取光，回填不可能再给它补一只 ⇒ 用腿计数与用最终计数等价
+        "quota_unmet": {b: int(quota[b] - taken.get(b, 0)) for b in quota
+                        if taken.get(b, 0) < quota[b]},
+    }
+
+
+def list_desc():
+    """观察名单生成口径的一行人话（与 `gate_desc()` 同一立场：三处共用一个出处）
+
+    回测表头、日频入口、看板都从这里念，**不许在别处再拼一遍** —— 09-24 那次
+    「三档闸门各有自己一份措辞」就是把结论写成了两套人话。
+    """
+    if ASHARE_LIST_SCHEME != "quota":
+        return "global（全市场按轴升序取前 n 只，09-25 之前的旧口径）"
+    q = " / ".join(f"{b} {n}" for b, n in ASHARE_LIST_QUOTA.items())
+    return (f"quota（各段留席位后段内仍按轴升序，凑不满回填；席位 {q}"
+            f"，合计 {sum(ASHARE_LIST_QUOTA.values())}）")
+
+
+def _board_counts(codes, boards=None):
+    """按 board_of 的四档数只数（缺档补 0，看板与账单不用判 KeyError）"""
+    boards = boards if boards is not None else [board_of(c) for c in codes]
+    out = {b: 0 for b in ("主板", "创业板", "科创板", "北交所")}
+    for b in boards:
+        out[b] = out.get(b, 0) + 1
+    return out
+
+
 def buy_candidates(s, mtx, rule_mats, pool, keep,
                    top_n=ASHARE_BUY_TOP_N, st_codes=None):
     """保留池内的待买入短名单：按「安静度」= SMA($volume,20) 升序取前 top_n。
@@ -647,7 +824,14 @@ def buy_candidates(s, mtx, rule_mats, pool, keep,
         候选  C_i = 闸门(i) ∧ n_hit(i) < ASHARE_BUY_MIN_HITS ∧ 当日有成交(i)
                     ∧ 当日收盘涨幅(i) < 涨停闸阈值(i, s) ∧ i ∉ ST 名单
         排序键 q_i = SMA($volume, 20)_i(s)        升序，安静者在前
-        名单  head(q|C, top_n)，等权 1/top_n
+        名单  apply_board_quota(head(q|C), top_n)，等权 1/top_n
+
+    `名单` 那一格 09-25 起有两种口径（`ASHARE_LIST_SCHEME`，判据与账单在 config）：
+    `global` = 旧口径，直接取轴上前 top_n；`quota`（现默认）= 先按板块留席位
+    （主板 20 / 创业板 10 / 科创 10 / 北交 10，段内仍按 q_i 升序），凑不满回填。
+    **两种口径都不改 q_i 这根轴**，改的是「谁有资格进名单」。真实身份要读
+    `buy_stats["list"]` 的 `n_backfilled`/`quota_unmet`：科创板席位天天是空的
+    （日均供给 0.51 只），所以这一条实测等于「给创业板留 10 个保底席位」。
 
     q_i 与剔除用的 `level` 那条是**同一个表达式**（一根轴两头用：高分端踢出域、
     低分端排前面），这是 09-24 用户裁决换轴的结果，不是笔误。
@@ -669,56 +853,65 @@ def buy_candidates(s, mtx, rule_mats, pool, keep,
     不是「保留池最高涨幅 7.25% 所以一只没咬到」——那句已按实测作废。
 
     为什么排序轴是「量能水平」而不是「量能波动」（09-24 用户裁决换轴）：组合层
-    （`ashare_portfolio_eval.csv`，涨停闸 `board` 档 = 现在的归档基线；做多低分侧、
-    扣双边 15bp、超额相对同段同域等权池、top50/100/200 三档年化）里量能族八条构造
-    × 3 档只有 7 行为正，其中 6 行就是下面那两条同簇构造（各三档），
-    第 7 行是 `SMA(Volume,10)`@200 那格 +0.26%：
+    （`ashare_portfolio_eval.csv`，涨停闸 `board` + 名单形状 `quota` = 现在的默认档；
+    做多低分侧、扣双边 15bp、超额相对同段同域等权池、top50/100/200 三档年化）里
+    量能族八条构造 × 3 档只有 7 行为正，其中 6 行就是下面那两条同簇构造（各三档），
+    第 7 行是 `SMA(Volume,10)`@200 那格 +0.20%：
 
-        SMA(Volume,20)   +1.39% / +1.59% / +1.58%   IR +0.11/+0.14/+0.17  换手 0.186/0.176/0.162  ← 现用轴
-        STD(Volume,20)   +0.95% / +2.31% / +3.70%   IR +0.08/+0.22/+0.41  换手 0.311/0.282/0.257  ← 换轴前
-        STD(Volume,5)    -6.86% / -4.51% / -3.04%
-        SMA(Volume,5)    -4.09% / -3.05% / -1.60%
-        SMA(Volume,10)   -1.40% / -0.98% / +0.26%
-        MOM(Volume,5)   -30.00% / -26.31% / -22.48%
-        MOM(Volume,20)  -16.29% / -15.44% / -14.17%
-        量能比          -21.90% / -19.58% / -17.61%
+        SMA(Volume,20)   +0.11% / +1.25% / +1.54%   IR +0.01/+0.12/+0.17  换手 0.223/0.191/0.168  ← 现用轴
+        STD(Volume,20)   +1.00% / +1.73% / +3.69%   IR +0.10/+0.18/+0.43  换手 0.341/0.297/0.263  ← 换轴前
+        STD(Volume,5)    -5.66% / -4.32% / -2.96%
+        SMA(Volume,5)    -4.81% / -3.05% / -1.44%
+        SMA(Volume,10)   -2.47% / -1.25% / +0.20%
+        MOM(Volume,5)   -28.36% / -24.86% / -21.83%
+        MOM(Volume,20)  -12.54% / -14.01% / -13.20%
+        量能比          -18.31% / -17.87% / -16.57%
 
     两条为正的构造是**同一簇**（截面 spearman 0.93~0.95），所以换轴不增信息，换的是
-    「在同一个信号上取哪个代理」。取水平而不是波动的实测理由有三条：① 生产名单那一档
-    （top50）三项全胜（+1.39% vs +0.95%、IR +0.11 vs +0.08、换手 0.186 vs 0.311，
-    换手少 40% 直接是省下的双边 15bp）；② 分年度（`ashare_portfolio_eval_yearly.csv`，
-    top100 档、相对同域等权池）现用轴 8/12 为正、中位 +3.25%，旧轴 7/12、中位 +5.56%
-    —— 旧轴赢在幅度、输在命中，而**分段一拆就反过来了**：2021 起六年现用轴 4/6 为正、
-    六年均值 +3.1%/年，旧轴 2/6、六年均值 **-0.7%/年**，旧轴那 +5.6% 的中位几乎全来自
-    2015~2020（+5.8%~+20.5%）；③ 2025 那一年现用轴 +3.9% 为正、旧轴 -2.3% 为负，
-    即「最近还管不管用」这一问上只有现用轴答得出正面。
-    （flat 档那一份另存 `*_flat.csv`，同一格是 +0.99%/+2.34%/+3.74%；换闸只让掉 0.04pp，
-    下面这些结论没有一条因为档位而翻符号。）
+    「在同一个信号上取哪个代理」。⚠️ 但**当年换轴的三条理由要按名单形状分两段念**：
+    09-24 那三条是在「全局前 50 名」那份名单上量的（现用轴三档 +1.55%/+1.80%/+1.81%、
+    旧轴 +1.09%/+2.49%/+3.96%，`ashare_portfolio_eval_globalctrl_0925.csv`），
+    09-25 名单形状换成板块配额后**第一条已经翻掉**：
+    ① ~~生产名单那一档（top50）三项全胜~~ —— 配额档下 top50 三项**全负**于旧轴
+       （+0.11% vs +1.00%、IR +0.01 vs +0.10），本轴在这一层只剩换手（0.223 vs 0.341）；
+    ② 分年度（`ashare_portfolio_eval_yearly.csv`，只记 top100 那一档、相对同域等权池）
+       仍然成立，而且配额档下比全局档更干净：现用轴 9/12 为正、中位 +4.07%，旧轴
+       7/12、中位 +1.55%（全局档是现用轴 8/12、+3.25% vs 旧轴 7/12、+5.56%，旧轴当时
+       赢在幅度）；分段拆 2021 起六年现用轴 4/6 为正、均值 +2.1%/年，旧轴 2/6、
+       均值 **-1.3%/年**，旧轴的超额照旧集中在 2015~2020（+7.2%~+19.5%）；
+    ③ 「最近还管不管用」也仍然成立：2025 年现用轴 +8.5% 为正、旧轴 -2.4% 为负。
+    也就是说**没翻的两条都是分年度证据，翻了的那条是全窗口年化**。（flat 档那一份另存
+    `*_flat.csv`，同一格是 +0.99%/+2.34%/+3.74%；换闸只让掉 0.04pp，下面这些结论没有
+    一条因为档位而翻符号。）轴为什么没再换回去见 config 的 `ASHARE_LIST_SCHEME` 那段：
+    名单形状是 09-25 用户的裁决，那笔交易踩的就是这根轴。
 
     换轴带来的三件必须知道的事，都不构成否决但都要盯：
     ① **与剔除侧同表达式**：`level` 那条踢高分端 20%、本轴买低分端，一根轴两头用。
        它过不了因子库「不是换皮」那道关（判重实测与在库量能族 0.909~0.927），
        但作为**已启用判据的内部复用**没有新信息风险 —— 代价是「量能水平」这一根轴
        在系统里的权重变高了，它一旦失效，域和名单同时坏。
-       09-24 重跑的名单腿账单（`ashare_portfolio_buylist.csv`，13 行 × top50，
-       `board` 档）顺手把这条推到一个极端：`level` 那条剔除**对本名单是恒空操作**
-       ——「单条·量能水平」与「参照·不剔除」在年化/IR/换手/均额四列上**逐字相同**
-       （一根轴的低分端不可能同时是自己的高分端）。所以换轴后并集压在名单上的
-       全部伤害（+1.39% → -3.98%）来自**量能动量 -2.03% 与量能比 -1.89%** 这两条
-       近乎正交的构造；「留一·去掉量能水平」与「留一·去掉量能波动」两行则与
-       「并集≥1」逐字相同，等于承认这两条在名单腿上一格未贡献。
-    ② **可执行性不能拿全窗均值预判**：12 年平均这 50 只的 20 日均额从 1.051 亿降到
-       0.947 亿（`avg_amount_20d`），但 09-23 那个截面**方向相反** —— 均额中位从
+       名单腿账单（`ashare_portfolio_buylist.csv`，13 行 × top50，`board` + `quota` 档）
+       09-24 曾把这条推到一个极端：「单条·量能水平」与「参照·不剔除」**逐字相同**
+       ⇒ 那句「这根轴在名单上恒空操作」在配额档下**作废** —— 现在是 +0.51%（量能波动
+       那条 +0.30%），比不剔除略高。不是构造变强了，是剔除改变了「回填席位补进谁」。
+       并集压在名单上的伤害（+0.11% → -2.79%）**全部**来自**量能动量 -1.85% 与量能比
+       -2.08%** 这两条近乎正交的构造；「留一·去掉量能水平/波动」两行仍贴着「并集≥1」
+       （-2.86% / -2.68%，差 0.08pp / 0.10pp）⇒ 这两条在名单腿上一格未贡献照旧。
+    ② **可执行性不能拿全窗均值预判**：12 年平均这 50 只的 20 日均额，全局档从 1.051 亿
+       降到 0.947 亿，配额档再降到 **0.772 亿**（`avg_amount_20d`，比全局档又让掉 18%）
+       —— 配额从创业板/科创/北交捞进来的票就是更薄的那批，这是名单形状那笔交易里
+       没写在收益账单上的另一半成本。但 09-23 那个截面**方向相反** —— 均额中位从
        0.467 亿升到 0.748 亿、一手金额中位从 1,234 元升到 1,663 元（`$volume` 是
        **手数**，按均量排序挑的是「成交笔数少」那一角，不等于「成交金额小」）。
        所以每一日都要按当日名单的 20 日均额与一手金额逐只核，别看年化摘要。
-    ③ **幅度不如旧轴**：全窗口 top100/200 两档仍是旧轴更高（+2.31%/+3.70% vs
-       +1.59%/+1.58%）。本名单固定 top50，所以取现用轴；要放大持仓数得重新量这条。
+    ③ **幅度不如旧轴**：配额档下**三档全部**是旧轴更高（+1.00%/+1.73%/+3.69% vs
+       +0.11%/+1.25%/+1.54%），这条比 09-24 当时说得重（当时只有 top100/200 两档）。
+       本名单固定 top50，所以取现用轴；要放大持仓数得重新量这条。
 
     还有一条老边界没变：与「低价股」对照**分不开** —— 同一张表里 MA(Price,5) 低分侧
-    三档给 +3.56% / +2.73% / +2.18%、单程换手只有 0.08~0.10，换轴之后它在**三档全部**
-    盖过排序轴（换轴前是 top50/top100 盖过、top200 被本轴反超）。分年度它是 9/12 为正
-    但中位只 +1.81%（现用轴 8/12、+3.25%）。也就是说这份超额里有多少来自「买低价/冷门
+    三档给 +3.10% / +3.12% / +2.71%、单程换手只有 0.08~0.11，配额档下它在**三档全部**
+    盖过排序轴（全局档下同结论，那三档是 +4.19%/+3.31%/+2.66%）。分年度它是 8/12
+    为正、中位 +2.19%（现用轴 9/12、+4.07%）。也就是说这份超额里有多少来自「买低价/冷门
     那角」、有多少来自量能本身，现有证据判不了 —— 这根轴够格决定「先看谁」，不够格
     承诺收益，这也是名单上还要再叠三道执行性硬闸的原因。
 
@@ -763,11 +956,14 @@ def buy_candidates(s, mtx, rule_mats, pool, keep,
     ok_v = v.where(cand)
     pct = ok_v.rank(pct=True)                      # 候选池内分位，人读用
     order = ok_v.dropna().sort_values()
-    head = order.index[:top_n]
+    # 名单形状（global / 板块配额）唯一出口 = apply_board_quota，与组合层回测同一个
+    head, lst = apply_board_quota(order.index, top_n)
 
     # 与组合层回放的那一步对账：那边只过闸门就取低分侧 top_n，本名单多了三道闸。
-    # 差异只报「换掉几只」，不改判据本身
-    plain = v.where(step1).dropna().sort_values().index[:top_n]
+    # 差异只报「换掉几只」，不改判据本身。名单生成规则**两边同一份**（配额也照走），
+    # 所以这个差数的含义保持纯净：只反映三道执行性闸，不掺口径差
+    plain_order = v.where(step1).dropna().sort_values().index
+    plain, _ = apply_board_quota(plain_order, top_n)
     stats = {
         "n_step1": int(step1.sum()), "n_traded": int(traded.sum()),
         "n_chase": int(chase.sum()), "n_st": int((traded & is_st).sum()) if st_codes else 0,
@@ -780,8 +976,12 @@ def buy_candidates(s, mtx, rule_mats, pool, keep,
                                        ).value_counts().items()},
         "top_n": len(head),
         "n_diff_vs_backtest": len(set(plain) - set(head)),
-        # 第 top_n 名的安静度值 = 本名单的入线阈值，次日对比可用
-        "quiet_cut": float(order.iloc[len(head) - 1]) if len(head) else float("nan"),
+        # 名单生成口径自己的账（配额有没有货、回填吃了几只）—— 缺了它就等于把
+        # 「四段都有席位」念成「四段都有票」，那是假读数
+        "list": lst,
+        # 第 top_n 名的安静度值 = 本名单的入线阈值，次日对比可用。取**名单最后一名**
+        # 而不是候选的第 top_n 名：配额口径下两者不是同一只（后者还在候选队列里）
+        "quiet_cut": float(v.loc[head[-1]]) if len(head) else float("nan"),
     }
     out = pd.DataFrame({
         "rank": np.arange(1, len(head) + 1, dtype="int32"),
@@ -806,16 +1006,22 @@ def screen_on_date(s, d1, mtx, rule_mats, gate_mat,
     gate_mat 是算闸门时用来判「因子有值」的那张矩阵，日频入口传量能水平那条即可。
     with_buy=False 时不排待买入名单（rule_mats 里没有 BUY_EXPR 的旧调用方用这条）。
 
-    **两套剔除强度，一张明细表**（P3，09-24 用户选，判据见 config 里
-    ASHARE_BUY_MIN_HITS 那段）：
+    **筛选层两处强度 + 一道独立闸**（P3 09-24 用户选两处强度，判据见 config 里
+    ASHARE_BUY_MIN_HITS 那段；独立闸 09-26 接，判据在 BUY_EXTRA_RULES。
+    别和 `buy_candidates` 里那**三道执行闸**混称——那三道管「买不买得到」，这里管「该不该看」）：
 
-        keep      = pool ∧ n_hit >= 1        域/展示口径，「不该买」名单走这条
-        keep_buy  = pool ∧ n_hit <  buy_min_hits      只用来挡待买入名单的入口
+        keep      = pool ∧ n_hit >= 1                     域/展示口径，「不该买」名单走这条
+        keep_buy  = pool ∧ n_hit < buy_min_hits ∧ ¬extra  只用来挡待买入名单的入口
 
     为什么两处不同：并集在减法腿（把爆量的从池里踢掉）值 +6.46%/年，压在待买入
-    名单上却从 +0.95% 掉到 -0.39%（换手 0.31→0.48，费用 2.49pp > 毛收益 1.15pp）。
-    两个数踩的是同一条判据、不同的**用途**，所以各自按各自实测的最优强度取值，
-    而不是强行统一成一个。buy_min_hits=1 时 keep_buy 与 keep 等价（旧口径）。
+    名单上却从 +0.11% 掉到 -2.79%（现轴现名单形状，配额档 570 天；单程换手
+    0.223→0.465，费用吃穿毛收益。09-24 在旧轴 + 全局前 50 名口径下量到的是
+    +0.95% → -0.39%，同一方向）。两个数踩的是同一条判据、不同的**用途**，
+    所以各自按各自实测的最优强度取值，而不是强行统一成一个。
+    buy_min_hits=1 时共识那道与域口径等价（旧口径）。
+    `extra` 是第三道，它**不加进 n_hit** —— 加进并集会把共识计数整体抬高，实测把名单
+    超额从 +0.28% 打到 +0.04%；独立成闸只在自己的那一维上一票否决，实测 +1.04%/年
+    （同表同网格、**样本内**）。开关 = STOCK_BUY_EXTRA_RULES，空串关掉。
     """
     ok, n_limit = tradable_mask(s, d1, gate_mat, mtx)
     pool = pd.Series(ok, index=gate_mat.columns)
@@ -825,13 +1031,25 @@ def screen_on_date(s, d1, mtx, rule_mats, gate_mat,
     if with_buy and BUY_EXPR in rule_mats:
         n_hit = detail["n_hit"].reindex(pool.index).fillna(0)
         keep_buy = pool & (n_hit < buy_min_hits)
+        # 下面两笔都在叠第三道**之前**取，各自只反映一道闸的账：
+        #   共识闸挡了几只 / 并集剔了但共识闸放行几只
+        n_consensus = int((pool & ~keep_buy).sum())
+        n_lenient = int((pool & ~keep & keep_buy).sum())
+        blocked, blocked_n = buy_extra_block(rule_mats, s, pool, quantile)
+        # 净新增：共识闸放行、却被独立闸挡掉的只数（池内命中数含与之重叠的那批，
+        # 两个数都要报，否则读不出「这道闸今天到底新咬了几只」）
+        n_extra_net = int((keep_buy & blocked).sum())
+        keep_buy = keep_buy & ~blocked
         r["buy"], r["buy_stats"] = buy_candidates(
             s, mtx, rule_mats, pool, keep_buy, top_n, st_codes)
         r["buy_stats"]["buy_min_hits"] = int(buy_min_hits)
         # 共识爆量：≥buy_min_hits 条构造一致判响，只被这道闸挡掉的只数
-        r["buy_stats"]["n_consensus"] = int((pool & ~keep_buy).sum())
+        r["buy_stats"]["n_consensus"] = n_consensus
         # 名单与「不该买」域之间今日的实际差：并集剔了、但待买入闸放行的只数
-        r["buy_stats"]["n_lenient_vs_union"] = int((pool & ~keep & keep_buy).sum())
+        r["buy_stats"]["n_lenient_vs_union"] = n_lenient
+        r["buy_stats"]["n_extra_in_pool"] = int(blocked.sum())
+        r["buy_stats"]["n_extra_net"] = n_extra_net
+        r["buy_stats"]["buy_extra_fired"] = blocked_n
     return r
 
 
@@ -848,8 +1066,10 @@ def order_candidates(buy, industry=None, top_n=ASHARE_ORDER_TOP_N,
                  板块数[板块_i] < max_per_board
                  ∧ (行业_i = 未知 ∨ 行业数[行业_i] < max_per_industry)
         停止：取满 top_n 只，或名单走完
-        权重：每只 = 1/top_n（**按槽位给权**，凑不满时余量自动是现金，
-              不按实际只数归一 —— 否则「今天只挑到 3 只」会被悄悄放大成满仓 3 只）
+        权重：每只 = 1/**实际挑到的只数**（等权满仓，不留现金。09-25 由 1/top_n 改过来，
+              依据是同日的 M3 实测：现状 5 席有 24.7% 的调仓日凑不满、平均空着 6.6% 资金，
+              改成满仓给权后历史超额 +9.90% → +11.70%/年，而最大回撤**一字未变**
+              （−53.57%），因为最深那次回撤发生在 5 席全填满的时段 —— 留现金并没有买到安全）
 
     三条口径为什么长这样（都有实测来源，见 CHANGELOG ⑬⑭⑮）：
     * **约束是分散度，不是白名单**：用户个人户科创板/创业板/北交所都有权限，
@@ -858,8 +1078,13 @@ def order_candidates(buy, industry=None, top_n=ASHARE_ORDER_TOP_N,
     * **行业未知不参与去重**：外部映射对北交所缺 85%、科创板缺 96%，把「未知」当
       一个行业去重等于变相拉黑那两段 —— 与上一条直接冲突。代价如实说：未知票的
       行业约束是**没生效**的，所以 stats 里单独报 n_unknown，看板把那几行标出来。
-    * **不足不放宽**：放宽（比如行业上限临时提到 2）就是在本层改判据，而本层的
-      全部依据是「执行性」。凑不满就少买几只、把 shortfall 报出来给人看。
+    * **不足不放宽、但不足不空着**：放宽（比如行业上限临时提到 2）就是在本层改判据，
+      而本层的全部依据是「执行性」，所以判据一律不动；缺的席位改**摊给已挑到的票**
+      （旧口径是让现金）。09-25 换过来的实测代价：5 席有 24.7% 的天数凑不满，旧口径
+      平均 6.60% 资金闲置，历史回放超额 +9.90%/年 → 满仓 +11.70%/年（+1.8pp），
+      最大回撤**不变**（−53.57%），因为最深那次回撤发生在 5 席全满的区间。
+      换来的后果如实记：只挑到 3 只时每只 33%（570 天里最少就是 3 只，见 M3 的
+      `worst_shortfall=2`），单票集中度比旧口径高一档。
 
     行业去重用的是**合并列**（新浪 49 板块为主 + 证监会一级兜底，见 load_industry_map），
     分类粒度比集中度分析用的口径粗 ⇒ 约束偏保守，只会多拆散不会漏拆散。
@@ -882,13 +1107,17 @@ def order_candidates(buy, industry=None, top_n=ASHARE_ORDER_TOP_N,
         if g != INDUSTRY_UNKNOWN:
             n_ind[g] = n_ind.get(g, 0) + 1
         picked.append({"code": code, "slot": len(picked) + 1,
-                       "obs_rank": int(row["rank"]), "板块": b, "行业": g,
-                       "weight": 1.0 / top_n})
+                       "obs_rank": int(row["rank"]), "板块": b, "行业": g})
+    # 权重在扫描结束后才给得出来：分母是**实际挑到的只数**，不是槽位数
+    each = 1.0 / len(picked) if picked else 0.0
+    for p in picked:
+        p["weight"] = each
     out = pd.DataFrame(picked).set_index("code") if picked else pd.DataFrame(
         columns=["slot", "obs_rank", "板块", "行业", "weight"], dtype=object)
     out.index.name = "code"
     stats = {"top_n": top_n, "n_picked": len(picked),
              "shortfall": top_n - len(picked),
+             "weight_each": each,
              "max_per_industry": max_per_industry, "max_per_board": max_per_board,
              # 观察名单自己的板块构成：shortfall 到底是「约束太严」还是「名单太偏」，
              # 看这个数就能分开 —— cap 定得比名单里最大板块数还小，就永远凑不满
@@ -906,5 +1135,7 @@ def order_candidates(buy, industry=None, top_n=ASHARE_ORDER_TOP_N,
              "skipped": skipped,
              "scan_depth": int(max([p["obs_rank"] for p in picked]
                                    + [x["rank"] for x in skipped] + [0])),
+             # 满仓给权之后恒为 1（一只都没挑到时 0）。留着是因为看板在读它，
+             # 现在的用途是**守卫**：≠1 就说明权重算错了，不是「还有钱没投出去」
              "weight_sum": float(out["weight"].sum()) if len(out) else 0.0}
     return out, stats

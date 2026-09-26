@@ -62,10 +62,23 @@
 安全边界
 --------
 * 一次只补一个交易日（= 日历末日的下一个交易日）；缺几天就跑几天。
-* 三道闸：快照 15:00 以后、昨收↔bin 末格对齐率 ≥98%、代码前缀白名单。
-  任一不过直接退出，不写半截 —— 这条闸同时挡住了「同一天跑第二次」。
+* 四道闸（按发作顺序）：**场次已经发生**（待补场次晚于今天 ⇒ 休市日，拒；手敲
+  `--session` 时那天还得在交易所日历里，拒）、快照 15:00 以后、昨收↔bin 末格
+  对齐率 ≥98%、代码前缀白名单。
+  任一不过直接退出，不写半截 —— 后两条闸同时挡住了「同一天跑第二次」。
   快照缓存也认收盘闸：收盘前误跑抓到的盘中快照**不落缓存、也不复用**，否则会
   把当晚那场真日更永久挡在门外（`fetch_spot`）。
+* 复用缓存前**先对一场**（09-25 之后加的）：`fetch_spot` 相信一份 `spot_<场次>.csv`
+  之前，先抽样 400 只票拿写入闸同一把尺子（`align_against_bin`，阈值同一处常量）
+  对一遍「快照昨收 ↔ bin 末格 raw」，不过就重取。收盘行占比只判得出「是不是
+  收盘后抓的」，判不出「是哪一天的」⇒ 目录里已经躺着的那种钉着未来场次的缓存
+  （旧版本跑的、手拷进来的、别的场次改名的）光靠第一道闸管不到。对表不过不删文件，
+  只是不再信它；取到真收盘快照会覆写。
+* 第一道闸为什么必须排在**抓数之前**（09-25 中秋休市实测加的，`guard_session`）：
+  默认档的场次来自交易日历，休市日算出来的是**未来那一场**，而行情接口只能回给
+  上一场的行情 ⇒ 缓存会被钉成 `spot_<未来日>.csv`。它躲得过复用判据（收盘行占比
+  100%），下一场真日更就会拿上一场的行情去 append —— 对齐闸会拒写（数据没脏），
+  但**那一天静默更不上**，除非有人知道要删文件。落盘前先问"这场发生过没有"。
 * 只追加不回写：待写格子若落在数组已有区间内 ⇒ 跳过（改历史是另一轮口径作业）。
 * 幂等：同一场次重复跑，日历已含该日就退出；中途崩了重跑会按同一份快照缓存
   把没补上的票补齐（数组只会长，不会写歪）。
@@ -79,6 +92,8 @@
     cd stock/v1/src && /usr/bin/python3.10 data/update_qlib_bin_daily.py
     # 出错就还原：
     cd stock/v1/src && /usr/bin/python3.10 data/update_qlib_bin_daily.py --rollback
+    # 休市日（含节假日调休）跑会被第一道闸当场拒——那是预期，不是坏了：bin 的日历末格
+    # 本来就已经是最近一场已收盘的日子，这一天没有数据可更。
 """
 
 import argparse
@@ -100,7 +115,9 @@ FIELDS = ["open", "high", "low", "close", "volume", "amount",
           "factor", "vwap", "adjclose", "change"]
 MIN_BAR = 1e-6              # 价格低于此视为无效（停牌票快照给 0.00）
 ALIGN_TOL = 1e-2            # 昨收 ↔ bin 末格 raw 的「对齐」容差
-ALIGN_MIN = 0.98            # 对齐率下限：不到就判定快照不是这一场
+ALIGN_EXACT_MIN = 0.90      # 逐字相同率下限（2 位小数的价格撞上才算「就是这一场」）
+ALIGN_MIN = 0.98            # 容差内对齐率下限：不到就判定快照不是这一场
+ALIGN_SAMPLE = 400          # 缓存复用处抽样对表的票数（写入闸仍是全量逐票）
 RATIO_BOUND = (0.05, 20.0)  # 单日 factor 倍数的可信区间，出界只记账不采信
 CODE_PREFIX = r"^(SH60|SH68|SZ00|SZ30|BJ43|BJ83|BJ87|BJ88|BJ92)"
 
@@ -154,22 +171,90 @@ def close_share(spot):
     return float((ts.dt.hour * 60 + ts.dt.minute).ge(CLOSE_HM).fillna(False).mean())
 
 
-def fetch_spot(session, cache_dir, tries=3):
+def align_rates(ref, prev_raw):
+    """「快照昨收 ↔ bin 前收」这把尺子：→ (逐字相同率, 相对差 <ALIGN_TOL 率, 参与票数)
+
+    写入闸和缓存复用处共用这一个函数（口径只有一处）。两条率各挡一种错：逐字相同
+    证明「快照就是这一场」（错一天的话 2 位小数的价格不会撞上），容差内对齐率证明
+    「bin 没跑在快照前面」。
+    """
+    pair = pd.DataFrame({"ref": np.asarray(ref, dtype=float),
+                         "prev": np.asarray(prev_raw, dtype=float)}).dropna()
+    pair = pair[(pair["ref"] > MIN_BAR) & (pair["prev"] > MIN_BAR)]
+    if not len(pair):
+        return np.nan, np.nan, 0
+    d = (pair["ref"] / pair["prev"] - 1).abs()
+    return float((d < 1e-4).mean()), float((d < ALIGN_TOL).mean()), int(len(pair))
+
+
+def align_against_bin(provider, spot, g_prev, sample=ALIGN_SAMPLE):
+    """抽样对表：这份快照是不是 `g_prev` 之后那一场的行情？→ (逐字率, 容差率, 只数)
+
+    判据与写入闸同一条（`align_rates`），只是这里只读抽样票的两条 bin 数组，为的是
+    在**相信一份缓存之前**先问一句。前收取法跟 `build_plan` 一致：优先 `g_prev` 那格、
+    停牌/数组更短时回退到最后一个有效格（不然回退票会被算成错场）。
+    返回只数为 0 = 无从判断 ⇒ 调用方按「不过」处理（宁可重取一次，不轻信任一份缓存）。
+    """
+    s = spot[spot["代码"].str.upper().str.match(CODE_PREFIX)]
+    if len(s) > sample:
+        s = s.iloc[::int(np.ceil(len(s) / sample))]
+    refs, prevs = [], []
+    for _, r in s.iterrows():
+        inst = str(r["代码"]).upper()
+        got = read_field(provider, inst, "close")
+        gf = read_field(provider, inst, "factor")
+        if got is None or gf is None:
+            continue
+        s_cl, close = got
+        i = g_prev - s_cl
+        if 0 <= i < close.size and np.isfinite(close[i]):
+            g_used = g_prev
+        else:
+            hit = np.flatnonzero(np.isfinite(close))
+            if not hit.size:
+                continue
+            g_used = int(s_cl + hit[-1])
+        j = g_used - gf[0]
+        if not (0 <= j < gf[1].size) or not np.isfinite(gf[1][j]):
+            continue
+        prevs.append(close[g_used - s_cl] / gf[1][j])   # raw 前收 = 复权收盘 / factor
+        refs.append(float(r["昨收"]))
+    return align_rates(refs, prevs)
+
+
+def fetch_spot(session, cache_dir, provider, tries=3):
     """全市场当日快照（一次请求），按场次落缓存以便重跑与事后复核
 
     缓存只在**收盘后**写、也只复用收盘后的缓存。少这一条会出生产事故：操作者
     收盘前误跑一次就把盘中快照钉成 `spot_<场次>.csv`，当晚再跑仍读到那份盘中
     快照、被收盘闸挡下，这一天永远补不上（除非他知道去删文件）。
+
+    复用前还要拿 `align_against_bin` 对一场（09-25 中秋休市之后加的），不过就重取：
+    收盘行占比只判「这快照是不是收盘后抓的」，判不出「它是哪一天的」——`guard_session`
+    挡住的是**本版本**不再产出钉着未来场次的缓存，而已经躺在目录里的那种（旧版本
+    跑的、手拷进来的、别的场次改名的）躲得过占比判据，会让这一场拿上一场的行情
+    去 append。对表把写入闸那把尺子挪到复用处，任何来源的脏缓存都挡得住。
+    对表不过**不删**那份文件（删缓存是人的决定），只是不再信它；重取到收盘快照会覆写。
     """
     os.makedirs(cache_dir, exist_ok=True)
     path = os.path.join(cache_dir, f"spot_{session.replace('-', '')}.csv")
     if os.path.exists(path) and os.path.getsize(path) > 4096:
         df = pd.read_csv(path, encoding="utf-8-sig")
         if close_share(df) > CLOSE_MIN_SHARE:
-            print(f"  用缓存快照 spot_{session.replace('-', '')}.csv（{len(df)} 行）")
-            return df
-        print(f"  ⚠️ 缓存快照的收盘行占比 {close_share(df):.1%} 不合格"
-              f"（那是收盘前抓的盘中快照），忽略它重取一份")
+            cal = read_calendar(provider)
+            exact, within, n = align_against_bin(provider, df, len(cal) - 1)
+            if n and exact >= ALIGN_EXACT_MIN and within >= ALIGN_MIN:
+                print(f"  用缓存快照 spot_{session.replace('-', '')}.csv（{len(df)} 行）"
+                      f"——已对表：昨收↔bin 末格（{cal[-1]}）逐字 {exact:.2%}、"
+                      f"相对差 <{ALIGN_TOL:g} 占 {within:.2%}（抽样 {n} 只）✅")
+                return df
+            print(f"  ⚠️ 缓存快照 spot_{session.replace('-', '')}.csv 过不了对表："
+                  f"逐字 {exact:.2%} / <{ALIGN_TOL:g} {within:.2%}（抽样 {n} 只，bin 末格 {cal[-1]}）"
+                  f" ⇒ 它不是 {session} 这一场的行情（是 {cal[-1]} 那一场被钉上了别的场次名？），"
+                  "**忽略它重取一份**；收盘快照取到后会覆写这份缓存。")
+        else:
+            print(f"  ⚠️ 缓存快照的收盘行占比 {close_share(df):.1%} 不合格"
+                  f"（那是收盘前抓的盘中快照），忽略它重取一份")
     import akshare as ak
     last = None
     for t in range(tries):
@@ -194,12 +279,64 @@ def fetch_spot(session, cache_dir, tries=3):
 
 def next_trade_day(cal_end):
     """日历末日的下一个交易日：一次只补一天，缺几天就跑几次"""
-    import akshare as ak
-    days = pd.to_datetime(ak.tool_trade_date_hist_sina()["trade_date"])
+    days = trade_days()
     after = days[days > pd.Timestamp(cal_end)]
     if not len(after):
         raise SystemExit(f"交易日历里没有 {cal_end} 之后的日子")
-    return after.iloc[0].strftime("%Y-%m-%d")
+    return after[0].strftime("%Y-%m-%d")
+
+
+_TRADE_DAYS = None
+
+
+def trade_days():
+    """交易所交易日历（一次请求，进程内共用）—— 算下一场与验场次合法性**必须同源**
+
+    返回 `DatetimeIndex` 而不是 Series：Series 的 `d in s` 查的是**行号**不是值，
+    那样 `guard_session` 的第②条会把每一个合法场次都判成「不在日历里」。
+    """
+    global _TRADE_DAYS
+    if _TRADE_DAYS is None:
+        import akshare as ak
+        _TRADE_DAYS = pd.DatetimeIndex(
+            pd.to_datetime(ak.tool_trade_date_hist_sina()["trade_date"]))
+    return _TRADE_DAYS
+
+
+def guard_session(session, explicit):
+    """这一场**还没发生**就不许落一个字节（09-25 加的判据，当天实测踩过）
+
+    为什么需要：默认档的 `session` 取自交易所日历（日历末日的下一个交易日），
+    而**休市日**里那一天落在未来。09-25（中秋休市，日历 09-24 的下一场是 09-28）
+    实跑 `--dry-run` 时的链条是：接口只能回上一场（09-24）的行情 ⇒ 快照被钉成
+    `spot_20260928.csv` 落了缓存（缓存发生在对齐闸**之前**）⇒ 下一场真日更时
+    `fetch_spot` 的复用判据只看收盘行占比（那份假快照是 100%，过得去）⇒ 拿
+    09-24 的行情去 append 09-28 ⇒ 对齐闸（≥98% 逐字相同）当场拒写。写是挡住了，
+    但**那一天的日更会静默失败**，除非有人知道要删那个文件。
+    ⇒ 判据挪到抓数之前：一场没发生的日子，连快照缓存都不该存在。
+
+    与复用处那道对表（`fetch_spot` 里的 `align_against_bin`）是**两层**，各挡一半：
+    本道管「以后不再产出这种缓存」，那道管「已经躺在目录里的那种不再被相信」——
+    旧版本跑出来的、手拷进来的、别的场次改名的，来源不止 dry-run 一条，所以两道都留。
+
+    两条：
+      ① `session` 晚于今天 ⇒ 那场还没收盘。日期比的是**本机自然日**（本机时区
+         +08:00，与 A 股同一时区；跨时区跑要自己确认这一点）
+      ② 手敲 `--session` 时，那天不在交易所日历里 ⇒ 那天根本不交易
+         （默认档不查这条：它的 `session` 本身就取自那张表，查它是白要一次请求）
+    """
+    s = pd.Timestamp(session)
+    today = pd.Timestamp.now().normalize()
+    if s > today:
+        raise SystemExit(
+            f"[拒绝] 待补场次 {session} 晚于今天 {today:%Y-%m-%d} ⇒ 那一场的行情还没发生"
+            f"（{session} 之前如果夹着休市日，就是这个原因），**不抓快照、不落缓存、bin 一个字节不动**。\n"
+            f"  今天有没有更的必要，看日历末格：它就是最近一场已收盘的日子。\n"
+            f"  要更这一场：等 {session} 收盘（15:00）之后再跑一次，默认档会自己算到它。")
+    if explicit and s not in trade_days():
+        raise SystemExit(
+            f"[拒绝] --session {session} 不在交易所交易日历里 ⇒ 那天不交易，"
+            "硬跑只会把别的场次的行情钉成这一场的缓存。")
 
 
 def read_all_txt(provider):
@@ -327,18 +464,17 @@ def build_plan(provider, session, spot, idx):
 
     rep = pd.DataFrame(rows)
     both = rep.dropna(subset=["前收_bin", "昨收(除权参考价)"])
-    d = (both["昨收(除权参考价)"] / both["前收_bin"] - 1).abs()
-    exact, within = float((d < 1e-4).mean()), float((d < ALIGN_TOL).mean())
+    exact, within, _n = align_rates(both["昨收(除权参考价)"], both["前收_bin"])
     n_gap = int(rep["备注"].str.startswith("idx-1 无数据").sum())
     print(f"  快照 A 股 {len(rep)} 行、待写 {len(plan)} 只；昨收↔bin 前收（按日历下标）："
           f"逐字相同 {exact:.2%}、相对差 <{ALIGN_TOL:g} 占 {within:.2%}"
           f"（{n_gap} 只回退到末格，{int((rep['备注'] != '').sum())} 只有备注）")
-    # 两道闸各挡一种错：逐字相同率证明「快照就是这一场」（错一天的话 2 位小数的
+    # 两道率各挡一种错：逐字相同率证明「快照就是这一场」（错一天的话 2 位小数的
     # 价格不会撞上），1% 容差率证明「bin 没跑在快照前面」。
-    if len(both) and (exact < 0.90 or within < ALIGN_MIN):
+    if len(both) and (exact < ALIGN_EXACT_MIN or within < ALIGN_MIN):
         raise SystemExit(
             f"昨收对齐：逐字 {exact:.2%} / <{ALIGN_TOL:g} {within:.2%}，低于门槛 "
-            f"{0.90:.0%}/{ALIGN_MIN:.0%} —— 快照不是 {session} 这一场"
+            f"{ALIGN_EXACT_MIN:.0%}/{ALIGN_MIN:.0%} —— 快照不是 {session} 这一场"
             "（收盘前就跑了？bin 比快照还新？）。拒绝写入。")
     return plan, rep
 
@@ -589,8 +725,9 @@ def main():
     if session in cal:
         print("  日历已含该场次，无需再补")
         return
+    guard_session(session, explicit=args.session is not None)
 
-    spot = fetch_spot(session, ASHARE_SNAPSHOT_DIR)
+    spot = fetch_spot(session, ASHARE_SNAPSHOT_DIR, provider)
     rate = close_share(spot)
     print(f"  收盘时间检查：{rate:.1%} 的行在 15:00 之后")
     if rate <= CLOSE_MIN_SHARE:

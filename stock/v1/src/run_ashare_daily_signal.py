@@ -16,29 +16,34 @@
    这份 CSV 每行多一列 `n_hit`（当日有几条构造一致判响），因为下一条用的是**另一个
    强度**：并集只管「不该买」这张域（≥1 条即剔），待买入名单的入口闸要
    ≥ `ASHARE_BUY_MIN_HITS`（默认 3）条一致判响才挡。这不是把同一条判据调松，
-   是 09-24 的 ⑮P0 量出来的两个用途各自的最优强度——同一张并集掩码压在**当期排序轴**
-   （换轴前的 STD(Volume,20)）上会把 +0.95% 打成 -0.39%（换手 0.31→0.48，
-   费用 2.49pp 吃掉毛收益 1.15pp），
+   是 09-24 的 ⑮P0 量出来的两个用途各自的最优强度——同一张并集掩码压在**当期名单**
+   上会把参照那一档 +0.11% 打成 -2.79%（单程换手 0.223 → 0.465，费用吃掉全部毛收益；
+   `ashare_portfolio_buylist.csv`，行内 `list_scheme` 列 = `quota`。09-24 当时在旧轴 +
+   全局前 50 名口径下量到的是 +0.95% → -0.39%，方向一致），
    而它在减法腿上仍值 +6.46%/年。判据与来路见 config 里那段的注释。
 2) **待买入短名单**（`buy_YYYYMMDD.csv`）——待买入域内（闸门 + 未达共识剔除）按
    「安静度」= `ts_mean(volume,20)` 升序取前 ASHARE_BUY_TOP_N 名，等权。
    这根轴 **09-24 换过**（用户裁决）：换之前是 `ts_std(volume,20)`（量能波动），
    现在是量能水平 —— 也就是说它与剔除用的 `level` 那条**同一个表达式**，
    高分端（最热）从域里踢掉、低分端（最冷）排在前面买。
-   证据强度比第 1 条低一档，说清楚在哪：
-   组合层 39 行（13 构造 × top50/100/200）多头回放中位超额 **-0.98%**、20 行为负，
+   证据强度比第 1 条低一档，说清楚在哪（下面全是**配额名单**那一档的读数，
+   `ashare_portfolio_eval.csv` 里 `list_scheme=quota`；收尾那行打印每次运行现算）：
+   组合层 39 行（13 构造 × top50/100/200）多头回放中位超额 **-1.25%**、20 行为负，
    也就是说「做多低量能侧」整体不成立；量能族那 24 行里只有 7 行为正，其中 6 行
    就是同簇那两条构造（本轴与旧轴，spearman 0.93~0.95）各三档，剩 1 行是
-   SMA(Volume,10)@200 那格 +0.26%：
-   本轴 SMA(Volume,20) 三档 = +1.39%/+1.59%/+1.58%、IR +0.11~+0.17、单程换手
-   0.162~0.186；旧轴 STD(Volume,20) = +0.95%/+2.31%/+3.70%、换手 0.257~0.311。
-   换轴换的是**同一根信号取哪个代理**，不增信息；取水平的理由是在生产名单那一档
-   （top50）三项全胜、换手只有旧轴的 60%，且 2021 之后六年 4/6 为正（旧轴 2/6、
-   六年均值 -0.7%/年 —— 旧轴的中位 +5.6% 几乎全来自 2015~2020）。代价也说清：
-   全窗口 top100/200 两档仍是旧轴更高，所以**放大持仓数要重量这条**。
-   而且它与同表的「低价股」对照分不开（对照 MA(Price,5) 三档 +3.56%/+2.73%/+2.18%、
-   换手只有 0.08~0.10，换轴之后**三档全部**盖过排序轴）。所以这份名单是**沿用了那条
-   被验证过的选票动作**（闸门 + 低分侧 top_n），不是新造的组合，但它样本内、
+   SMA(Volume,10)@200 那格 +0.20%：
+   本轴 SMA(Volume,20) 三档 = +0.11%/+1.25%/+1.54%、IR +0.01~+0.17、单程换手
+   0.168~0.223；旧轴 STD(Volume,20) = +1.00%/+1.73%/+3.69%、换手 0.263~0.341。
+   换轴换的是**同一根信号取哪个代理**，不增信息；09-24 取水平的理由（生产名单那一档
+   top50 三项全胜、换手只有旧轴的 60%）是在**全局前 50 名**那份名单上量的
+   （+1.55% vs +1.09%，`ashare_portfolio_eval_globalctrl_0925.csv`）—— ⚠️ 09-25 名单
+   形状换成板块配额后**连 top50 这一档也翻了**，本轴在这个层只剩换手优势。
+   没翻的是另一条：2021 之后六年 4/6 为正（旧轴 2/6、六年均值 -1.3%/年），
+   两种名单形状下都成立。所以「放大持仓数要重量这条」这句从来没错，现在更没错：
+   全窗口三档都是旧轴更高。
+   而且它与同表的「低价股」对照分不开（对照 MA(Price,5) 三档 +3.10%/+3.12%/+2.71%、
+   换手只有 0.08~0.11，配额档下**三档全部**盖过排序轴）。所以这份名单是**沿用了那条
+   被验证过的选票动作**（闸门 + 低分侧取前 n 只），不是新造的组合，但它样本内、
    未过准入链 —— 叫「先人工核这一批」，不叫买入信号。
    名单上再叠三道纯执行性硬闸：当日无成交/停牌、当日收盘已贴涨停（阈值口径由
    `ASHARE_TRADABLE_GATE` 一个开关说话，三档：`flat` = 全线 0.095；`board` = 自己板块
@@ -47,13 +52,24 @@
    历史规则用，日频只有「今天」这一档规则，所以 dated 在日频侧与 board 逐字相同）、
    以及 ST/*ST（判据来自当日收盘快照的「名称」列，无快照则该闸不跑并在
    stats 里如实记）。
+2b) **名单形状**（09-25 选项E 落地，`ASHARE_LIST_SCHEME`，默认 `quota`）——不再是「轴的
+   前 50 名」，而是先给四个板块留席位（主板 20 / 创业板 10 / 科创板 10 / 北交所 10），
+   **段内仍按同一根轴升序取**；某段没货就用全局次安静的回填。**排序轴一字没改**，
+   改的是「谁有资格进名单」。这条的真实身份必须念准，别读成四段均衡：570 个调仓日里
+   科创板 **570 天**填不满 10 席（日均只有 0.51 只）、北交所 494 天（10 → 2.2）⇒ 它实测
+   等于「**给创业板留 10 个保底席位**」（名单内创业板 2.7 → 9.7 只），名单最大板块占比
+   0.94 → 0.80。账单：5 席下单满仓口径 +11.70% → +13.04%/年、IR 0.48 → 0.55、凑满率
+   75.3% → 100%、换手 0.307 → 0.270，12 年里 10 年更好（见 CHANGELOG ㉗ 第五节、
+   重跑后的 39 行账单在 ㉘）。当日到底填上几只，收尾那两行按段念「最终／席位腿」。
 3) **下单名单**（`order_YYYYMMDD.csv`，09-24 的 B 路）——从上面那份 50 只观察名单里
-   按名次挑 `ASHARE_ORDER_TOP_N`（默认 5）只真下单，每只按**槽位**给权 1/top_n。
+   按名次挑 `ASHARE_ORDER_TOP_N`（默认 5）只真下单，每只按**实际挑到的只数**等权给满
+   （`1/n_picked`，不留现金；09-25 由旧的 `1/top_n` 改过来，实测账单见 CHANGELOG ㉗）。
    这一层**不新造 alpha、不改排序轴**，只加两条分散约束：同一实体行业 ≤
    `ASHARE_ORDER_MAX_PER_INDUSTRY`、同一板块 ≤ `ASHARE_ORDER_MAX_PER_BOARD`。
    约束是**分散度**不是白名单：个人账户科创板/创业板/北交所都有权限，任何一段都不拉黑
    （行业未知的票因此**不参与**行业去重，否则映射缺口 85% 的北交所会被变相排除）。
-   凑不满就少买、把 shortfall 报出来，不临时放宽判据。行业列来自
+   凑不满**不放宽判据**，缺的席位摊给已挑到的票（单票权重因此会高于 1/top_n，
+   shortfall 与每只实际权重都照实报出来）。行业列来自
    `data/fetch_industry_map.py` 落的外部映射，缺表/过期时这一条约束自动失效并如实记
    `meta.industry.loaded=false`（与 ST 闸同一降级姿势，日频链路不因此中断）。
 
@@ -88,13 +104,16 @@ import time
 import pandas as pd
 
 from config import (ASHARE_BUY_TOP_N, ASHARE_BUY_MIN_HITS, ASHARE_FACTORS_JSON,
-                    ASHARE_PORT_MIN_AMOUNT, ASHARE_SCREEN_QUANTILE,
-                    ASHARE_SIGNAL_DIR, ASHARE_SNAPSHOT_DIR, ASHARE_ORDER_TOP_N,
-                    ASHARE_TRADABLE_GATE,
-                    LOT_SIZE)
+                    ASHARE_BUY_EXTRA_RULES,
+                    ASHARE_PORT_MIN_AMOUNT, ASHARE_PORT_OUT,
+                    ASHARE_SCREEN_QUANTILE, ASHARE_SIGNAL_DIR, ASHARE_SNAPSHOT_DIR,
+                    ASHARE_ORDER_TOP_N, ASHARE_TRADABLE_GATE,
+                    ASHARE_LIST_SCHEME, LOT_SIZE)
 from ashare_screen import (BUY_EXPR, BUY_NAME, INDUSTRY_UNKNOWN, VOLUME_RULES,
-                           active_rules, build_matrices, factor_matrices, gate_desc,
-                           library_screen_link, load_industry_map, load_panel,
+                           active_buy_extra_rules, active_rules, build_matrices,
+                           factor_matrices, gate_desc,
+                           library_screen_link, list_desc,
+                           load_industry_map, load_panel,
                            order_candidates, screen_on_date)
 
 SIGNAL_DATE = os.environ.get("STOCK_SIGNAL_DATE", "")   # 空 = 面板最后一天
@@ -135,17 +154,110 @@ def spot_labels(s):
     return dict(zip(codes, nm)), st
 
 
+# 09-24 换掉的旧轴表达式，只用来在账单里把那一档行找出来做对照
+OLD_AXIS_EXPR = "ts_std(volume,20)"
+
+
+def axis_evidence_note():
+    """从组合层归档账单 `ashare_portfolio_eval.csv` **现算**「这根轴值多少钱」那一串
+
+    为什么不让数字写死在代码里：09-24 换过排序轴、09-25 换过名单形状，两次都把上一版
+    打印里的数字打翻了 —— 写死的读数第二天就成了假账。这里只读表不重跑回放，
+    并且按**本次运行的两个档位**筛行（行内 `gate` / `list_scheme` 两列自报），
+    所以 board+quota 这一跑不会念成 flat+global 的账单。
+    账单缺档（没跑过、或被 STOCK_PORT_OUT 指到别处）时明说算不出来，不猜。
+    """
+    if not os.path.exists(ASHARE_PORT_OUT):
+        return (f"账单缺失：{ASHARE_PORT_OUT} 不在，下面这串数字今天算不出来 —— "
+                f"先跑 run_ashare_portfolio_eval.py 再回来读")
+    p = pd.read_csv(ASHARE_PORT_OUT)
+    if "list_scheme" not in p.columns:
+        # 09-25 之前的表没这一列：那些行的名单形状是全局前 n 名
+        p["list_scheme"] = "global"
+    sub = p[(p["gate"] == ASHARE_TRADABLE_GATE)
+            & (p["list_scheme"] == ASHARE_LIST_SCHEME)]
+    if sub.empty:
+        return (f"账单里没有本次档位的行（`gate`={ASHARE_TRADABLE_GATE}、"
+                f"`list_scheme`={ASHARE_LIST_SCHEME}；表内现有 "
+                f"{sorted(set(p['gate']))} × {sorted(set(p['list_scheme']))}）"
+                f"⇒ 今天不念数字，别拿别的档位的账单当本档位的证据")
+
+    def tier(expr):
+        r = sub[sub["expr"] == expr].sort_values("top_n")
+        return {"top": r["top_n"].tolist(), "ex": r["excess_univ_ew_ann"].tolist(),
+                "ir": r["excess_univ_ew_ir"].tolist(), "to": r["one_way_turnover"].tolist()}
+
+    def pct(vals):
+        return "/".join(f"{v:+.2%}" for v in vals)
+
+    def num(vals):
+        return "/".join(f"{v:.3f}" for v in vals)
+
+    def signed(vals):
+        return "/".join(f"{v:+.2f}" for v in vals)
+
+    def recent_years(expr):
+        """分年度那张姊妹表里 2021 起那六年（表本身只记**中间档**那一格）
+
+        这张表没有 `list_scheme` 列 —— 它是同一场回放的产物，档位跟着主表走，
+        所以只在主表筛到本档位时才读它。
+        """
+        yp = ASHARE_PORT_OUT.replace(".csv", "_yearly.csv")
+        lab = sub.loc[sub["expr"] == expr, "signal"]
+        if lab.empty or not os.path.exists(yp):
+            return None
+        y = pd.read_csv(yp, index_col=0)
+        y = y[(y.index == lab.iloc[0]) & (y["datetime"] >= 2021)]["excess"]
+        return (f"{int((y > 0).sum())}/{len(y)} 年为正、均值 {y.mean():+.1%}/年"
+                if len(y) else None)
+
+    ex = sub["excess_univ_ew_ann"]
+    vol = sub[sub["signal"].str.startswith("量能")]
+    cur = tier(BUY_EXPR)
+    old = tier(OLD_AXIS_EXPR)
+    px = tier("ma(df,5)")
+    if not cur["ex"]:
+        return (f"账单里本档位（`gate`={ASHARE_TRADABLE_GATE}、"
+                f"`list_scheme`={ASHARE_LIST_SCHEME}）没有本轴 `{BUY_EXPR}` 的行"
+                f"⇒ 这根轴在当前名单形状下没量过，今天不念证据")
+    n_tier = min(len(cur["ex"]), len(old["ex"]))
+    beat_old = sum(1 for a, b in zip(old["ex"][:n_tier], cur["ex"][:n_tier]) if a > b)
+    beat_px = sum(1 for a, b in zip(px["ex"][:n_tier], cur["ex"][:n_tier]) if a > b)
+    y_cur, y_old = recent_years(BUY_EXPR), recent_years(OLD_AXIS_EXPR)
+    return (
+        f"组合层 {len(sub)} 行多头回放中位超额 {ex.median():+.2%}、"
+        f"{int((ex < 0).sum())} 行为负 ⇒「做多低量能侧」整体不成立；"
+        f"量能族那 {len(vol)} 行里只有 {int((vol['excess_univ_ew_ann'] > 0).sum())} 行为正"
+        f"（本轴与换轴前旧轴各三档 = 6 行，两根 09-24 侧算过 spearman 0.93~0.95、"
+        f"属同簇，换轴不增信息）。\n"
+        f"　本轴 {BUY_EXPR} {pct(cur['ex'])} @ top{'/'.join(str(t) for t in cur['top'])}、"
+        f"IR {signed(cur['ir'])}、单程换手 {num(cur['to'])}。\n"
+        f"　换掉的旧轴 {OLD_AXIS_EXPR} = {pct(old['ex'])}、换手 {num(old['to'])} —— "
+        f"本档位下 **{beat_old}/{n_tier} 档旧轴更高**"
+        f"{'（三档全负于旧轴，本轴在这一层只剩换手优势）' if beat_old == n_tier else ''}。"
+        f"⚠️ 09-24 换轴的理由（top50 三项全胜）是在**全局前 50 名**那份名单上量的"
+        f"（+1.55% vs +1.09%，见 `ashare_portfolio_eval_globalctrl_0925.csv`），"
+        f"名单形状 09-25 换成板块配额后 top50 这一档已经翻掉。没翻的是另一条（"
+        f"分年度那张姊妹表，只记中间档那一格）：2021 年起本轴 "
+        f"{y_cur or '未量过'}，旧轴 {y_old or '未量过'}，两种名单形状下方向一致。\n"
+        f"　与同表「低价股」对照分不开：MA(Price,5) {pct(px['ex'])}、换手 {num(px['to'])}，"
+        f"本档位下 **{beat_px}/{n_tier} 档盖过排序轴**且换手只有其一半。"
+    )
+
+
 def main():
     t0 = time.time()
     rules = active_rules()        # STOCK_SCREEN_RULES 在这里生效（含 lib:<因子库名> 提名）
+    extra = active_buy_extra_rules()   # STOCK_BUY_EXTRA_RULES：名单层独立闸，空串 = 关掉
     wide, _bench = load_panel()
     mtx = build_matrices(wide)
     del wide
-    # 启用的剔除构造 + 排序轴 + 闸门基准一次求值：同一份 factor_matrices、同一套
-    # $volume 口径，否则「剔谁」与「买谁」会踩在两套成交量定义上。
+    # 启用的剔除构造 + 排序轴 + 闸门基准 + 名单独立闸一次求值：同一份 factor_matrices、
+    # 同一套 $volume 口径，否则「剔谁」与「买谁」会踩在两套成交量定义上。
     # 闸门基准恒为「量能水平」那条（VOLUME_RULES[0]），不随 STOCK_SCREEN_RULES
     # 收窄而换 —— 否则关掉一条构造会连带把闸门挪到别的分布上，池子口径就漂了。
-    exprs = {e for _k, _n, e, _d in rules} | {BUY_EXPR, VOLUME_RULES[0][2]}
+    exprs = ({e for _k, _n, e, _d in rules} | {BUY_EXPR, VOLUME_RULES[0][2]}
+             | {e for _k, _n, e, _d in extra})
     rule_mats = factor_matrices(sorted(exprs), mtx)
     s, d1 = pick_date(mtx["close"].index)
     print(f"[信号] 信号日 {s.date()}，下一交易日 "
@@ -244,8 +356,8 @@ def main():
     buy.reset_index(names="code").to_csv(path_buy, index=False)
 
     n = len(buy)
-    print(f"\n===== {s.date()} 待买入短名单（待买入域内 {BUY_NAME} = {BUY_EXPR} 升序，"
-          f"前 {n} 名，等权 {1 / max(n, 1):.1%}） =====")
+    print(f"\n===== {s.date()} 待买入短名单（{BUY_NAME} = {BUY_EXPR} 为轴，"
+          f"名单口径 = {ASHARE_LIST_SCHEME}，共 {n} 只，等权 {1 / max(n, 1):.1%}） =====")
     # 两道剔除阈值今日的实际差：并集（≥1 条判响即剔）只管「不该买」那张域，
     # 名单入口用的是「≥ ASHARE_BUY_MIN_HITS 条一致判响才挡」。不打印出来，
     # 下一次有人拿两份名单逐行对账就会当成 bug 报回来
@@ -253,32 +365,47 @@ def main():
           f"今日被这道闸挡住 {bs['n_consensus']} 只；"
           f"另有 {bs['n_lenient_vs_union']} 只虽在「不该买」并集域内被剔、"
           f"但未达共识故放行（域口径 ≥1 条，见上一节）")
-    print(f"候选漏斗：闸门内且未达共识剔除 {bs['n_step1']} → 当日有成交 {bs['n_traded']} "
+    if extra:
+        # 独立闸不参与上面那个「命中几条」的计数，所以单独一行念清它咬了多少：
+        # 池内命中含与共识闸重叠的那批，净新增才是它今天真正从名单里拿走的只数
+        print(f"名单独立闸（不参与上面那道计数，各挡池内高分端 "
+              f"{ASHARE_SCREEN_QUANTILE:.0%}）："
+              + "、".join(f"{n} 池内命中 {bs['buy_extra_fired'][n]} 只"
+                          for _k, n, _e, _d in extra)
+              + f"　共识闸放行却被它挡掉 {bs['n_extra_net']} 只"
+              f"　它不改「不该买」那张域")
+    # 名单生成口径那一格今天到底填上了没有 —— 席位表看着像四段均衡，
+    # 科创板实际天天没货，不念出来的话这页就会被读成「四段各 10 只」
+    ls = bs["list"]
+    nb, lg = ls["n_by_board"], ls["n_leg_by_board"]
+    print(f"名单口径：{list_desc()}")
+    print(f"　四段构成（最终／其中席位腿）："
+          + "、".join(f"{b} {nb.get(b, 0)}／{lg.get(b, 0)}"
+                      for b in ("主板", "创业板", "科创板", "北交所"))
+          + f"；靠回填补进 {ls['n_backfilled']} 只"
+          + (f"；席位没填满的段（那段**没有货**，不是没给席位）："
+             + "、".join(f"{b} 差 {k} 只" for b, k in ls["quota_unmet"].items())
+             if ls["quota_unmet"] else "；四段席位今日全部填满"))
+    if ls["n_short"]:
+        print(f"　⚠️ 候选不足：名单只有 {ls['n_list']} 只（目标 {ASHARE_BUY_TOP_N}）"
+              f"⇒ 等权那一格按实际只数算，别按 {ASHARE_BUY_TOP_N} 算")
+    print(f"候选漏斗：闸门内且过共识闸+独立闸 {bs['n_step1']} → 当日有成交 {bs['n_traded']} "
           f"→ 非近涨停 {bs['n_traded'] - bs['n_chase']} → 非 ST {bs['n_cand']}"
           f"（剔 ST {bs['n_st']} 只{'' if bs['st_checked'] else '，今日无快照未跑'}）"
           f"　昨收取不到而放过 {bs['n_chg_unknown']} 只")
-    print(f"入线阈值：第 {n} 名的 {BUY_NAME} = {bs['quiet_cut']:.4g}"
-          f"　与组合层选票口径的对账：那一层只过闸门就取低分侧 top_n，"
-          f"本名单多跑三道执行闸后有 {bs['n_diff_vs_backtest']} 只不同")
+    print(f"入线阈值：名单最后一名（第 {n} 名）的 {BUY_NAME} = {bs['quiet_cut']:.4g}"
+          f"　与组合层选票口径的对账：那一层只过闸门、名单形状走**同一个** "
+          f"apply_board_quota，本名单多跑三道执行闸后有 {bs['n_diff_vs_backtest']} 只不同")
     print(buy[["name", "close", "amount20_yi", "lot_value_yuan", BUY_NAME,
                "安静度分位", "当日涨幅", "listed_days", "weight"]].to_string())
-    print(f"\n⚠️ 排序轴的证据强度（读一遍再下单）：组合层 39 行多头回放中位超额 -0.98%、"
-          f"20 行为负，量能族那 24 行里只有 7 行为正（本轴与换轴前旧轴各三档 = 6 行，"
-          f"spearman 0.93~0.95；剩 1 行是 SMA(Volume,10)@200 的 +0.26%）；"
-          f"本轴 {BUY_EXPR} = SMA(Volume,20) 三档 "
-          f"+1.39%/+1.59%/+1.58% @ top50/100/200、IR +0.11~+0.17、单程换手 0.162~0.186。"
-          f"**09-24 换轴**（用户裁决）：换掉的旧轴 STD(Volume,20) 是 +0.95%/+2.31%/+3.70%、"
-          f"换手 0.257~0.311 —— top100/200 两档仍归旧轴，放大持仓数要重量本轴；"
-          f"换过来的理由是 top50（= 本名单那一档）三项全胜，且 2021 起六年 4/6 为正"
-          f"（旧轴 2/6、六年均值 -0.7%/年，旧轴中位 +5.6% 几乎全来自 2015~2020）；"
-          f"与同表「低价股」对照分不开（MA(Price,5) 三档 +3.56%/+2.73%/+2.18%、"
-          f"换手只有 0.08~0.10，换轴后三档全部盖过本轴）。"
-          f"本轴与剔除用的 `level` 是**同一个表达式**（高分端踢出域、低分端买）⇒ 这根轴"
-          f"一旦失效，域和名单同时坏。"
-          f"样本内、未过准入链 —— 它是「先人工核这一批」的排队顺序，不是收益承诺。"
-          f"　（以上数字来自 `board` 档归档表 `ashare_portfolio_eval.csv`，"
-          f"核对请查行内 `expr` 列 = `{BUY_EXPR}`；本次运行档位 = "
-          f"`{ASHARE_TRADABLE_GATE}`）")
+    print(f"\n⚠️ 排序轴的证据强度（读一遍再下单）：{axis_evidence_note()}"
+          f"　本轴与剔除用的 `level` 是**同一个表达式**（高分端踢出域、低分端买）⇒ 这根轴"
+          f"一旦失效，域和名单同时坏。样本内、未过准入链 —— 它是「先人工核这一批」的"
+          f"排队顺序，不是收益承诺。"
+          f"　（以上数字每次运行现从 `{os.path.basename(ASHARE_PORT_OUT)}` 算，"
+          f"核对请查行内 `expr` 列 = `{BUY_EXPR}`；本次档位 = "
+          f"涨停闸 `{ASHARE_TRADABLE_GATE}`、名单口径 `{ASHARE_LIST_SCHEME}` —— "
+          f"复现这张表要**两个**开关一起拨，行内 `gate` / `list_scheme` 两列自报）")
 
     # ---------- 下单名单（B 路：观察名单 → 仓位表，不加判据） ----------
     order, ost = order_candidates(buy, ind_map, ASHARE_ORDER_TOP_N)
@@ -294,10 +421,12 @@ def main():
           f"同行业 ≤{ost['max_per_industry']}、同板块 ≤{ost['max_per_board']}）=====")
     print(od[["obs_rank", "name", "板块", "行业", "close", "lot_value_yuan",
               BUY_NAME, "weight"]].to_string())
-    print(f"仓位：{ost['n_picked']} 只 × 每槽 {1 / ASHARE_ORDER_TOP_N:.0%} = "
-          f"{ost['weight_sum']:.0%}，其余留现金"
-          + (f"　⚠️ 只凑到 {ost['n_picked']} 只（shortfall {ost['shortfall']}）："
-             f"放宽约束等于在本层改判据，所以宁可少买" if ost["shortfall"] else ""))
+    print(f"仓位：{ost['n_picked']} 只等权满仓，每只 {ost['weight_each']:.1%}"
+          f"（合计 {ost['weight_sum']:.0%}）"
+          + (f"　⚠️ 目标 {ASHARE_ORDER_TOP_N} 只、只凑到 {ost['n_picked']} 只"
+             f"（shortfall {ost['shortfall']}）：放宽约束等于在本层改判据，所以判据不动，"
+             f"缺的席位摊给已挑到的票 —— 每只权重因此升到 {ost['weight_each']:.1%}"
+             if ost["shortfall"] else ""))
     if ost["shortfall"]:
         # 凑不满有两种：约束真的挡完了，或 cap 定得比名单构成还紧（后者是参数错，
         # 不是市场没给票）—— 把名单自己的板块分布打出来，让人一眼分得开
@@ -320,6 +449,11 @@ def main():
             "tradable_gate": ASHARE_TRADABLE_GATE,
             # 两套剔除强度分开记：看板的「不该买」页读 quantile，「待买入」页读这个
             "buy_min_hits": ASHARE_BUY_MIN_HITS,
+            # 名单层独立闸的口径自报（09-26 起）：审计要按**这一场记的那几条**复算，
+            # 老场次缺这个键 = 那天还没有这道闸，复算也就不叠它
+            "buy_extra_rules": [{"key": k, "name": n, "expr": e,
+                                 "fired": bs["buy_extra_fired"].get(n, 0)}
+                                for k, n, e, _d in extra],
             "universe": int(universe.sum()), "dropped": int(r["dropped"].sum()),
             "keep": int(keep.sum()), "n_limit_up": r["n_limit_up"],
             # 今天到底跑了哪几条剔除构造、各踢了多少 —— 看板直接读，不自己拼规则表

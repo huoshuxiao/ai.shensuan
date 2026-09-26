@@ -17,11 +17,26 @@ factor_hypothesis_specification: |-
     - The only input series you may use are the raw price/volume fields of each instrument: $open, $high, $low, $close (a.k.a. Price) and $volume.
     - You MUST NOT treat an already-computed factor, a model prediction, or any "factor value" series as an input. There is no such column in the dataset; a hypothesis built on it can never be implemented. In particular, expressions like F_{t-i} or "moving average of the factor" are forbidden — the input of every factor must be one of the five raw fields above.
     - Do not propose machine-learning, multi-dimensional or data-source factors (no alternative data, no model outputs are available here).
-  2. **Simple and effective factors first:**
+  2. **Universe: the FULL A-share market, all four board segments, no segment is off-limits:**
+    - The panel carries 主板, 科创板 (688/689), 创业板 (300/301) and 北交所 (BJ) — 6,000+
+      instruments, 2015-01-05 to present. This is a single personal account that HOLDS the
+      trading permission for all three tail boards. Do NOT propose factors whose purpose is to
+      screen those segments out, and do not avoid them for "accessibility/liquidity" reasons —
+      an untradeable-tail design would discard a fifth of the cross-section for no reason.
+    - What DOES differ across boards is the daily price limit: ±10% 主板, ±20% 科创板 and
+      创业板, ±30% 北交所. So a raw return or a raw price/volume LEVEL is not comparable
+      across boards — ranking on one mixes limit headroom with signal.
+    - Therefore PREFER constructions that normalise an instrument against its OWN history
+      (a ratio of two windows, or a dispersion divided by its own mean) over bare levels.
+      Measured reason specific to this dataset: $volume is NOT lots, it is 复权成交量
+      = 真实手数 / $factor, so a volume level is arbitrarily scalable per instrument. The
+      cross-sectional Spearman between STD(Volume,20) and MEAN(Volume,20) is 0.93~0.95, i.e.
+      that "volatility" axis is mostly a level axis wearing a different operator.
+  3. **Simple and effective factors first:**
     - Prefer one-window transforms of a single raw field: rolling mean / std / max / min / volume-weighted average / simple day-over-day ratio of Price or Volume.
     - Concisely explain why these factors are expected to work.
     - Avoid complex or combined factors initially.
-  3. **EXACTLY 2 factors per generation (hard cap):**
+  4. **EXACTLY 2 factors per generation (hard cap):**
     - Output precisely 2 factor keys in the JSON object. Not 1, not 3, never 12.
       This machine is compute-limited: a factor experiment only reaches backtest
       ("running") after EVERY factor in it has been implemented, so the number of
@@ -49,36 +64,64 @@ factor_hypothesis_specification: |-
     A spelled-out operator is THE SAME factor as its abbreviated token and is equally tested:
     "Momentum" = MOM, "Simple Moving Average" = SMA, "Standard Deviation" = STD, "Maximum"/"Minimum"
     = MAX/MIN. Renaming a tested factor by writing its operator in words does not make it new.
-    - MAX/MIN of Volume at any window. Measured 09-23 by stock/v1/src/run_ashare_redundancy_check.py
-      (full market, 5658 stocks, 2015-01-05~2026-09-22, 2830 valid days). The number is the mean
-      daily cross-sectional Pearson against the closest factor already in the library — the exact
-      metric rdagent's deduplicate_new_factors compares against its 0.99 bar:
+    - Volume LEVELS: MAX / MIN / SMA of Volume, at any window. Measured twice by
+      stock/v1/src/run_ashare_redundancy_check.py (full market; 09-23 batch: 5658 stocks,
+      2015-01-05~2026-09-22, 2830 valid days; 09-24 batch: through 2026-09-24, 2793 valid
+      days). The number is the mean daily cross-sectional Pearson against the closest factor
+      already in the library — the same metric rdagent's deduplicate_new_factors compares
+      against its 0.99 bar:
         MAX(Volume,20) 0.984 vs STD(Volume,20)   MAX(Volume,5) 0.981 vs SMA(Volume,5)
-        MIN(Volume,5)  0.969 vs SMA(Volume,10)   MIN(Volume,20) 0.943 vs SMA(Volume,20)
-      None of them trips the bar (resubmitting a library factor verbatim scores 1.000 and does),
-      but three of the four are the volume-level cluster wearing a different operator, so their IC
-      is already predetermined by the SMA/STD of Volume on record. MIN(Volume,20) is the one end
-      still worth a round: the quiet-day minimum is where 地量 lives, and it is the only non-ratio
-      name left that is not a re-skin of something measured.
-  CANDIDATE LIST (already drafted, never backtested yet — pick 2, listed most
-  informative first). The number after each name is its measured redundancy against the
-  library (see above), so the ratios are the genuinely independent ones:
-    - 20-day MIN of Volume                          (0.943)
-    - 5-day SMA of Price over 20-day SMA of Price   (0.821)
-    - 5-day STD of Volume over 20-day STD of Volume (0.602)
-    - 20-day STD of Price over 20-day SMA of Price  (0.374)
+        MIN(Volume,5)  0.969 vs SMA(Volume,10)   MIN(Volume,20) 0.946 vs SMA(Volume,20)
+        SMA(Volume,60) 0.941 vs SMA(Volume,20)   [09-24]
+      None of them trips the 0.99 hard bar (resubmitting a library factor verbatim scores
+      1.000 and does), but all of them are the volume-level cluster wearing a different
+      operator or a longer window, so their IC is already predetermined by the SMA/STD of
+      Volume on record. THIS LINE'S OWN BAR IS TIGHTER THAN rdagent's: NEAR_DUP = 0.90
+      (it was 0.95 until 09-24, and the 09-24 run is what moved it — STD(Volume,20), the
+      scale-free candidate this line is evaluating to replace its buy-list axis, has non-self
+      nearest neighbours at 0.9266 / 0.9262 / 0.9137 / 0.9088, ALL FOUR under the old bar,
+      i.e. 0.95 did not actually catch "same family, different window"). So a volume level is
+      not a proposal, it is a re-skin; there is no longer any single-field volume level name
+      worth a round.
+  CANDIDATE LIST (already drafted, never backtested yet — pick 2, ordered by measured
+  independence from the library, most independent first). The number after each name is its
+  redundancy against the closest library factor, from the 09-24 batch (2793 valid days, panel
+  through 2026-09-24); anything at or above this line's 0.90 bar is a re-skin and is not
+  listed here at all:
+    - 20-day STD of Price over 20-day SMA of Price    (0.328)
+    - 20-day STD of Volume over 20-day SMA of Volume  (0.427)  <- scale-free dispersion (CV)
+    - 10-day STD of Volume over 10-day SMA of Volume  (0.470)
+    - 5-day STD of Volume over 20-day STD of Volume   (0.604)
+    - 10-day MOM of Volume                            (0.609)  <- the ONLY non-ratio name left
+    - 5-day STD of Volume over 20-day SMA of Volume   (0.739)
+    - 10-day SMA of Volume over 20-day SMA of Volume  (0.775)
+    - 5-day SMA of Price over 20-day SMA of Price     (0.837)
+  Two names that measured well are deliberately NOT on the list: 20-day SMA of Volume over
+  20-day STD of Volume (0.282) is the CV row flipped upside down, and a reciprocal is a
+  monotone transform, so it carries the same cross-sectional ranking and adding it would be
+  double-counting one axis. 10-day STD over 10-day SMA and 20-day STD over 20-day SMA are the
+  same construction at two windows — under the "must differ in field or family, not just
+  window length" rule above, they are one pick, not two.
   At most ONE of the two may be a ratio name (the "... over ..." pattern): a ratio
   needs two windows plus a division and fails implementation more often, which would
-  lose the whole experiment's backtest. The list is left with only ONE non-ratio name, so
-  the other pick must be a ratio — do NOT invent a non-ratio name to fill the slot; an
-  invented single-field name is almost always a tested factor wearing another operator.
-  4. **Gradual complexity:**
+  lose the whole experiment's backtest. After the 0.90 bar was applied there is exactly ONE
+  non-ratio name left on this list (10-day MOM of Volume), so the other pick must be a ratio —
+  do NOT invent a non-ratio name to fill the slot; an invented single-field name is almost
+  always a tested factor wearing another operator, which is exactly how this list got down to
+  one. Two honest caveats on that lone non-ratio name: it is a day-over-N change, so a
+  除息/reinstatement step inside the 10 days shifts it (the $volume field is 复权成交量, see
+  above); and the library already carries 20-day MOM of Volume, so its value is the window,
+  not the construction. The CV row (STD over SMA of the same field and window) is the one
+  that fits the normalisation instruction in point 2 best — it divides a dispersion by its
+  own mean, so the per-instrument $factor scaling cancels — and it is the axis this line is
+  currently considering for its own buy list, so if it has IC we want to know it independently.
+  5. **Gradual complexity:**
     - Combined factors are now unlocked (all single-field level/volatility factors
       above have been backtested), but only in the exact ratio form allowed by the
       naming rule — never by feeding one computed factor into another.
-  5. **New directions and optimizations:**
+  6. **New directions and optimizations:**
     - If multiple consecutive iterations fail to produce factors surpassing SOTA, switch direction and start again from simple factors of a different raw field.
-  6. Note
+  7. Note
     - Highlight that factors surpassing SOTA are included in the library to avoid re-implementation.
     - No matter how many factors you plan to generate, only reply with one set of hypothesis and reason. The hypothesis can include the proposal of multiple factors at the same time.
 

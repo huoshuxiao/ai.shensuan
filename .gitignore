@@ -226,3 +226,35 @@ etf/v1/report/*.*
 # qlib 行情 bin：两条线各一份（GB 级、数万小文件），只能从上游 release /
 # dump_bin 重建，一旦 git add 会把整棵树吞进版本库
 */v1/data/qlib/
+
+# 人工成交录入与持仓账本：个人财务数据，不入库。研究产物照旧走 data/results/
+*/v1/data/live/
+
+# qlib bin 日更的收盘快照与逐场记账表（每天一份、可重算的行情中间产物）
+stock/v1/data/daily_snapshot/
+
+# shell/ 只挡逐场产物（日志、临时 csv/json、图），一次性脚本本身要能交接：
+# 「临时脚本进仓库而不是 /tmp」那条约定的后半句就是"必要时能一起提交"，
+# 整目录吞掉会让脚本从 git 里消失（09-25 实测这样埋了 261 个 .py）。
+# 否定行的顺序不能换：先放行目录本身（**/ 匹配零或多层），git 才会继续往里走，
+# 再按扩展名逐个放行。
+shell/**
+!shell/**/
+!shell/**/*.py
+!shell/**/*.sh
+
+# 两条线的 data/：整棵默认不入库，但**判据产物**要能在 git 里被看见/交接（同 shell/ 那条理由）。
+# 为什么不给 `results/` 整体开口子：`results/rdagent_output/` 就挂在 results/ 底下，
+# 实测 ETF 569M + 股票 4.5G ≈ 5.1G，里面是 70347 个 .bin / 11489 个 .pkl / 190 个 .py
+# （RD-Agent 会话碎屑与它自己生成的因子代码），整体放行会把这些吞进版本库。
+# 白名单一律按「目录 + 扩展名」写；gitignore 的 `*` 不跨 `/`，所以每条只命中该目录的
+# 直接子文件，递归进来的同名扩展名不会被顺带放行。
+*/v1/data/**
+!*/v1/data/**/
+!*/v1/data/results/*.csv
+!*/v1/data/results/*.json
+!*/v1/data/results/*.md
+!*/v1/data/results/daily_signal/*.csv
+!*/v1/data/library/*
+# 风险面板（份额/净值长表）：交易所源的窗口会往前滚，取不到第二次，属不可再生资产
+!*/v1/data/risk/*.csv

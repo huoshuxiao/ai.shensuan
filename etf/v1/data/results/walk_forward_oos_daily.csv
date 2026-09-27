@@ -1,0 +1,2 @@
+﻿sr_observed,sr0_expected_max,sr_variance,sr_variance_source,dsr,skew,kurt,n_trials,n_samples,passed,sharpe_annual,sr0_annual,n_segments,train_ratio
+0.04866697574707286,0.06132381592020068,0.0004971123323059499,Lo2002 抽样方差 (1+0.5·SR̂²)/T,0.11641621758262721,30.7224353242212,1219.8570506881838,191,2014,False,0.7725642893302,0.9735,3,0.5

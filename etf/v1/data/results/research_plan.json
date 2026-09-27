@@ -1,0 +1,16 @@
+{
+  "plan": [
+    {
+      "title": "提升因子稳定性",
+      "rationale": "近期多个因子衰减",
+      "candidate_exprs": [
+        "ts_std(returns, 20) / (ts_mean(volume, 20) + 1e-9)"
+      ],
+      "priority": "high",
+      "expected_ic_gain": 0.008
+    }
+  ],
+  "summary": "聚焦稳定性",
+  "generated_at": "2026-09-25T00:19:31.485088",
+  "days": 3
+}

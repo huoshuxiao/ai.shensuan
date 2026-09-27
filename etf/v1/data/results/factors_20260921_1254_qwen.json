@@ -1,0 +1,42 @@
+[
+  {
+    "name": "20-day Simple Moving Average",
+    "expr": "",
+    "formulation": "SMA_{20} = \\frac{1}{20} \\sum_{i=1}^{20} P_{i}",
+    "code": "import pandas as pd\n\n\ndef calculate_20_day_sma(df):\n    # Calculate the 20-day Simple Moving Average\n    sma_20 = df['close'].rolling(window=20).mean()\n    return sma_20\n\nif __name__ == '__main__':\n    # Read the daily_pv.h5 file\n    df = pd.read_hdf('daily_pv.h5', key='data')\n\n    # Calculate the 20-day Simple Moving Average\n    sma_20 = calculate_20_day_sma(df)\n\n    # Save the result into a HDF5 file\n    sma_20_df = pd.DataFrame(sma_20, columns=['20-day SMA'])\n    sma_20_df.index = df.index\n    sma_20_df.to_hdf('result.h5', key='data')\n",
+    "mean_ic": 0.0,
+    "icir": 0.0
+  },
+  {
+    "name": "50-day Simple Moving Average",
+    "expr": "",
+    "formulation": "SMA_{50} = \\frac{1}{50} \\sum_{i=1}^{50} P_{i}",
+    "code": "import pandas as pd\n\ndef calculate_50day_sma(df):\n    # Calculate the 50-day Simple Moving Average\n    df['50day_sma'] = df['close'].rolling(window=50).mean()\n    # Set the index to be the 'datetime' and 'instrument'\n    df.set_index(['datetime', 'instrument'], inplace=True)\n    # Reset the column name to be the factor name\n    df.columns = ['50day_sma']\n    return df\n\nif __name__ == '__main__':\n    # Read the daily_pv.h5 file\n    df = pd.read_hdf('daily_pv.h5', key='data')\n    # Calculate the 50-day SMA\n    result_df = calculate_50day_sma(df)\n    # Save the result to result.h5\n    result_df.to_hdf('result.h5', key='data', mode='w')",
+    "mean_ic": 0.0,
+    "icir": 0.0
+  },
+  {
+    "name": "20-day Volume Moving Average",
+    "expr": "",
+    "formulation": "VMA_{20} = \\frac{1}{20} \\sum_{i=1}^{20} V_{i}",
+    "code": "import pandas as pd\n\n\ndef calculate_20day_volume_moving_average(df):\n    # Calculate the 20-day Volume Moving Average\n    window_size = 20\n    vma_20 = df['volume'].rolling(window=window_size).mean()\n\n    # Save the result into a HDF5 file\n    result_df = pd.DataFrame(vma_20, columns=['20-day Volume Moving Average'])\n    result_df.index = df.index\n    result_df.to_hdf('result.h5', key='data')\n\n\nif __name__ == '__main__':\n    # Read the source data\n    df = pd.read_hdf('daily_pv.h5', key='data')\n    # Calculate the 20-day Volume Moving Average\n    calculate_20day_volume_moving_average(df)",
+    "mean_ic": 0.0,
+    "icir": 0.0
+  },
+  {
+    "name": "Beta Factor",
+    "expr": "",
+    "formulation": "\\beta = \\frac{\\text{Cov}(P, R_{m})}{\\text{Var}(R_{m})}",
+    "code": "import pandas as pd\n\n# Function to calculate the beta factor\ndef calculate_beta_factor(window_size=10, lookback_period=20):\n    # Load the daily_pv.h5 file\n    df = pd.read_hdf('daily_pv.h5', key='data')\n\n    # Extract the closing prices and benchmark returns\n    close_prices = df['close']\n    benchmark_returns = df['factor']  # Assuming the benchmark returns are stored in a column named 'factor'\n\n    # Calculate the lookback period returns\n    benchmark_returns_lookback = benchmark_returns.pct_change(lookback_period).rolling(window=window_size).mean()\n    close_prices_lookback = close_prices.pct_change(lookback_period).rolling(window=window_size).mean()\n\n    # Calculate the covariance and variance\n    cov = close_prices_lookback.cov(benchmark_returns_lookback)\n    var = benchmark_returns_lookback.var()\n\n    # Calculate the beta factor\n    beta_factor = cov / var\n\n    # Reshape the beta factor to match the index structure\n    beta_factor_df = beta_factor.to_frame(name='beta_factor')\n    beta_factor_df.index = df.index\n    beta_factor_df = beta_factor_df.reset_index()\n    beta_factor_df = beta_factor_df.set_index(['datetime', 'instrument'])\n\n    # Save the result to an HDF5 file\n    beta_factor_df.to_hdf('result.h5', key='data', mode='w')\n\nif __name__ == '__main__':\n    calculate_beta_factor()",
+    "mean_ic": 0.0,
+    "icir": 0.0
+  },
+  {
+    "name": "Logarithmic Return Volatility",
+    "expr": "",
+    "formulation": "\\sigma = \\sqrt{\\frac{1}{N-1} \\sum_{i=1}^{N} (\\log(P_{i+1}) - \\log(P_{i}))^{2}}",
+    "code": "import pandas as pd\n\n# Load the daily price and volume data\ndef calculate_log_return_volatility(df):\n    # Ensure the dataframe is sorted by datetime and instrument\n    df = df.sort_index()\n\n    # Calculate the log returns\n    log_returns = df['close'].pct_change().apply(lambda x: pd.np.log(1 + x))\n\n    # Calculate the volatility\n    volatility = log_returns.rolling(window=20).std() * (252 ** 0.5)\n\n    # Drop NaN values\n    volatility = volatility.dropna()\n\n    # Save the result to a HDF5 file\n    result_df = pd.DataFrame(volatility, columns=['log_return_volatility'])\n    result_df.index = result_df.index.get_level_values('datetime')\n    result_df.to_hdf('result.h5', key='data')\n\nif __name__ == '__main__':\n    df = pd.read_hdf('daily_pv.h5', key='data')\n    calculate_log_return_volatility(df)",
+    "mean_ic": 0.0,
+    "icir": 0.0
+  }
+]

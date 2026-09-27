@@ -1,0 +1,18 @@
+[
+  {
+    "name": "5-day SMA of Price",
+    "expr": "ma(df,5)",
+    "formulation": "P_{t-5} = \\frac{1}{5} \\sum_{i=0}^{4} P_{t-i}",
+    "code": "import pandas as pd\n\ndef calculate_5_day_sma_of_price(df):\n    # Ensure the index is sorted\n    df = df.sort_index()\n\n    # Calculate the 5-day SMA\n    window_size = 5\n    sma_factor = df['close'].rolling(window=window_size).mean()\n\n    # Reset index to get a clean DataFrame\n    sma_factor = sma_factor.reset_index()\n    sma_factor.columns = ['datetime', 'instrument', '5-day SMA of Price']\n    sma_factor = sma_factor.set_index(['datetime', 'instrument'])\n\n    return sma_factor\n\nif __name__ == '__main__':\n    # Read the daily_pv.h5 file\n    df = pd.read_hdf('daily_pv.h5', key='data')\n\n    # Calculate the 5-day SMA of Price\n    result = calculate_5_day_sma_of_price(df)\n\n    # Save the result to a HDF5 file\n    result.to_hdf('result.h5', key='data', mode='w')",
+    "mean_ic": 0.0,
+    "icir": 0.0
+  },
+  {
+    "name": "10-day SMA of Volume",
+    "expr": "ts_mean(volume,10)",
+    "formulation": "V_{t-10} = \\frac{1}{10} \\sum_{i=0}^{9} V_{t-i}",
+    "code": "import pandas as pd\n\n\ndef calculate_10_day_sma_volume(df):\n    # Extract the volume column\n    volume = df['volume']\n\n    # Calculate the 10-day SMA of volume\n    window_size = 10\n    volume_sma = volume.rolling(window=window_size).mean()\n\n    # Save the result into a HDF5 file\n    result_df = pd.DataFrame(volume_sma, columns=['10-day SMA of Volume'])\n    result_df.index = df.index\n    result_df.to_hdf('result.h5', key='data')\n\nif __name__ == '__main__':\n    # Load the daily_pv data\n    df = pd.read_hdf('daily_pv.h5', key='data')\n    calculate_10_day_sma_volume(df)",
+    "mean_ic": 0.0,
+    "icir": 0.0
+  }
+]

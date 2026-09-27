@@ -1,0 +1,5 @@
+﻿factor,method,top_lag,top_lag_importance,root_cause
+reversal_5,shap,lag_10,0.0,衰减原因不明确
+volatility_20,shap,lag_10,0.0,衰减原因不明确
+momentum_20,shap,lag_10,0.0,衰减原因不明确
+volume_ratio_20,shap,lag_10,0.0,衰减原因不明确

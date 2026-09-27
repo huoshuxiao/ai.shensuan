@@ -8,11 +8,13 @@
 # 键名与使用处：factor_proposal.py:44 用 factor_hypothesis_specification，
 # factor_proposal.py:68 用 factor_experiment_output_format。
 #
-# 与股票线那份同源（stock/v1/data/results/rdagent_output/scenarios/qlib/prompts.yaml），
-# 正文逐字同步：约束的是「只能用原始 OHLCV 做输入 + 因子命名可翻译成管线 DSL」，
-# 与截面是 A 股个股还是 ETF 无关，所以**改一处必改两处**（09-23 扩宽命名文法时已按此同步）。
-# 比较两条线的 IC 数值没有意义（本线 RD-Agent 侧池子 09-22 已从 20 只扩到 871 只全市场 ETF，
-# 但截面仍比股票线薄一个量级），靠因子库的 market 字段隔离。
+# 本文件只服务 ETF 线：ALREADY TESTED / CANDIDATE LIST 里的每一个数字都是 ETF 全市场池
+# 自己量出来的（851 只 × 2019-01-02~2026-09-22 × 1865 个有效日，中位 442 只/日；入口
+# etf/v1/src/run_etf_factor_eval.py → run_etf_portfolio_eval.py → run_etf_redundancy_check.py）。
+# **不与股票线那份同步**：同一批表达式在两条线上的 RankIC 连符号都不一致（价格水平族在本池
+# +0.025~+0.028，在 A 股个股池 -0.013~-0.016），把对面的结论抄过来就是把别人的测量当本线的先验。
+# 两边真正共用的只有命名文法那一段——因为 DSL 翻译器同源（common/src/core/rdagent_driver.py），
+# 只有改文法时才需要动两处。IC 数值横向比较无意义，靠因子库的 market 字段隔离。
 #
 # 治的病：09-22 那轮 coder:7b 提出的唯一因子是 MA_5 = Σ F_{t-i}/5，把「因子值」
 # 当成输入序列做滑窗。本数据集只有 OHLCV，没有「因子值」这一列，于是实现 10/10
@@ -23,67 +25,97 @@ factor_hypothesis_specification: |-
     - The only input series you may use are the raw price/volume fields of each instrument: $open, $high, $low, $close (a.k.a. Price) and $volume.
     - You MUST NOT treat an already-computed factor, a model prediction, or any "factor value" series as an input. There is no such column in the dataset; a hypothesis built on it can never be implemented. In particular, expressions like F_{t-i} or "moving average of the factor" are forbidden — the input of every factor must be one of the five raw fields above.
     - Do not propose machine-learning, multi-dimensional or data-source factors (no alternative data, no model outputs are available here).
-  2. **Simple and effective factors first:**
-    - Prefer one-window transforms of a single raw field: rolling mean / std / max / min / volume-weighted average / simple day-over-day ratio of Price or Volume.
-    - Concisely explain why these factors are expected to work.
-    - Avoid complex or combined factors initially.
+  2. **Prefer what is new to THIS panel, not what is new in general:**
+    - Every single-field transform of Price, and every single-field transform of Volume,
+      has already been measured on this cross-section (see ALREADY TESTED). What is left
+      is the shape "today's close divided by a windowed statistic of close" — the names in
+      the CANDIDATE LIST.
+    - Concisely explain why the factor is expected to work, and name the regime in which
+      it should fail. Avoid complex or combined factors beyond the allowed ratio form.
   3. **EXACTLY 2 factors per generation (hard cap):**
     - Output precisely 2 factor keys in the JSON object. Not 1, not 3, never 12.
       This machine is compute-limited: a factor experiment only reaches backtest
       ("running") after EVERY factor in it has been implemented, so the number of
       factors per generation multiplies the whole wall time.
-    - Pick 2 names verbatim from the CANDIDATE LIST below (they were drafted by a
-      previous generation and never backtested), so the pipeline can consume them
-      immediately; only invent a new name if none fits, and stay inside the naming
-      rule and off the ALREADY TESTED list.
-    - All must be computable from the raw fields above. The two names must differ
-      in raw field or in family (level / volatility / momentum / ratio), not just
-      in window length.
-  ALREADY TESTED — never propose these again (they are in the factor library):
-    - 5/10/20-day SMA of Price, 5/10/20-day STD of Price
-    - 5/10/20-day SMA of Volume, 5/10/20-day STD of Volume
-    - 5-day MOM of Price, 20-day MOM of Volume（09-23 已回收定义，尚无 IC）
-    - 5-day MOM of Volume, 20-day MIN of Price（09-23 stkwide2 轮已回收，实验级 IC 0.028656）
-    - 20-day MOM of Price, 5-day SMA of Volume over 20-day SMA of Volume（09-23 stkvec 轮已回收，实验级 IC 0.032376）
-    - 5-day VWAP of Price, 5/20-day MAX of Price（09-23 stkprod 轮已回收并全市场评估：
-      RankIC -0.0146~-0.0159，与 5/10/20-day SMA of Price 的 -0.0126~-0.0153 是同一个量）
-    THE WHOLE PRICE-LEVEL FAMILY IS ONE FACTOR, at any window and with any of SMA / VWAP / MAX /
-    MIN: on the full A-share panel they all sit at RankIC -0.013~-0.016 and their tradable long
-    legs are indistinguishable to the second decimal (same turnover, same excess). Proposing a
-    new window or a new way of averaging the price adds no information — pick a different raw
-    field or a different family instead.
-    A spelled-out operator is THE SAME factor as its abbreviated token and is equally tested:
-    "Momentum" = MOM, "Simple Moving Average" = SMA, "Standard Deviation" = STD, "Maximum"/"Minimum"
-    = MAX/MIN. Renaming a tested factor by writing its operator in words does not make it new.
-    - MAX/MIN of Volume at any window. Measured 09-23 by stock/v1/src/run_ashare_redundancy_check.py
-      (full market, 5658 stocks, 2015-01-05~2026-09-22, 2830 valid days). The number is the mean
-      daily cross-sectional Pearson against the closest factor already in the library — the exact
-      metric rdagent's deduplicate_new_factors compares against its 0.99 bar:
-        MAX(Volume,20) 0.984 vs STD(Volume,20)   MAX(Volume,5) 0.981 vs SMA(Volume,5)
-        MIN(Volume,5)  0.969 vs SMA(Volume,10)   MIN(Volume,20) 0.943 vs SMA(Volume,20)
-      None of them trips the bar (resubmitting a library factor verbatim scores 1.000 and does),
-      but three of the four are the volume-level cluster wearing a different operator, so their IC
-      is already predetermined by the SMA/STD of Volume on record. MIN(Volume,20) is the one end
-      still worth a round: the quiet-day minimum is where 地量 lives, and it is the only non-ratio
-      name left that is not a re-skin of something measured.
-  CANDIDATE LIST (already drafted, never backtested yet — pick 2, listed most
-  informative first). The number after each name is its measured redundancy against the
-  library (see above), so the ratios are the genuinely independent ones:
-    - 20-day MIN of Volume                          (0.943)
-    - 5-day SMA of Price over 20-day SMA of Price   (0.821)
-    - 5-day STD of Volume over 20-day STD of Volume (0.602)
-    - 20-day STD of Price over 20-day SMA of Price  (0.374)
-  At most ONE of the two may be a ratio name (the "... over ..." pattern): a ratio
-  needs two windows plus a division and fails implementation more often, which would
-  lose the whole experiment's backtest. The list is left with only ONE non-ratio name, so
-  the other pick must be a ratio — do NOT invent a non-ratio name to fill the slot; an
-  invented single-field name is almost always a tested factor wearing another operator.
-  4. **Gradual complexity:**
-    - Combined factors are now unlocked (all single-field level/volatility factors
-      above have been backtested), but only in the exact ratio form allowed by the
-      naming rule — never by feeding one computed factor into another.
-  5. **New directions and optimizations:**
-    - If multiple consecutive iterations fail to produce factors surpassing SOTA, switch direction and start again from simple factors of a different raw field.
+    - Pick 2 names verbatim from the CANDIDATE LIST below (they were drafted, translated
+      and replayed on this panel but are not in the factor library yet), so the pipeline
+      can consume them immediately; only invent a new name if none fits, and stay inside
+      the naming rule and off the ALREADY TESTED list.
+    - Both picks may now be ratio names: the recovery chain translates the "over" form and
+      both halves are single-window expressions, so the old "at most one ratio" cap is moot
+      now that no untested single-field name is left. But the two MUST differ in the
+      denominator's operator (an SMA-type against a MAX/MIN-type), not merely in its window
+      length: window-only variants of this shape measure rank correlation 0.72~0.96 against
+      each other here, i.e. one factor wearing two windows.
+    - All must be computable from the raw fields above.
+  ALREADY TESTED — never propose these again. "redundancy" is the mean daily
+  cross-sectional rank correlation against the closest factor already on record; RD-Agent's
+  own dedup discards anything >= 0.99 against the library, and this line's precheck flags
+  >= 0.85. Measured on the ETF panel named in the header:
+    - THE ENTIRE PRICE-LEVEL FAMILY IS ONE FACTOR. SMA / VWAP / MAX / MIN of Price at any
+      window all sit >= 0.989 against raw close, and raw close is itself a library factor
+      (hybrid_2), so every new window of it gets discarded on the way in:
+        5-day VWAP of Price 0.9988 | 20-day MIN of Price 0.9956 | 20-day MAX of Price 0.9891
+        5-day SMA of Price 0.9984 | 20-day SMA of Price 0.9930 (those two are 0.9952 apart)
+      Its RankIC@h10 on this panel is POSITIVE, +0.025 ~ +0.028 (ICIR +0.113 ~ +0.126) — the
+      opposite sign to the A-share stock panel. That is a property of an ETF panel where the
+      price level tracks fund size and recent inflows; it does not make a new window of the
+      price level a new factor.
+    - THE ENTIRE VOLUME FAMILY IS ONE FACTOR, AND IT HAS BEEN MEASURED TO PAY NOTHING.
+      mean/std/max/min of volume and of amount are mutually 0.918 ~ 0.991, they hold the
+      highest |ICIR| on this board (-0.348 at h10, -0.439 at h20, t = -15.0), and the best of
+      them replayed tradable (20-day mean of Volume, top-10, 10-day hold, 6bp one-way) earns
+      -0.26% per year against the investable equal-weight pool (+0.19% at top-20); its
+      high-volume leg loses -3.4%/yr. Do not propose another single-field Volume or amount
+      factor at any window or operator: on this panel a large ICIR has been measured to mean
+      liquidity/size beta, not alpha.
+    - MOM of Price at any window: 10-day MOM of Price is 0.9991 against library mogp_3
+      (discarded); 5-day and 20-day are already on record at 0.9990 and 0.9987.
+    - A ratio whose numerator is a SMOOTHED price has been tried and loses:
+        5-day SMA of Price over 20-day MIN of Price: +4.18%/yr excess at 6bp, +0.95% at 15bp,
+          -4.44% at 30bp
+        5-day SMA of Price over 20-day MAX of Price: -4.90%/yr excess already at 6bp, while
+          the same denominator over today's raw close gives +27.87%
+      Smoothing the numerator destroys the signal — write the numerator as 1-day SMA of Price.
+    - 5-day STD of Volume over 20-day STD of Volume: the most independent name measured
+      (0.108 against the library) and the emptiest one — ICIR +0.046, +0.82%/yr excess.
+      Recorded so it is not proposed again as "a volume ratio nobody has touched".
+    - A spelled-out operator is THE SAME factor as its abbreviated token and is equally
+      tested: "Momentum" = MOM, "Simple Moving Average" = SMA, "Standard Deviation" = STD,
+      "Maximum"/"Minimum" = MAX/MIN. Writing an operator in words neither makes a tested
+      factor new nor survives the verbatim name match downstream.
+  CANDIDATE LIST — drafted, translatable and replayed on this panel, not yet in the factor
+  library. All share the form "1-day SMA of Price over <N>-day <OP> of Price" (= today's
+  close divided by a windowed statistic of close). Each line: rank correlation against the
+  library, then top-10 excess over the investable equal-weight benchmark at 6bp one-way,
+  then what survives at 60bp (10x the assumed cost). Ordered by expected value:
+    - 1-day SMA of Price over 60-day MAX of Price   lib 0.581  +27.99% -> +9.05%  (ICIR +0.109; lowest turnover, 0.70 per rebalance)
+    - 1-day SMA of Price over 5-day SMA of Price    lib 0.761  +43.99% -> +21.29% (largest excess and positive in all 8 measured years, but 0.949 against 价量·VWAP偏离5d, which this line already holds -> the precheck will call it a re-skin)
+    - 1-day SMA of Price over 20-day MAX of Price   lib 0.645  +27.87% -> +6.04%  (identical to 位置·距20日高, already replayed at +29.41% -> pair it with a genuinely different denominator)
+    - 1-day SMA of Price over 60-day SMA of Price   lib 0.767  +18.62% -> +4.50%
+    - 1-day SMA of Price over 20-day MIN of Price   lib 0.702  +16.68% -> -2.27%  (does not survive 15bp)
+    - 1-day SMA of Price over 60-day MIN of Price   lib 0.612  +7.51% -> -4.98%
+    - 5-day SMA of Price over 20-day MIN of Price   lib 0.568  +4.18% -> -4.44%  (at 30bp; the only smoothed-numerator name left, kept for its independence, not its return)
+  Do NOT pick 1-day SMA of Price over 20-day SMA of Price (it IS 位置·C/MA20, 1.000), nor
+  over 10-day SMA (0.890) or over 20-day VWAP (0.856) — those sit above this line's own
+  redundancy bar against names already on record.
+  TREAT THE ABOVE AS A PRIOR, NOT AS EVIDENCE. Every excess number is one in-sample replay
+  of one top-k / one-hold setting on a mirror of ETFs that are still listed today
+  (survivorship); the panel's daily cross-sectional rank correlation is about 0.33, so a
+  40-name basket carries roughly 2.9 independent observations, and no PBO or
+  deflated-Sharpe penalty has been applied to these numbers yet.
+  4. **Only the allowed ratio form is "combined":**
+    - Combined factors are permitted ONLY as "<M>-day SMA of Price over <N>-day <OP> of
+      Price" with M=1 (today's close) unless a CANDIDATE LIST line says otherwise, and
+      never by feeding one computed factor into another.
+  5. **If a generation fails to beat SOTA:**
+    - Do NOT fall back to a single-field factor — the naming rule allows 12 such forms
+      (6 operators x 2 columns) at any window, and every family among them has been
+      measured on this panel, so a fresh one is a re-skin, not a new direction. Move
+      along the CANDIDATE LIST to a denominator with a different operator, and only
+      after that consider a new window.
+    - If a ratio fails to implement, check the name against the HARD NAMING RULE before
+      blaming the idea: an untranslatable name costs the whole generation's backtest.
   6. Note
     - Highlight that factors surpassing SOTA are included in the library to avoid re-implementation.
     - No matter how many factors you plan to generate, only reply with one set of hypothesis and reason. The hypothesis can include the proposal of multiple factors at the same time.

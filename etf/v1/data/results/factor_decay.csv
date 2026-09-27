@@ -1,0 +1,5 @@
+﻿因子,最新IC,半衰期(bar),衰减计数
+reversal_5,0.0365,∞,0
+volatility_20,0.0427,∞,0
+momentum_20,0.0329,∞,0
+volume_ratio_20,0.0902,∞,0

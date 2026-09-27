@@ -1,0 +1,220 @@
+{
+  "generated_at": "2026-09-22T02:27:08.589539",
+  "hardware": "8 vCPU / 16GB / ollama CPU-only",
+  "timeout_per_call_s": 900,
+  "runs": {
+    "qwen2.5-coder:7b": {
+      "T1_因子DSL生成": {
+        "model": "qwen2.5-coder:7b",
+        "max_tokens": 1000,
+        "answer": "```json\n[\n    {\n        \"name\": \"momentum_1\",\n        \"expr\": \"close / delay(close, 1) - 1\",\n        \"hypothesis\": \"价格涨跌速度\"\n    },\n    {\n        \"name\": \"momentum_2\",\n        \"expr\": \"ts_sum(close, 5) / ts_sum(close, 20) - 1\",\n        \"hypothesis\": \"短期价格涨跌与长期价格涨跌的比率\"\n    },\n    {\n        \"name\": \"reversal_1\",\n        \"expr\": \"close - delay(close, 1)\",\n        \"hypothesis\": \"价格的相对变化\"\n    },\n    {\n        \"name\": \"volatility_1\",\n        \"expr\": \"std(close, 20)\",\n        \"hypothesis\": \"价格波动性\"\n    },\n    {\n        \"name\": \"volatility_2\",\n        \"expr\": \"ts_std(close, 5)\",\n        \"hypothesis\": \"短期价格波动性\"\n    }\n]\n```",
+        "prompt_tokens": 218,
+        "output_tokens": 223,
+        "wall_s": 156.3,
+        "truncated": false,
+        "tokens_per_s": 3.34,
+        "load_s": 75.6,
+        "prompt_chars": 417,
+        "score": {
+          "json_ok": true,
+          "n_requested": 5,
+          "n_returned": 0,
+          "n_runnable": 0,
+          "unique": true,
+          "failures": [],
+          "rule_score": 0.0
+        },
+        "reasoning_chars": 0
+      },
+      "T2_风控调参": {
+        "model": "qwen2.5-coder:7b",
+        "max_tokens": 700,
+        "answer": "```json\n{\n  \"choice\": \"B\",\n  \"risk_params\": {\n    \"daily_stop_loss\": -0.03,\n    \"max_drawdown_stop\": -0.1,\n    \"cooldown_days\": 3,\n    \"max_trades_per_day\": 2\n  },\n  \"reason\": \"策略B的回撤最小，换手较低，且样本量足够，因此最稳健。\"\n}\n```",
+        "prompt_tokens": 317,
+        "output_tokens": 91,
+        "wall_s": 51.0,
+        "truncated": false,
+        "tokens_per_s": 3.21,
+        "load_s": 0.8,
+        "prompt_chars": 507,
+        "score": {
+          "json_ok": true,
+          "choice": "B",
+          "choice_correct": true,
+          "params_in_space": "4/4",
+          "mentions_dd_or_turnover": true,
+          "rule_score": 1.0
+        },
+        "reasoning_chars": 0
+      },
+      "T3_过拟合判断": {
+        "model": "qwen2.5-coder:7b",
+        "max_tokens": 700,
+        "answer": "不可以。DSR（Deflated Sharpe Ratio）为0.31，表明策略在调整了市场风险后，其风险调整收益较低。PBO（Backtest Overfitting Probability）为0.62，远高于阈值0.5，表明策略存在过拟合风险。因此，尽管样本内表现较好，但考虑到过拟合和较低的风险调整收益，该策略不建议上线。",
+        "prompt_tokens": 170,
+        "output_tokens": 90,
+        "wall_s": 38.4,
+        "truncated": false,
+        "tokens_per_s": 3.25,
+        "load_s": 0.0,
+        "prompt_chars": 202,
+        "score": {
+          "cites_dsr": true,
+          "cites_pbo": true,
+          "verdict_correct": false,
+          "exceeds_150_chars": false,
+          "rule_score": 1.0
+        },
+        "reasoning_chars": 0
+      },
+      "T4_中文日报": {
+        "model": "qwen2.5-coder:7b",
+        "max_tokens": 900,
+        "answer": "## 结论\n\n根据实盘回测指标，当前组合的净值为0.9181，年化夏普率为-0.204，最大回撤为-0.1251。在过去的交易中，共进行了12笔交易。总体来看，组合表现不佳，年化夏普率和最大回撤均为负值，表明组合在市场波动中未能有效抵御风险，且收益表现低于市场平均水平。建议对组合进行重新审视和调整，以提高其风险调整后的收益。\n\n## 风险\n\n最大回撤为-0.1251，表明在样本区间内，组合的最大损失幅度为12.51%。虽然这个数值相对较低，但考虑到年化夏普率为负值，表明组合在风险调整后的收益表现不佳。建议关注市场风险，避免过度投资，以降低组合的波动性。\n\n## 明日观察\n\n建议密切关注市场动态，特别是宏观经济数据和行业趋势，以评估市场风险和机会。同时，关注组合的持仓情况，特别是高风险资产的持仓比例，以确保组合的稳健性。如果市场出现不利变化，建议及时调整组合，以降低风险。",
+        "prompt_tokens": 211,
+        "output_tokens": 256,
+        "wall_s": 103.4,
+        "truncated": false,
+        "tokens_per_s": 3.0,
+        "load_s": 0.1,
+        "prompt_chars": 268,
+        "score": {
+          "json_ok": true,
+          "sections": "3/3",
+          "chars": 390,
+          "within_400": true,
+          "hallucinated_numbers": [
+            "12.51"
+          ],
+          "rule_score": 0.9000000000000001
+        },
+        "reasoning_chars": 0
+      },
+      "T5_v1思维链泄漏": {
+        "wall_s": 15.7,
+        "think_tag_leak": false,
+        "content_head": "夏普比率是衡量投资组合风险调整后收益的指标，通过计算投资组合的平均收益率与市场无风险利率之间的差值，再除以投资组合收益率的标准差来得出。",
+        "content_chars": 68,
+        "empty": false
+      }
+    },
+    "deepseek-r1:8b": {
+      "T1_因子DSL生成": {
+        "model": "deepseek-r1:8b",
+        "max_tokens": 3000,
+        "answer": "",
+        "error": "ReadTimeout: HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=900)",
+        "wall_s": 900.1,
+        "retry_after_empty": true,
+        "first_attempt": {
+          "wall_s": 538.2,
+          "output_tokens": 1000,
+          "truncated": true,
+          "reasoning_chars": 1964
+        },
+        "prompt_chars": 417,
+        "score": {
+          "json_ok": false,
+          "n_requested": 5,
+          "n_returned": 0,
+          "n_runnable": 0,
+          "unique": true,
+          "failures": [],
+          "rule_score": 0.0
+        },
+        "reasoning_chars": 0
+      },
+      "T2_风控调参": {
+        "model": "deepseek-r1:8b",
+        "max_tokens": 2100,
+        "answer": "",
+        "error": "ReadTimeout: HTTPConnectionPool(host='localhost', port=11434): Read timed out. (read timeout=900)",
+        "wall_s": 900.1,
+        "retry_after_empty": true,
+        "first_attempt": {
+          "wall_s": 321.0,
+          "output_tokens": 700,
+          "truncated": true,
+          "reasoning_chars": 983
+        },
+        "prompt_chars": 507,
+        "score": {
+          "json_ok": false,
+          "choice": null,
+          "choice_correct": false,
+          "params_in_space": "0/4",
+          "mentions_dd_or_turnover": false,
+          "rule_score": 0.0
+        },
+        "reasoning_chars": 0
+      },
+      "T3_过拟合判断": {
+        "model": "deepseek-r1:8b",
+        "max_tokens": 700,
+        "answer": "\n不可以。\n\nDSR（Deflated Sharpe Ratio）是衡量策略在考虑了数据挖掘和幸存者偏差后，是否显著优于随机猜测的概率。DSR=0.31意味着策略表现略优于随机水平，但优势不显著。\n\nPBO（Backtest Overfitting Probability）是衡量回测结果是否可能由过拟合产生的概率。PBO=0.62（阈值0.5）表明有62%的概率该策略的优秀表现是由于过拟合而非真实能力。\n\n尽管DSR略高于0，但样本外夏普比率严重为负（-0.15），且PBO超过阈值，这强烈表明策略存在过拟合问题，其表现很可能不可持续，因此不建议上线。",
+        "prompt_tokens": 144,
+        "output_tokens": 417,
+        "wall_s": 194.5,
+        "truncated": false,
+        "tokens_per_s": 2.38,
+        "load_s": 0.0,
+        "prompt_chars": 202,
+        "score": {
+          "cites_dsr": true,
+          "cites_pbo": true,
+          "verdict_correct": false,
+          "exceeds_150_chars": true,
+          "rule_score": 0.75
+        },
+        "reasoning_chars": 375
+      },
+      "T4_中文日报": {
+        "model": "deepseek-r1:8b",
+        "max_tokens": 2700,
+        "answer": "\n## 结论  \n根据回测数据，投资组合净值为0.9181，年化夏普比率为-0.204，交易笔数为12。样本区间覆盖2010-01-04至2026-09-18，整体表现显示亏损且风险较高。  \n\n## 风险  \n最大回撤为-0.1251，表明存在显著的下行风险。其他指标如dsr和PBO均为0.0，可能表示无额外风险暴露，但需警惕夏普比率的负值影响。  \n\n## 明日观察  \n基于当前指标，建议关注净值变化和交易笔数，以评估短期波动。样本区间显示长期数据，但无具体未来预测。",
+        "prompt_tokens": 185,
+        "output_tokens": 1511,
+        "wall_s": 643.2,
+        "truncated": false,
+        "tokens_per_s": 2.35,
+        "load_s": 0.0,
+        "retry_after_empty": true,
+        "first_attempt": {
+          "wall_s": 414.4,
+          "output_tokens": 900,
+          "truncated": true,
+          "reasoning_chars": 1296
+        },
+        "prompt_chars": 268,
+        "score": {
+          "json_ok": true,
+          "sections": "3/3",
+          "chars": 238,
+          "within_400": true,
+          "hallucinated_numbers": [],
+          "rule_score": 1.0
+        },
+        "reasoning_chars": 2021
+      },
+      "T5_v1思维链泄漏": {
+        "wall_s": 55.3,
+        "think_tag_leak": false,
+        "content_head": "",
+        "content_chars": 0,
+        "empty": true
+      }
+    }
+  },
+  "judge": {
+    "T3_过拟合判断": {
+      "winner": "乙",
+      "reason": "回答乙更详细地解释了DSR和PBO的含义，并且指出了样本外表现不佳的问题，更加全面。",
+      "judge_wall_s": 43.4
+    },
+    "T4_中文日报": {
+      "winner": "甲",
+      "reason": "回答甲更加详细地分析了组合的表现，并提出了具体的建议，而回答乙则较为简略，缺少具体建议。",
+      "judge_wall_s": 129.9
+    }
+  }
+}

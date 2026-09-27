@@ -99,7 +99,7 @@ ai.shensuan.git/
 │   │   ├── scheduler.py             #   常驻 schedule 进程
 │   │   ├── etf_admission.py         #   三环阈值与算法单点
 │   │   └── live/                    #   9 文件影子盘（边界见 §12.1）
-│   ├── tests/                       #   19 文件 / 229 用例（唯一有 pytest 的地方）
+│   ├── tests/                       #   20 文件 / 233 用例（唯一有 pytest 的地方）
 │   ├── data/{cache,index_cache,library,live,prompt_backups,qlib,results,risk,universe_all}/
 │   └── requirements.txt  pytest.ini  log/  report/  .env
 ├── common/src/                      # ===== 两条线共享（约 60 模块）=====
@@ -416,10 +416,12 @@ ETF 线 `src/live/` 9 个文件（easytrader / qmt / paper broker）**默认只�
 ## 14. 工程约定
 
 - **Git**：实际提交是中文自由格式；因子库由 `common/src/optimizer/factor_library_git.py` 自动
-  提交为 `[factor-lib] 因子库更新: N 总 / M 活跃`。**原蓝图的 `feat:/fix:` 前缀未采用**。
+  提交为 `[factor-lib] 因子库更新: N 总 / M 活跃`，**这笔 `git commit` 带 pathspec**（`-- <3 个库文件>`）：
+  两线同处一个仓库，不带路径的 `git commit` 会把整个暂存区签掉（09-27 实测吞过一笔 10 文件的改动）。
+  **原蓝图的 `feat:/fix:` 前缀未采用**。
   **未经用户明确要求不得 commit / push。** 个人成交与持仓（`*/data/live/`）不入库。
-- **测试**：`etf/v1/tests` 19 文件 / 229 用例（`--collect-only` 实得；覆盖 admission、边界闸、
-  RD-Agent 接线、DSR、重挖触发、风险面板、DSL、回测风控）。**股票线 0 测试**（§18 第 1 条）。
+- **测试**：`etf/v1/tests` 20 文件 / 233 用例（`--collect-only` 实得；覆盖 admission、边界闸、
+  RD-Agent 接线、DSR、重挖触发、风险面板、DSL、回测风控、因子库自动提交的收窄面）。**股票线 0 测试**（§18 第 1 条）。
   判据类改动必须占一个回归位；一次性验证脚本进 `shell/{线}/`。
 - **验证标准**：探针不算验证，**必须真实 e2e 跑通失败路径**；断言不许恒真；`sleep` 后的活体
   探针要先问那一拍有多长。

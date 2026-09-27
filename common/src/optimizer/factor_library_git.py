@@ -1,5 +1,12 @@
 # -*- coding: utf-8 -*-
-"""因子库 Git 版本控制"""
+"""因子库 Git 版本控制
+
+⚠️ `git_dir` 指向的是**本线根目录**，而两线同处一个仓库（`etf/v1` 里没有嵌套 `.git`，
+git 会上溯到工作区根的 `.git`）。所以这里每一次 `git commit` 都**必须带 pathspec**：
+`git commit` 不带路径时提交的是**整个暂存区**，跑批期间并行会话或用户自己 stage 的东西
+会被这笔 `[factor-lib]` 一起签掉（09-27 实测发生过：10 个文件的 ETF 改动被记成
+"因子库更新: 35 总 / 35 活跃"）。
+"""
 
 import os
 import subprocess
@@ -59,8 +66,10 @@ class GitManager:
         self._run(["add"] + files)
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         msg = message or f"因子库更新 @ {ts}"
+        # `--` + 路径：只签这几个文件，暂存区里别人的东西留在原地
         ok, _, err = self._run(["commit", "-m",
-                                 f"{self.p['commit_prefix']} {msg}"])
+                                 f"{self.p['commit_prefix']} {msg}",
+                                 "--"] + files)
         if ok:
             print(f"  📝 git commit: {msg}")
         return ok

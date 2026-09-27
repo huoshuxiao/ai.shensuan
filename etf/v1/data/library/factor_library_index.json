@@ -472,7 +472,7 @@
   },
   "volume_ratio_20": {
     "name": "volume_ratio_20",
-    "expr": "",
+    "expr": "(volume / ts_mean(volume, 20.0))",
     "ic": 0.014537129641292279,
     "icir": 0.5279960374534662,
     "source": "pipeline",
@@ -560,7 +560,7 @@
   },
   "reversal_5": {
     "name": "reversal_5",
-    "expr": "",
+    "expr": "(1 - close / delay(close, 5.0))",
     "ic": 0.01993285164783405,
     "icir": 0.7069238232380151,
     "source": "pipeline",
@@ -654,7 +654,7 @@
   },
   "rsi_14": {
     "name": "rsi_14",
-    "expr": "",
+    "expr": "(1 - 2 / (1 + ts_mean(np.maximum(delta(close, 1.0), 0.0), 14.0) / (ts_mean(np.maximum(-delta(close, 1.0), 0.0), 14.0) + 1e-9)))",
     "ic": 0.011827378655485504,
     "icir": 0.4129729239826594,
     "source": "pipeline",
@@ -796,7 +796,7 @@
   },
   "price_position_20": {
     "name": "price_position_20",
-    "expr": "",
+    "expr": "(2 * (close - ts_min(low, 20.0)) / (ts_max(high, 20.0) - ts_min(low, 20.0) + 1e-9) - 1)",
     "ic": 0.00522566638338998,
     "icir": 0.17912946808383476,
     "source": "pipeline",
@@ -967,13 +967,13 @@
   "mom_5": {
     "name": "mom_5",
     "expr": "delta(close, 5) / (ma(df, 20) + 1e-9)",
-    "ic": -0.07106535170296904,
-    "icir": -1.7829344442042794,
+    "ic": -0.02055646856213798,
+    "icir": -0.6981012070551262,
     "source": "simple",
     "status": "active",
     "first_seen": "2026-09-20 12:30:24",
-    "last_seen": "2026-09-25 06:40:50",
-    "update_count": 4,
+    "last_seen": "2026-09-27 11:17:16",
+    "update_count": 5,
     "ic_history": [
       {
         "time": "2026-09-20 12:30:24",
@@ -994,6 +994,11 @@
         "time": "2026-09-25 06:40:50",
         "ic": -0.07106535170296904,
         "icir": -1.7829344442042794
+      },
+      {
+        "time": "2026-09-27 11:17:16",
+        "ic": -0.02055646856213798,
+        "icir": -0.6981012070551262
       }
     ],
     "market": "etf"
@@ -1046,7 +1051,7 @@
   },
   "momentum_10": {
     "name": "momentum_10",
-    "expr": "",
+    "expr": "(close / delay(close, 10.0) - 1)",
     "ic": -0.06967347537916369,
     "icir": -1.2351221942337605,
     "source": "pipeline",
@@ -1129,7 +1134,7 @@
   },
   "volatility_20": {
     "name": "volatility_20",
-    "expr": "",
+    "expr": "(-ts_std(returns, 20.0))",
     "ic": -0.0158977031095364,
     "icir": -0.5011633577065119,
     "source": "pipeline",
@@ -1188,7 +1193,7 @@
   },
   "momentum_20": {
     "name": "momentum_20",
-    "expr": "",
+    "expr": "(close / delay(close, 20.0) - 1)",
     "ic": -0.005404935614450848,
     "icir": -0.18397616737131595,
     "source": "pipeline",

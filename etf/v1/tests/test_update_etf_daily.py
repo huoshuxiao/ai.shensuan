@@ -1,16 +1,21 @@
 # -*- coding: utf-8 -*-
 """日线日更的追加护栏。
 
-量纲/口径要点：追加的判据是「重叠段收盘逐格相对差 ≤ 1e-6」，它挡的是复权锚漂移
-（前复权整段缩放、腾讯与新浪口径不同），不是单日行情波动 —— 所以测试用**整段乘
-一个系数**来触发 mismatch，而不是改一格收盘价。
+量纲/口径要点：追加有**两道**闸。① 收盘判据「重叠段逐格相对差 ≤ 1e-6」，它挡的是
+复权锚漂移（前复权整段缩放、腾讯与新浪口径不同），不是单日行情波动 —— 所以测试用
+**整段乘一个系数**来触发 mismatch，而不是改一格收盘价。② 量纲判据（09-27 加）
+`median((amount/volume)/close)` 相对历史尾部跳变 >10 倍即拒：东财的成交量是**手**、
+新浪是**股**，这种错收盘一格不差、价闸完全看不见，而贴进去就是永久台阶。
 """
 
+
+import math
 
 import pandas as pd
 import pytest
 
-from update_etf_daily import APPEND_TOL, append_tail, market_of
+from update_etf_daily import (APPEND_TOL, VOL_UNIT_JUMP, _vol_unit,
+                              append_tail, market_of)
 
 
 def _write(path, rows):
@@ -87,6 +92,34 @@ def test_missing_close_column_in_source_still_appends_shared_cols(tmp_path):
     assert list(out.columns) == ["date", "open", "high", "low", "close",
                                  "volume", "amount"]
     assert pd.isna(out["amount"].iloc[-1])
+
+
+def test_lots_volume_source_is_rejected_and_file_untouched(tmp_path):
+    """收盘逐格对得上、成交量却是"手"（差 100 倍）也要挡住：贴进去就是永久台阶。
+
+    09-27 实测东财正是这个形状（成交量比镜像小 100 倍，收盘一格不差）。"""
+    path = str(tmp_path / "510300_daily.csv")
+    _write(path, _mirror(5).values.tolist())
+    before = open(path, encoding="utf-8-sig").read()
+    lots = _mirror(7)
+    lots["volume"] = lots["volume"] / 100          # 单位换成手，价一格没动
+    st, added, _ = append_tail(path, _as_frame(lots))
+    assert st == "mismatch" and added == 0
+    assert open(path, encoding="utf-8-sig").read() == before
+    # 正对照：同一批行只是成交量自然放大 3 倍（比值跳 3 倍，远不到 10）要放行
+    busy = _mirror(7)
+    busy["volume"] = busy["volume"] * 3
+    st2, added2, _ = append_tail(path, _as_frame(busy))
+    assert (st2, added2) == ("ok", 2)
+
+
+def test_vol_unit_reading_is_nan_when_unmeasurable():
+    """`_vol_unit` 是量纲闸的读数本体：缺列或量价非正一律 nan，不当口径不合"""
+    df = _mirror(4)
+    assert _vol_unit(df) > 0                        # 合成样本量价自洽比可测
+    assert math.isnan(_vol_unit(df.drop(columns=["amount"])))
+    assert math.isnan(_vol_unit(df.assign(volume=0.0)))
+    assert VOL_UNIT_JUMP > 5                        # 手/股是 100×，行情波动 <2×
 
 
 def test_market_split_follows_sina_rule():

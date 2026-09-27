@@ -187,6 +187,12 @@ class DataLoader:
                 "日期": "date", "开盘": "open", "最高": "high",
                 "最低": "low", "收盘": "close", "成交量": "volume",
                 "成交额": "amount"})
+            # 东财"成交量"单位是**手**，而本线镜像/缓存落盘的是**股**（09-27 实测
+            # 871 只镜像的 (amount/volume)/close 中位数全落在 0.996~1.005，即量与
+            # 价同单位）。不换算就是 100× 的成交量台阶，且日更那道重叠闸只比收盘，
+            # 价是对的、看不见它
+            if "volume" in raw.columns:
+                raw["volume"] = raw["volume"] * 100
             return self._standardize(raw, "date")
         if src == "sina":
             # 新浪 ETF 专用接口（不复权；ETF 分红除权少，与 qfq 基本一致）

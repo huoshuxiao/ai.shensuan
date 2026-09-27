@@ -1,6 +1,6 @@
 # 因子库
 
-> 自动生成于 `2026-09-27 11:17:21` | 共 **35** 个因子
+> 自动生成于 `2026-09-27 11:22:01` | 共 **35** 个因子
 
 ## 📊 元信息
 
@@ -17,19 +17,19 @@
 | 2 | `momentum_10` | 10日动量 | -0.0697 | -1.235 | pipeline | active |
 | 3 | `mom_20` | 20日价格动量(模板) | -0.0578 | -1.546 | simple | active |
 | 4 | `1-day SMA of Price over 60-day MAX of Price` | (均线(数据,1))/(区间最高(数据,60)) | -0.0398 | -1.101 | official | active |
-| 5 | `vol_20` | 20日低波动(模板) | -0.0331 | -1.497 | llm | active |
-| 6 | `gp_0` | 遗传规划因子1号 | -0.0310 | -0.814 | genetic | active |
-| 7 | `gp_1` | 遗传规划因子2号 | -0.0306 | -0.885 | genetic | active |
-| 8 | `10-day SMA of Volume` | 滚动均值(成交量,10) | -0.0292 | -0.777 | official | active |
-| 9 | `5-day SMA of Price` | 均线(数据,5) | -0.0286 | -0.760 | official | active |
-| 10 | `mogp_3` | 多目标遗传规划因子4号 | -0.0280 | +0.000 | pipeline | active |
-| 11 | `mogp_0` | 多目标遗传规划因子1号 | +0.0253 | +0.000 | pipeline | active |
-| 12 | `gp_2` | 遗传规划因子3号 | +0.0241 | +1.001 | genetic | active |
-| 13 | `mogp_1` | 多目标遗传规划因子2号 | -0.0227 | +0.000 | pipeline | active |
-| 14 | `mogp_2` | 多目标遗传规划因子3号 | -0.0224 | +0.000 | pipeline | active |
-| 15 | `gp_3` | 遗传规划因子4号 | +0.0213 | +0.644 | pipeline | active |
-| 16 | `reversal_5` | 5日反转 | +0.0209 | +0.741 | simple | active |
-| 17 | `mom_5` | 5日价格动量(模板) | -0.0206 | -0.698 | simple | active |
+| 5 | `mom_5` | 5日价格动量(模板) | -0.0371 | -1.309 | simple | active |
+| 6 | `vol_20` | 20日低波动(模板) | -0.0331 | -1.497 | llm | active |
+| 7 | `gp_0` | 遗传规划因子1号 | -0.0310 | -0.814 | genetic | active |
+| 8 | `gp_1` | 遗传规划因子2号 | -0.0306 | -0.885 | genetic | active |
+| 9 | `10-day SMA of Volume` | 滚动均值(成交量,10) | -0.0292 | -0.777 | official | active |
+| 10 | `5-day SMA of Price` | 均线(数据,5) | -0.0286 | -0.760 | official | active |
+| 11 | `mogp_3` | 多目标遗传规划因子4号 | -0.0280 | +0.000 | pipeline | active |
+| 12 | `mogp_0` | 多目标遗传规划因子1号 | +0.0253 | +0.000 | pipeline | active |
+| 13 | `gp_2` | 遗传规划因子3号 | +0.0241 | +1.001 | genetic | active |
+| 14 | `mogp_1` | 多目标遗传规划因子2号 | -0.0227 | +0.000 | pipeline | active |
+| 15 | `mogp_2` | 多目标遗传规划因子3号 | -0.0224 | +0.000 | pipeline | active |
+| 16 | `gp_3` | 遗传规划因子4号 | +0.0213 | +0.644 | pipeline | active |
+| 17 | `reversal_5` | 5日反转 | +0.0209 | +0.741 | simple | active |
 | 18 | `gp_4` | 遗传规划因子5号 | +0.0198 | +0.643 | pipeline | active |
 | 19 | `hybrid_5` | LLM-遗传混合因子6号 | +0.0190 | +0.000 | pipeline | active |
 | 20 | `mogp_5` | 多目标遗传规划因子6号 | +0.0174 | +0.000 | pipeline | active |
@@ -397,8 +397,8 @@ ts_mean(returns, 20)
 - **状态**: `active`
 - **来源**: `simple`
 - **截面口径**: `etf`
-- **IC**: -0.0206
-- **ICIR**: -0.698
+- **IC**: -0.0371
+- **ICIR**: -1.309
 - **首次发现**: 2026-09-20 12:30:24
 
 **表达式**:

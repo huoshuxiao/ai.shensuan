@@ -24,6 +24,13 @@
     rel ≤ APPEND_TOL（1e-6）⇒ 同口径，只贴 last_date 之后的新行
     rel >  APPEND_TOL        ⇒ 换下一个源；全都不合格就跳过这只并登记
 
+再叠一道**量纲**闸（09-27 加）：收盘价逐格对得上，成交量却可以整体差 100 倍
+—— 东财 `fund_etf_hist_em` 的"成交量"是**手**，新浪 `fund_etf_hist_sina` 是
+**股**（当日实测：em 贴进来的行 amount/volume 落到 453/335，而收盘是 4.5/3.3）。
+判据用无量纲恒等式 median((amount/volume)/close)：新行相对镜像历史尾部跳过
+VOL_UNIT_JUMP（10 倍）就判不合格、换源；`_load_daily` 已把东财侧 ×100 归一，
+这道闸是防下一个源再用另一套单位。
+
 只贴新行、不改动历史任何一格；写完校验「新文件行数 ≥ 旧文件行数」且旧日期集合
 是新日期集合的子集，不满足就退回原文件（原子写：临时文件 + `os.replace`，
 日更会被 cron 打断，半截 CSV 会把之后每一天的读取都带崩）。
@@ -58,6 +65,21 @@ from data_loader import DataLoader, _last_date  # noqa: E402
 
 APPEND_TOL = 1e-6        # 重叠段收盘相对差容差：小于它就是同一个复权锚
 TAIL_CHECK_BARS = 60     # 口径校验看重叠段的最后这么多格（分红会挪整段）
+VOL_UNIT_JUMP = 10.0     # 成交量量纲跳变倍数闸：手/股 之差是 100×，行情漂移 <2×
+
+
+def _vol_unit(df):
+    """无量纲的"量价自洽"读数：median((amount/volume)/close)。
+
+    成交额/成交量 ≈ 当日均价 ≈ 收盘，所以同一口径下这个比值应当贴近 1；
+    单位从股换成手（或反之）会整体乘除 100，收盘价却分毫不动 ⇒ 收盘比对
+    那道闸对它完全失明。列缺失或全非正时返回 nan（不拿缺数据当口径不合）。"""
+    if {"volume", "amount", "close"} - set(df.columns):
+        return float("nan")
+    v = df[(df["volume"] > 0) & (df["amount"] > 0) & (df["close"] > 0)]
+    if v.empty:
+        return float("nan")
+    return float(((v["amount"] / v["volume"]) / v["close"]).median())
 
 
 def _read_csv(path):
@@ -72,7 +94,8 @@ def append_tail(path, new_df, tail_check_bars=TAIL_CHECK_BARS):
 
     返回 (状态, 贴入行数, 重叠最大相对差)。状态：
       ok=贴入 / uptodate=源没有更新的行 / mismatch=重叠段对不上（源与镜像不同
-      复权锚）/ empty=源返回空。任何情况下**都不改动已有行**。"""
+      复权锚，或新行的成交量量纲与历史不同）/ empty=源返回空。任何情况下
+      **都不改动已有行**。"""
     old = _read_csv(path)
     tcol = old.columns[0]
     if new_df is None or new_df.empty:
@@ -99,6 +122,13 @@ def append_tail(path, new_df, tail_check_bars=TAIL_CHECK_BARS):
     fresh = new_df[new_df[tcol] > old[tcol].max()]
     if fresh.empty:
         return "uptodate", 0, rel
+    # 收盘逐格对得上只证明**价**是同一个复权锚，不证明**量**是同一个单位：
+    # 东财给手、新浪给股，价差 100 倍而收盘完全一致。贴进去的台阶是永久的，
+    # 所以在写之前再量一次量价自洽比
+    r_old, r_new = _vol_unit(old.tail(tail_check_bars)), _vol_unit(fresh)
+    if r_old == r_old and r_new == r_new and \
+            max(r_old, r_new) / max(min(r_old, r_new), 1e-12) > VOL_UNIT_JUMP:
+        return "mismatch", 0, rel
     cols = [c for c in old.columns if c in fresh.columns]
     merged = pd.concat([old, fresh[cols]], ignore_index=True) \
               .sort_values(tcol).drop_duplicates(subset=[tcol], keep="last")

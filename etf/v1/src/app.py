@@ -4,6 +4,11 @@
 这一页只读，不产生任何文件；所有数字都来自主线落盘的产物，页上不重算判据。
 **不接下单**：`src/live/` 的真实委托代码不在本页的调用链上，最后一节只读影子盘落盘的 csv。
 
+读盘口径：`data/`、`report/`、`log/` 三处都是这一页的数据面，缓存键是**文件戳**
+（mtime+size）而不是倒计时 —— 环 2 刚落的 csv 下一次重跑就在屏上，而盘上没动时
+一页都不多重读（实测整页 899 次 `read_csv` 只发生一次）。页首那个「自动刷新」是
+心跳：到点只比"最新落盘"这一对指纹，变了才整页重跑，所以它不是定时器刷新的动画。
+
 为什么页首第一行是「数据新鲜度」而不是收益
 ------------------------------------------
 本线的每一条判据（DSR / walk-forward / 策略级 PBO / 规模闸）都建立在"日线已经推到
@@ -15,6 +20,7 @@
 """
 
 import glob
+import hashlib
 import json
 import os
 from datetime import datetime
@@ -26,10 +32,10 @@ import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
 
-from config import (CACHE_DIR, DSR, FACTOR_LIBRARY, FREQ, PORTFOLIO,
-                    RESULTS_DIR, RISK_DIR, STRATEGY_PBO, TRIAL_COUNTER_FILE,
-                    TRIGGER_LOGIC, UNIVERSE_ALL_DIR, WALK_FORWARD,
-                    RDAGENT_OUTPUT_DIR)
+from config import (CACHE_DIR, DSR, FACTOR_LIBRARY, FREQ, LIVE_DATA_DIR, LOG_DIR,
+                    PORTFOLIO, REPORT_DIR, RESULTS_DIR, RISK_DIR, STRATEGY_PBO,
+                    TRIAL_COUNTER_FILE, TRIGGER_LOGIC, UNIVERSE_ALL_DIR,
+                    WALK_FORWARD, RDAGENT_OUTPUT_DIR)
 from factor_naming import cn_name, METRIC_GLOSSARY
 from llm_selfreport import (decision_tally, harvest_vs_library,
                             self_report_mtime)
@@ -49,17 +55,177 @@ st.caption("**辅助决策，不自动实盘。** ETF 线完全不接下单：�
            "**收盘后日线口径，不做盘中分析**，也不是收益承诺。")
 
 
-@st.cache_data(ttl=30)
+# ---------- 读盘：缓存键用"文件动过没有"，不用固定倒计时 ----------
+# 只用 `ttl=30` 的时候，页面显示的是"上一版"还是"盘上这一版"要看运气：环 2 刚写完
+# `equity_daily.csv` 的那 30 秒里它读的还是旧净值，而 ttl 一到又会把 871 个从没变过的
+# csv 重读一遍。改成 mtime+字节数当键 —— 文件没动就命中缓存，一动就在下一次重跑生效。
+
+def _file_stamp(path):
+    """单个文件的落盘戳：mtime（纳秒）+ 大小。不存在时返回固定串 `absent`。"""
+    try:
+        s = os.stat(path)
+        return f"{s.st_mtime_ns}-{s.st_size}"
+    except OSError:
+        return "absent"
+
+
+@st.cache_data(ttl=5, show_spinner=False)
+def _dir_stamp(path, pattern="*"):
+    """整个目录折成一个短哈希（文件增删改名、任何一个被重写都会变）。
+
+    `ttl=5` 是"最多迟到 5 秒"的折衷：`data/universe_all/` 有 871 个文件，整页每次
+    心跳都 stat 一遍不值当。它喂的是新鲜度表和风险面板这两把重读数，不是净值曲线。
+    """
+    try:
+        entries = sorted(f"{e.name}:{_file_stamp(e.path)}"
+                         for e in os.scandir(path) if e.is_file())
+    except OSError:
+        return "absent"
+    digest = hashlib.md5("\n".join(entries).encode()).hexdigest()[:12]
+    return f"{len(entries)}-{digest}"
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _read_csv(path, stamp):
+    return pd.read_csv(path)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _read_json(path, stamp):
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _read_risk_long(path, stamp):
+    """风险长表（`shares_szse.csv` 18MB）：裸读一次就是几十毫秒到几百毫秒的解析。"""
+    from fetch_etf_risk_panel import read_long
+    return read_long(path)
+
+
 def load_csv(p):
-    return pd.read_csv(p) if p and os.path.exists(p) else None
+    return _read_csv(p, _file_stamp(p)) if p and os.path.exists(p) else None
 
 
-@st.cache_data(ttl=30)
 def load_json(p):
-    if p and os.path.exists(p):
-        with open(p, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return None
+    if not p or not os.path.exists(p):
+        return None
+    try:
+        return _read_json(p, _file_stamp(p))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        # 采集进程写 json 不是原子的：正好赶上它落半截，这轮先当没有，
+        # 下一轮戳一定变了（文件在长），就读到完整的了。
+        return None
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _read_tail(path, stamp, n_lines):
+    """只取文件尾部 n 行，按 256KB 一块从末尾回退读。
+
+    `log/research_daily_20260925.log` 有 9.6MB（是那次重挖把 LLM 请求全打出来的
+    下场），整读进 Streamlit 会把页面冻住；日更日志是 append-only，尾部才是新东西。
+    """
+    with open(path, "rb") as fh:
+        fh.seek(0, os.SEEK_END)
+        pos = fh.tell()
+        buf = b""
+        while pos > 0 and buf.count(b"\n") <= n_lines:
+            step = min(1 << 18, pos)
+            pos -= step
+            fh.seek(pos)
+            buf = fh.read(step) + buf
+    lines = buf.decode("utf-8", "replace").splitlines()
+    if pos > 0 and lines:
+        lines = lines[1:]          # 首行可能被块边界切成半截
+    return lines[-n_lines:]        # 全文件不足 n 行时等价于整读
+
+
+def _mtime(p):
+    """列清单途中文件被人删掉/轮换也不炸这一页。"""
+    try:
+        return os.path.getmtime(p)
+    except OSError:
+        return 0.0
+
+
+def _files_by_mtime(patterns):
+    """按 (目录, glob) 列清单，mtime 从新到旧。"""
+    got = []
+    for d, pat in patterns:
+        got += [p for p in glob.glob(os.path.join(d, pat)) if os.path.isfile(p)]
+    return sorted(set(got), key=_mtime, reverse=True)
+
+
+def _human(n_bytes):
+    for unit in ("B", "KB", "MB", "GB"):
+        if n_bytes < 1024 or unit == "GB":
+            return f"{n_bytes:.0f} {unit}"
+        n_bytes /= 1024.0
+    return f"{n_bytes:.0f} GB"
+
+
+def _ago(mtime):
+    """「多久没动过」：日更在跑时这一格就是活体证据，不用猜。"""
+    sec = max(0, int(datetime.now().timestamp() - mtime))
+    if sec < 60:
+        return f"{sec} 秒前"
+    if sec < 3600:
+        return f"{sec // 60} 分钟前"
+    if sec < 86400:
+        return f"{sec // 3600} 小时前"
+    return f"{sec // 86400} 天前"
+
+
+# ---------- 自动刷新（页首第一件事） ----------
+# 心跳只做一件事：每隔 N 秒看一眼盘上最新的落盘动过没有，动过才整页重跑。
+# 不无脑定时重跑整页 —— 十个页签的图全要重画一遍，而绝大多数时候盘上什么都没变。
+AUTO_LABELS = ("关", "15 秒", "30 秒", "1 分钟", "5 分钟")
+AUTO_SECONDS = {"关": None, "15 秒": 15, "30 秒": 30, "1 分钟": 60, "5 分钟": 300}
+DISK_SOURCES = ((RESULTS_DIR, "*"), (f"{RESULTS_DIR}/rdagent_output", "*"),
+                (LOG_DIR, "*.log*"), (REPORT_DIR, "*.md"), (REPORT_DIR, "*.json"),
+                (LIVE_DATA_DIR, "*"), (CACHE_DIR, "*.json"))
+
+
+def disk_fingerprint():
+    """`DISK_SOURCES` 里最新那一次落盘的 (mtime 秒, 文件名)——心跳比的就是这一对。"""
+    files = _files_by_mtime(DISK_SOURCES)
+    if not files:
+        return (0.0, "")
+    p = files[0]
+    return (round(_mtime(p), 3), os.path.basename(p))
+
+
+_r1, _r2, _r3 = st.columns([1.25, 1.55, 4.2])
+_choice = _r1.selectbox("自动刷新", AUTO_LABELS, index=3,
+                        help="心跳只查「盘上有没有新文件」，不重算任何判据。选「关」时，"
+                             "点页签、改控件这些交互仍会重读文件（缓存键是文件戳，不是倒计时）。")
+if _r2.button("🔄 立刻重读盘上文件", use_container_width=True):
+    st.cache_data.clear()
+    st.rerun()
+_fp_now = disk_fingerprint()
+st.session_state["_hb_fp"] = _fp_now
+_r3.caption(
+    f"本页重跑于 {datetime.now():%H:%M:%S} ｜ 盘上最新落盘：`{_fp_now[1] or '—'}`"
+    f"{' ' + datetime.fromtimestamp(_fp_now[0]).strftime('%m-%d %H:%M:%S') if _fp_now[0] else ''}"
+    f"（{_ago(_fp_now[0])}）｜ 心跳：{'每 ' + _choice + '查一次盘，变了才整页重跑' if _choice != '关' else '已关，只在看板被操作时重读'}"
+    "。读数口径是**收盘后日线**，不做盘中分析。")
+
+if AUTO_SECONDS[_choice] is not None:
+
+    @st.fragment(run_every=AUTO_SECONDS[_choice])
+    def _heartbeat():
+        """到点只比指纹：一致就原地留一行时间戳，不一致才 `st.rerun()` 整页重读。
+
+        `st.rerun()` 在 fragment 里默认作用域是整个 app，所以必须靠这把指纹闸住，
+        否则"整页重跑 → 又跑到这一格 → 又 rerun"会转成死循环。
+        """
+        cur = disk_fingerprint()
+        if st.session_state.get("_hb_fp") != cur:
+            st.session_state["_hb_fp"] = cur
+            st.rerun()
+        st.empty()
+
+    _heartbeat()
 
 
 def artifact(name, freq=None):
@@ -85,17 +251,20 @@ def _pct(v, digits=2, signed=True):
 
 # ---------- 数据新鲜度（页首第一件事） ----------
 
-@st.cache_data(ttl=120)
-def freshness_table():
-    try:
-        from update_etf_daily import freshness_report
-        return freshness_report()
-    except Exception as e:
-        st.warning(f"新鲜度读数不可用: {type(e).__name__}: {e}")
-        return pd.DataFrame()
+@st.cache_data(ttl=3600, show_spinner="正在核对各数据面的末日…")
+def _freshness_report(key):
+    from update_etf_daily import freshness_report
+    return freshness_report()
 
 
-fresh = freshness_table()
+# 新鲜度读的是镜像/池缓存/风险长表三处的末日，键就用这三处的目录戳。
+# 读失败不进缓存（否则一次偶发的 import 失败会被记一小时）：
+try:
+    fresh = _freshness_report(f"{_dir_stamp(UNIVERSE_ALL_DIR)}|{_dir_stamp(CACHE_DIR)}"
+                              f"|{_dir_stamp(RISK_DIR)}")
+except Exception as e:
+    fresh = pd.DataFrame()
+    st.warning(f"新鲜度读数不可用: {type(e).__name__}: {e}")
 eq_path = artifact("equity")
 eq_df = load_csv(eq_path)
 sig_path = artifact("signals")
@@ -169,7 +338,7 @@ if dsr_df is not None and not dsr_df.empty:
 # ---------- tabs ----------
 tabs = st.tabs(["📈 净值", "💼 持仓与交易", "🎯 统计验证", "🧪 ETF 风险",
                 "🧬 因子", "⚙️ 配置与生命周期", "📖 口径",
-                "🔄 反馈闭环", "📡 影子盘监控"])
+                "🗂 日志与报告", "🔄 反馈闭环", "📡 影子盘监控"])
 
 with tabs[0]:
     if eq_df is None or eq_df.empty:
@@ -379,8 +548,8 @@ with tabs[2]:
                 height=300))
 
 with tabs[3]:
-    @st.cache_data(ttl=600, show_spinner="正在读份额/净值面板并算规模…")
-    def risk_bundle():
+    @st.cache_data(ttl=3600, show_spinner="正在读份额/净值面板并算规模…")
+    def risk_bundle(key):
         import etf_admission as EA
         import fetch_etf_risk_panel as RP
         pool = EA.load_pool(verbose=False)
@@ -395,7 +564,9 @@ with tabs[3]:
                            "FFILL": EA.SCALE_FFILL, "MIN_CS": EA.MIN_CS}}
 
     try:
-        bundle = risk_bundle()
+        # 这一格吃的是池缓存 + 风险长表（19MB 份额/净值），是整页最重的一次读数：
+        # 原来 ttl=600 让它每 10 分钟无条件重算一遍，现在换成目录戳，日更没跑就一次不算
+        bundle = risk_bundle(f"{_dir_stamp(CACHE_DIR)}|{_dir_stamp(RISK_DIR)}")
     except Exception as e:
         bundle = None
         st.warning(f"风险面板读不出来: {type(e).__name__}: {e}")
@@ -482,12 +653,11 @@ with tabs[3]:
         with st.expander("📥 三张长表攒到哪了（只读）"):
             rows = []
             try:
-                from fetch_etf_risk_panel import read_long
                 from config import RISK_NAV_THS, RISK_SHARES_SSE, RISK_SHARES_SZSE
                 for label, p in (("份额·沪", RISK_SHARES_SSE),
                                  ("份额·深", RISK_SHARES_SZSE),
                                  ("单位净值", RISK_NAV_THS)):
-                    df = read_long(p)
+                    df = _read_risk_long(p, _file_stamp(p))
                     if df.empty:
                         continue
                     df["date"] = pd.to_datetime(df["date"])
@@ -662,10 +832,81 @@ with tabs[6]:
     st.caption("本页不产生文件、不改判据。所有数字来自 `data/results/` 与 "
                "`data/risk/`，口径以 `src/` 里的实现为准。")
 
+with tabs[7]:
+    # 这一节的存在理由：日更和三环都在往 `log/`、`report/` 落东西，以前要看只能
+    # 开终端 tail。看板既然每 1 分钟查一次盘，就把这两处也接进来——仍然**只读文件**，
+    # 不在这里起进程、不重跑脚本。
+    st.caption("只把 `etf/v1/log/` 与 `etf/v1/report/` 里**已经落盘**的文件摊开看："
+               "日志从文件尾往前读（最大的一份 9.6MB，整读会把页面冻住），报告原样渲染。"
+               "这一节不产生文件、不触发任何脚本。")
+    _log_col, _rep_col = st.columns([1.05, 1.45], gap="large")
+
+    with _log_col:
+        st.subheader("🧾 运行日志")
+        logs = _files_by_mtime(((LOG_DIR, "*.log*"),))
+        if not logs:
+            st.info(f"`{LOG_DIR}` 里还没有日志")
+        else:
+            def _log_label(p):
+                return (f"{_ago(_mtime(p))} · {_human(os.path.getsize(p))} · "
+                        f"{os.path.basename(p)}")
+            pick_log = st.selectbox("选一份（按落盘时间从新到旧）", logs,
+                                    format_func=_log_label,
+                                    help=f"目录：{LOG_DIR}。带 `.run2-xxx`、"
+                                         "`.old-run` 后缀的是同一场实验的历史存档，没接进日更。")
+            n_lines = st.selectbox("读尾部多少行", (200, 500, 1000, 3000), index=1)
+            try:
+                tail = _read_tail(pick_log, _file_stamp(pick_log), n_lines)
+            except OSError as e:
+                tail = []
+                st.warning(f"读不到这份日志: {type(e).__name__}: {e}")
+            marks = [ln for ln in tail
+                     if ln.startswith(("[前置体检]", "[验收", "[链路完成]", "[ERROR]",
+                                       "Traceback", "[因子库]", "[完成]", "[超时]"))]
+            st.caption(f"`{os.path.basename(pick_log)}` · 这里显示最后 {len(tail)} 行"
+                       f"（文件 {_human(os.path.getsize(pick_log))}）")
+            if marks:
+                st.markdown("**这一场的关键行**")
+                for ln in marks[-12:]:
+                    st.code(ln, language="text")
+            st.code("\n".join(tail) or "（空文件）", language="text")
+
+    with _rep_col:
+        st.subheader("📄 报告与自评产物")
+        reports = _files_by_mtime(((REPORT_DIR, "*.md"), (REPORT_DIR, "*.json"),
+                                   (REPORT_DIR, "*.csv"),
+                                   (f"{REPORT_DIR}/archive", "*")))
+        if not reports:
+            st.info(f"`{REPORT_DIR}` 里还没有报告")
+        else:
+            root = os.path.abspath(REPORT_DIR)
+
+            def _rep_label(p):
+                rel = os.path.relpath(os.path.abspath(p), root)
+                return f"{_ago(_mtime(p))} · {rel}"
+            pick_rep = st.selectbox("选一份（按落盘时间从新到旧）", reports,
+                                    format_func=_rep_label,
+                                    help=f"目录：{REPORT_DIR}（含 archive/ 归档）")
+            stamp = _file_stamp(pick_rep)
+            st.caption(f"最后一次落盘 {_ago(_mtime(pick_rep))} · "
+                       f"{_human(os.path.getsize(pick_rep))}")
+            if pick_rep.endswith(".md"):
+                st.markdown("\n".join(_read_tail(pick_rep, stamp, 20000)))
+            elif pick_rep.endswith(".json"):
+                st.json(load_json(pick_rep) or {}, expanded=False)
+            else:
+                rdf = load_csv(pick_rep)
+                if rdf is None or rdf.empty:
+                    st.info("这份是空表")
+                else:
+                    st.dataframe(rdf, hide_index=True)
+            st.caption("`.md` 与 `.json` 是**报告文本**：里面的结论是模型或脚本对既有"
+                       "数字的说法，不进任何准入判据（判据在 `src/` 的三环入口里）。")
+
 # ---------- 以下两节原样来自 app_feedback.py / app_live.py ----------
 # 页内还各自带一层子页签（反馈 12 个 / 影子盘 3 个），所以整块交给 render() 画。
-with tabs[7]:
+with tabs[8]:
     render_feedback()
 
-with tabs[8]:
+with tabs[9]:
     render_live()

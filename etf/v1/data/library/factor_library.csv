@@ -18,7 +18,7 @@ mogp_1,多目标遗传规划因子2号,returns,-0.0227,0.0,pipeline,etf,active,2
 mogp_2,多目标遗传规划因子3号,(close / low),-0.0224,0.0,pipeline,etf,active,2026-09-20 11:06:47,2026-09-22 17:03:10,4
 mogp_6,多目标遗传规划因子7号,"(delta(ts_std(ts_sum(volume, 60), 10), 60) + (returns - (-abs(returns))))",-0.0107,0.0,pipeline,etf,active,2026-09-20 11:06:47,2026-09-22 17:03:10,3
 mogp_7,多目标遗传规划因子8号,"ts_mean(returns, 20)",0.008,0.0,pipeline,etf,active,2026-09-20 11:06:47,2026-09-22 17:03:10,3
-mom_5,5日价格动量(模板),"delta(close, 5) / (ma(df, 20) + 1e-9)",-0.0206,-0.6981,simple,etf,active,2026-09-20 12:30:24,2026-09-27 11:17:16,5
+mom_5,5日价格动量(模板),"delta(close, 5) / (ma(df, 20) + 1e-9)",-0.0371,-1.3087,simple,etf,active,2026-09-20 12:30:24,2026-09-27 11:22:01,6
 mom_20,20日价格动量(模板),"delta(close, 20) / (ma(df, 60) + 1e-9)",-0.0578,-1.5464,simple,,active,2026-09-20 12:30:24,2026-09-20 12:42:09,3
 hybrid_0,LLM-遗传混合因子1号,"(-delta(close, 3)) / (ma(df, 10) + 1e-9)",0.1037,0.0,pipeline,,active,2026-09-20 12:33:37,2026-09-20 12:33:37,1
 momentum_10,10日动量,"(close / delay(close, 10.0) - 1)",-0.0697,-1.2351,pipeline,,active,2026-09-20 12:33:37,2026-09-20 12:33:37,1
@@ -30,7 +30,7 @@ momentum_20,20日动量,"(close / delay(close, 20.0) - 1)",-0.0052,-0.1778,simpl
 hybrid_5,LLM-遗传混合因子6号,"(-delta(close, 3)) / (ma(df, 10) + 1e-9)",0.019,0.0,pipeline,etf,active,2026-09-24 18:50:54,2026-09-25 00:27:58,2
 5-day SMA of Price,"均线(数据,5)","ma(df,5)",-0.0286,-0.7597,official,etf,active,2026-09-25 03:10:24,2026-09-25 10:26:39,6
 1-day SMA of Price over 60-day MAX of Price,"(均线(数据,1))/(区间最高(数据,60))","(ma(df,1))/(max(df,60))",-0.0398,-1.1011,official,etf,active,2026-09-25 03:10:24,2026-09-25 08:08:32,5
-vol_20,20日低波动(模板),"-ts_std(returns, 20)",-0.0331,-1.4971,llm,etf,active,2026-09-25 05:13:18,2026-09-25 05:13:18,1
+vol_20,20日低波动(模板),"-ts_std(returns, 20)",-0.0331,-1.4971,llm,etf,active,2026-09-25 05:13:18,2026-09-27 11:22:01,2
 10-day SMA of Volume,"滚动均值(成交量,10)","ts_mean(volume,10)",-0.0292,-0.7767,official,etf,active,2026-09-25 06:40:50,2026-09-25 06:40:50,1
 1-day SMA of Price over 20-day MAX of Price,"(均线(数据,1))/(区间最高(数据,20))","(ma(df,1))/(max(df,20))",-0.0138,-0.444,official,etf,active,2026-09-25 08:08:32,2026-09-25 10:26:39,2
 1-day SMA of Price over 60-day SMA of Price,"(均线(数据,1))/(均线(数据,60))","(ma(df,1))/(ma(df,60))",-0.0111,-0.3266,official,etf,active,2026-09-25 10:26:39,2026-09-25 10:26:39,1

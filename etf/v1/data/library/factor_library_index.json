@@ -470,7 +470,7 @@
       }
     ],
     "status_reason": "丁2 库内判重(09-29)：与 5-day SMA of Price 的逐日截面 |Spearman|=0.9984 >= RDAGENT_BAR=0.99，同簇留 |ic| 高者；读数 shell/etf/snap_ding2_0929/diagonal_remeasure_36.csv",
-    "status_time": "2026-09-29 00:24:34"
+    "status_time": "2026-09-29 00:38:26"
   },
   "volume_ratio_20": {
     "name": "volume_ratio_20",
@@ -570,7 +570,7 @@
     ],
     "market": "etf",
     "status_reason": "丁2 库内判重(09-29)：与 momentum_10 的逐日截面 |Spearman|=0.9991 >= RDAGENT_BAR=0.99，同簇留 |ic| 高者；读数 shell/etf/snap_ding2_0929/diagonal_remeasure_36.csv",
-    "status_time": "2026-09-29 00:24:34"
+    "status_time": "2026-09-29 00:38:26"
   },
   "reversal_5": {
     "name": "reversal_5",
@@ -676,7 +676,7 @@
     ],
     "market": "etf",
     "status_reason": "丁2 库内判重(09-29)：与 mom_5 的逐日截面 |Spearman|=0.9990 >= RDAGENT_BAR=0.99，同簇留 |ic| 高者；读数 shell/etf/snap_ding2_0929/diagonal_remeasure_36.csv",
-    "status_time": "2026-09-29 00:24:34"
+    "status_time": "2026-09-29 00:38:26"
   },
   "rsi_14": {
     "name": "rsi_14",
@@ -819,8 +819,8 @@
       }
     ],
     "market": "etf",
-    "status_reason": "丁2 库内判重(09-29)：与 mom_20 的逐日截面 |Spearman|=1.0000 >= RDAGENT_BAR=0.99，同簇留 |ic| 高者；读数 shell/etf/snap_ding2_0929/diagonal_remeasure_36.csv",
-    "status_time": "2026-09-29 00:24:34"
+    "status_reason": "丁2 库内判重(09-29)：与 mom_20 的逐日截面 |Spearman|=0.9968 >= RDAGENT_BAR=0.99，同簇留 |ic| 高者；读数 shell/etf/snap_ding2_0929/diagonal_remeasure_36.csv",
+    "status_time": "2026-09-29 00:38:26"
   },
   "price_position_20": {
     "name": "price_position_20",
@@ -963,7 +963,7 @@
     ],
     "market": "etf",
     "status_reason": "丁2 库内判重(09-29)：与 mogp_4 的逐日截面 |Spearman|=1.0000 >= RDAGENT_BAR=0.99，同簇留 |ic| 高者；读数 shell/etf/snap_ding2_0929/diagonal_remeasure_36.csv",
-    "status_time": "2026-09-29 00:24:34"
+    "status_time": "2026-09-29 00:38:26"
   },
   "mogp_7": {
     "name": "mogp_7",
@@ -993,8 +993,8 @@
       }
     ],
     "market": "etf",
-    "status_reason": "丁2 库内判重(09-29)：与 mom_20 的逐日截面 |Spearman|=1.0000 >= RDAGENT_BAR=0.99，同簇留 |ic| 高者；读数 shell/etf/snap_ding2_0929/diagonal_remeasure_36.csv",
-    "status_time": "2026-09-29 00:24:34"
+    "status_reason": "丁2 库内判重(09-29)：与 mom_20 的逐日截面 |Spearman|=0.9968 >= RDAGENT_BAR=0.99，同簇留 |ic| 高者；读数 shell/etf/snap_ding2_0929/diagonal_remeasure_36.csv",
+    "status_time": "2026-09-29 00:38:26"
   },
   "mom_5": {
     "name": "mom_5",
@@ -1289,7 +1289,7 @@
     ],
     "market": "etf",
     "status_reason": "丁2 库内判重(09-29)：与 vol_20 的逐日截面 |Spearman|=1.0000 >= RDAGENT_BAR=0.99，同簇留 |ic| 高者；读数 shell/etf/snap_ding2_0929/diagonal_remeasure_36.csv",
-    "status_time": "2026-09-29 00:24:34"
+    "status_time": "2026-09-29 00:38:26"
   },
   "momentum_20": {
     "name": "momentum_20",
@@ -1354,8 +1354,8 @@
       }
     ],
     "market": "etf",
-    "status_reason": "丁2 库内判重(09-29)：与 mom_20 的逐日截面 |Spearman|=0.9987 >= RDAGENT_BAR=0.99，同簇留 |ic| 高者；读数 shell/etf/snap_ding2_0929/diagonal_remeasure_36.csv",
-    "status_time": "2026-09-29 00:24:34"
+    "status_reason": "丁2 库内判重(09-29)：与 mom_20 的逐日截面 |Spearman|=0.9979 >= RDAGENT_BAR=0.99，同簇留 |ic| 高者；读数 shell/etf/snap_ding2_0929/diagonal_remeasure_36.csv",
+    "status_time": "2026-09-29 00:38:26"
   },
   "hybrid_5": {
     "name": "hybrid_5",
@@ -1381,7 +1381,7 @@
     ],
     "market": "etf",
     "status_reason": "丁2 库内判重(09-29)：与 hybrid_0 的逐日截面 |Spearman|=1.0000 >= RDAGENT_BAR=0.99，同簇留 |ic| 高者；读数 shell/etf/snap_ding2_0929/diagonal_remeasure_36.csv",
-    "status_time": "2026-09-29 00:24:34"
+    "status_time": "2026-09-29 00:38:26"
   },
   "5-day SMA of Price": {
     "name": "5-day SMA of Price",

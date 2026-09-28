@@ -18,8 +18,8 @@ mogp_1,多目标遗传规划因子2号,returns,-0.0227,0.0,pipeline,etf,active,2
 mogp_2,多目标遗传规划因子3号,(close / low),-0.0224,0.0,pipeline,etf,active,2026-09-20 11:06:47,2026-09-22 17:03:10,4
 mogp_6,多目标遗传规划因子7号,"(delta(ts_std(ts_sum(volume, 60), 10), 60) + (returns - (-abs(returns))))",-0.0107,0.0,pipeline,etf,inactive,2026-09-20 11:06:47,2026-09-22 17:03:10,3
 mogp_7,多目标遗传规划因子8号,"ts_mean(returns, 20)",0.008,0.0,pipeline,etf,inactive,2026-09-20 11:06:47,2026-09-22 17:03:10,3
-mom_5,5日价格动量(模板),"delta(close, 5) / (ma(df, 20) + 1e-9)",-0.0371,-1.3087,simple,etf,active,2026-09-20 12:30:24,2026-09-29 01:35:38,14
-mom_20,20日价格动量(模板),"delta(close, 20) / (ma(df, 60) + 1e-9)",-0.0238,-0.6308,simple,etf,active,2026-09-20 12:30:24,2026-09-28 22:09:45,7
+mom_5,5日价格动量(模板),"delta(close, 5) / (ma(df, 20) + 1e-9)",-0.0718,-1.7977,simple,etf,active,2026-09-20 12:30:24,2026-09-29 01:36:05,15
+mom_20,20日价格动量(模板),"delta(close, 20) / (ma(df, 60) + 1e-9)",-0.0538,-1.5643,simple,etf,active,2026-09-20 12:30:24,2026-09-29 01:36:05,8
 hybrid_0,LLM-遗传混合因子1号,"(-delta(close, 3)) / (ma(df, 10) + 1e-9)",0.1037,0.0,pipeline,,active,2026-09-20 12:33:37,2026-09-20 12:33:37,1
 momentum_10,10日动量,"(close / delay(close, 10.0) - 1)",-0.0697,-1.2351,pipeline,,active,2026-09-20 12:33:37,2026-09-20 12:33:37,1
 hybrid_7,LLM-遗传混合因子8号,"ts_mean(ts_sum((-ts_mean(open, 240)), 60), 60)",-0.01,0.0,pipeline,etf,active,2026-09-20 12:33:37,2026-09-25 00:27:58,3

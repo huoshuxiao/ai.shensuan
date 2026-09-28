@@ -95,8 +95,14 @@ def next_snapshot_tag(t_tag):
     return nxt[0] if nxt else None
 
 
-def recompute_blocked(s, mtx, rm, axis, quantile, min_hits, extra_names=""):
-    """复算 T 日的候选漏斗与被挡集合：与 `buy_candidates` 同一条路，一个判据都不重抄"""
+def recompute_blocked(s, mtx, rm, axis, quantile, min_hits, extra_names,
+                      extra_quantile):
+    """复算 T 日的候选漏斗与被挡集合：与 `buy_candidates` 同一条路，一个判据都不重抄
+
+    两根阈值分开传：`quantile` 管那四条量能构造（域），`extra_quantile` 只管名单独立闸。
+    取值由 `audit_one` 从**这一场的 meta** 里认，不从进程配置取 —— 否则拿今天的刀口去
+    复算昨天的名单，对账会失败得像是生产算错了。
+    """
     cl, raw, vol = mtx["close"], mtx["raw_price"], mtx["volume"]
     cols = cl.columns
     gate_mat = rm[VOLUME_RULES[0][2]]                  # 闸门基准恒为「量能水平」那条
@@ -105,9 +111,10 @@ def recompute_blocked(s, mtx, rm, axis, quantile, min_hits, extra_names=""):
     _keep, detail = volume_exclusion(rm, s, pool, quantile)
     n_hit = detail["n_hit"].reindex(pool.index).fillna(0)
     keep_buy = pool & (n_hit < min_hits)               # 待买入那道「较松」的共识闸
-    # 名单层独立闸**跟着这一场的 meta 走**：09-26 之前那几天根本没有这道闸，
-    # 拿今天的判据去复算昨天的名单就会对账失败（而且失败得像是生产算错了）
-    blocked, _fired = buy_extra_block(rm, s, pool, quantile, names=extra_names)
+    # 名单层独立闸**跟着这一场的 meta 走**（extra_names / extra_quantile 都由 audit_one
+    # 从那一场的归档里认）：09-26 之前那几天根本没有这道闸，拿今天的判据去复算昨天的
+    # 名单就会对账失败，而且失败得像是生产算错了
+    blocked, _fired = buy_extra_block(rm, s, pool, extra_quantile, names=extra_names)
     keep_buy = keep_buy & ~blocked
 
     v = rm[axis].loc[s].reindex(cols).astype("float32")
@@ -167,6 +174,7 @@ def audit_one(t_tag, mtx, rm, out_rows):
     min_hits = int(mb["buy_min_hits"])
     extra = meta.get("buy_extra_rules", [])           # 缺键 = 那一场还没有独立闸
     extra_names = ",".join(r["key"] for r in extra)
+    extra_q = float(meta.get("buy_extra_quantile", quantile))
     archived_gate = meta.get("tradable_gate")
     if archived_gate != scr.ASHARE_TRADABLE_GATE:
         # 审计的是**那一天**的判据：进程档与产物档不一致时按产物走，并说出来
@@ -175,11 +183,12 @@ def audit_one(t_tag, mtx, rm, out_rows):
         scr.ASHARE_TRADABLE_GATE = archived_gate
     print(f"\n################ 场次 {t_tag}　"
           f"axis={axis}　gate={archived_gate}　quantile={quantile}　"
-          f"buy_min_hits={min_hits}　独立闸={extra_names or '无'}　"
+          f"buy_min_hits={min_hits}　独立闸={extra_names or '无'}"
+          f"{'' if not extra else f'@{extra_q:g}'}　"
           f"入线值={mb['quiet_cut']:,.1f} ################")
 
     s = pd.Timestamp(f"{t_tag[:4]}-{t_tag[4:6]}-{t_tag[6:]}")
-    r = recompute_blocked(s, mtx, rm, axis, quantile, min_hits, extra_names)
+    r = recompute_blocked(s, mtx, rm, axis, quantile, min_hits, extra_names, extra_q)
     print(f"[复算] n_step1={int(r['step1'].sum())} n_traded={int(r['traded'].sum())} "
           f"n_chase={int(r['chase'].sum())}　（生产 meta："
           f"{mb['n_step1']}/{mb['n_traded']}/{mb['n_chase']}）")

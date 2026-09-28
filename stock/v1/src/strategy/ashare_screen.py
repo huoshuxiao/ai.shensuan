@@ -68,15 +68,15 @@ top50/100/200，扣双边 15bp 后相对同域等权池的年化超额）：量�
   是全局档的读数，配额档下这两行反而**略高于参照**（+0.51% / +0.30%）—— 不是构造变强了，
   是剔除改变了「回填席位补进谁」。名单上的伤害**全部**来自与水平近乎正交的
   **量能动量（-1.85%）与量能比（-2.08%）** 这两条。
-  **名单层另有一道独立闸**（09-26 接，`BUY_EXTRA_RULES`）：它**不进**上面那个 `n_hit`
-  计数，只在共识闸放行之后再单独否决一次 —— 现启用的一条是「下影深度」
-  `(-1.0*((low / close)))` 的池内高分端（≥80% 分位挡掉，即「当日最低价相对收盘砸得
-  最深的那两成」）。为什么要单独一组而不是塞进 `VOLUME_RULES`：并进那四条会把共识计数
-  整体抬高，实测名单超额 +0.28% → +0.04%（≥1 档 -3.22%），独立叠上来才是 +1.04%/年
-  （**样本内**、配额档 top50、570 个调仓日、扣双边 15bp）。它不改「不该买」那张域，
-  也不改减法腿；开关 `STOCK_BUY_EXTRA_RULES`（空串关掉），当日咬了几只在 `buy_stats`
-  的 `n_extra_in_pool` / `n_extra_net`。这条表达式**吃 `low`**，09-26 之前求值环境把
-  high/low 绑成收盘占位（CHANGELOG ㉞），它会被压成常量 −1.0 ⇒ 接线排在那次修复之后。
+  **名单层另有一道独立闸**（09-26 接、**09-27 起默认关**，判据 `BUY_EXTRA_RULES`）：它不进
+  上面那个 `n_hit` 计数，只在共识闸放行之后再单独否决一次；一条「下影深度」
+  `(-1.0*((low / close)))` 的池内高分端（≥80% 分位挡掉 = 当日最低价相对收盘砸得最深的那两成）。
+  为什么不塞进 `VOLUME_RULES`：并进那四条会把共识计数整体抬高，实测名单超额 +0.28% → +0.04%
+  （≥1 档 -3.22%），独立叠上来才 +1.04%/年（**样本内**、配额档 top50、570 个调仓日、扣双边 15bp）。
+  ⚠️ 搬到真正掏钱的 **5 席下单层反号**：@0.80 年均 -8.78pp 超额、四档刀口全负且不单调（㊷）、
+  2023 单年 -50.03pp 里 96% 是选股不是税（㊸）⇒ **09-27 拍退闸**：开关默认空串，判据本体一行没删、
+  传 `low0` 零代码再开；当日咬了几只看 `buy_stats` 的 `n_extra_in_pool` / `n_extra_net`。这条
+  表达式**吃 `low`**，09-26 之前求值环境把 high/low 绑成收盘占位（CHANGELOG ㉞）会被压成常量 −1.0。
 
 对照产物：`data/results/ashare_portfolio_eval.csv`（面板量，生产口径，涨停闸 `board`、
 名单形状 `quota`）与 `ashare_portfolio_eval_realvol.csv`（真手数，复核口径），开关
@@ -158,7 +158,7 @@ from config import (ASHARE_DAILY_H5, ASHARE_FACTORS_JSON, ASHARE_PORT_START,
                     ASHARE_PORT_MIN_AMOUNT, ASHARE_PORT_MIN_LISTED,
                     ASHARE_PORT_LIMIT_UP, ASHARE_SAMPLE,
                     ASHARE_SCREEN_QUANTILE, ASHARE_SCREEN_RULES,
-                    ASHARE_BUY_EXTRA_RULES,
+                    ASHARE_BUY_EXTRA_RULES, ASHARE_BUY_EXTRA_QUANTILE,
                     ASHARE_VOL_BASIS, ASHARE_BUY_TOP_N, ASHARE_BUY_MIN_HITS,
                     ASHARE_LIST_SCHEME, ASHARE_LIST_QUOTA,
                     ASHARE_BOARD_LIMIT_UP, ASHARE_BOARD_LIMIT_SINCE, ASHARE_LIMIT_NEAR,
@@ -255,13 +255,13 @@ VOLUME_RULES = [
 ]
 RULE_EXPRS = [e for _k, _n, e, _d in VOLUME_RULES]
 
-# ---------- 名单层的**独立**额外闸（09-26 接，不进上面那张并集） ----------
+# ---------- 名单层的**独立**额外闸（09-26 接、**09-27 起默认关**，不进上面那张并集） ----------
 # 为什么单独一组：实测这两条路的方向是反的（配额档 top50、570 个调仓日、扣双边 15bp，
 # `shell/stock/a158_five_rule_ctrl_0926.py`）。把本条并进那四条 → 名单超额
 # +0.28%（现口径）跌到 +0.04%（≥3 档）甚至 -3.22%（≥1 档）；让它独立只挡名单入口
 # → +1.04%。道理在计数上：并集那道闸挡的是「命中几条」，一条一踢池内 20% 的构造
 # 会把 n_hit 整体抬高、把「≥3 条一致判响」这层共识冲淡；独立成闸则只在自己的
-# 那一维上筛，不动共识计数。
+# 那一维上筛，不动共识计数。⚠️ 但这 +1.04% 只在**名单层**成立：搬到真正掏钱的 5 席下单层四档全负（㊷ -8.78~-1.57pp/年）、2023 那笔亏损 96% 是选股不是税（㊸）⇒ 09-27 拍退闸，默认空串。
 # 表达式吃 `low`：本模块 09-26 之前把 high/low 绑成 close 的占位（CHANGELOG ㉞），
 # 这条式子当时会被压成常量 -1.0 ⇒ 接线必须在那次修复之后，且**只有**环 2 之后重跑
 # 过的归档表能拿来引这个数。
@@ -698,15 +698,19 @@ def active_buy_extra_rules(names=ASHARE_BUY_EXTRA_RULES):
     return [r for r in BUY_EXTRA_RULES if r[0] in want]
 
 
-def buy_extra_block(rule_mats, s, pool, quantile=ASHARE_SCREEN_QUANTILE,
+def buy_extra_block(rule_mats, s, pool, quantile=ASHARE_BUY_EXTRA_QUANTILE,
                     names=ASHARE_BUY_EXTRA_RULES):
     """信号日 s 的名单层独立闸：返回 (blocked 布尔 Series, {中文名: 池内命中只数})
 
         pct_i = rank_{j∈pool}(F_{j,s}) / |pool|        挡 ⇔ pct_i >= quantile
 
-    与 `volume_exclusion` **同式同阈值**（同一个 `ASHARE_SCREEN_QUANTILE`，池内算分位），
-    差别只在结果怎么用：这里不累加 n_hit、不动保留池，命中即单独挡在待买入名单之外，
-    所以既不会被共识强度（`ASHARE_BUY_MIN_HITS`）稀释，也不会改「不该买」那张域。
+    与 `volume_exclusion` **同式不同阈值**：公式一模一样、都在池内算分位，刀口深度各用一根
+    旋钮（本函数吃 `ASHARE_BUY_EXTRA_QUANTILE`，那四条吃 `ASHARE_SCREEN_QUANTILE`）。分成
+    两根是因为共用一根时拨这道闸会连带把「谁不该买」那张域一起收紧，两笔账混在同一开关上。
+    生产取值钉在 **0.80**（与域那根同值 ⇒ 与另立之前逐字节相同）；㊲ 收浅到 0.85 能把名单超额
+    +1.04%→+1.96%/年，但 ㊳ 那一格的血统只是「样本内选中、样本外确认」⇒ 09-26 夜留 0.80，
+    09-27 起**整道闸默认关**（㊷ 5 席下单层四档全负、㊸ 亏损 96% 是选股不是税）。用法也不同：
+    这里不累加 n_hit、不动保留池，命中即单独挡在名单之外，所以既不被共识强度稀释也不改那张域。
     当日无值（不可求值 / 整列缺数据）按「判不了就不挡」放过，与量能构造同一立场。
     但**整条表达式没被送进 `factor_matrices`** 时直接报错而不是静默放过 —— 一道闸
     悄悄失效 = 名单形状变了却没人看得见，那是假读数。
@@ -998,7 +1002,8 @@ def buy_candidates(s, mtx, rule_mats, pool, keep,
 def screen_on_date(s, d1, mtx, rule_mats, gate_mat,
                    quantile=ASHARE_SCREEN_QUANTILE,
                    top_n=ASHARE_BUY_TOP_N, st_codes=None, with_buy=True,
-                   buy_min_hits=ASHARE_BUY_MIN_HITS):
+                   buy_min_hits=ASHARE_BUY_MIN_HITS,
+                   buy_extra_quantile=ASHARE_BUY_EXTRA_QUANTILE):
     """一个信号日的完整筛选：闸门 → 量能剔除 →（保留池内）待买入排序
 
     返回 dict(universe=过闸池, keep=保留, dropped=被剔, detail=分位明细,
@@ -1019,9 +1024,12 @@ def screen_on_date(s, d1, mtx, rule_mats, gate_mat,
     +0.95% → -0.39%，同一方向）。两个数踩的是同一条判据、不同的**用途**，
     所以各自按各自实测的最优强度取值，而不是强行统一成一个。
     buy_min_hits=1 时共识那道与域口径等价（旧口径）。
-    `extra` 是第三道，它**不加进 n_hit** —— 加进并集会把共识计数整体抬高，实测把名单
-    超额从 +0.28% 打到 +0.04%；独立成闸只在自己的那一维上一票否决，实测 +1.04%/年
-    （同表同网格、**样本内**）。开关 = STOCK_BUY_EXTRA_RULES，空串关掉。
+    `extra` 是这道独立闸，它**不加进 n_hit** —— 加进并集会把共识计数整体抬高，实测把名单
+    超额从 +0.28% 打到 +0.04%；独立成闸在名单层实测 +1.04%/年（同表同网格、**样本内**、配额档
+    top50）。⚠️ 搬到真正掏钱的 5 席下单层**反号**（㊷ 四档全负 -8.78~-1.57pp/年、㊸ 2023 那笔
+    96% 是选股不是税）⇒ **09-27 起默认关**：`STOCK_BUY_EXTRA_RULES` 空串，传 `low0` 零代码再开。
+    它的刀口是**另一根旋钮** `buy_extra_quantile`（默认 `ASHARE_BUY_EXTRA_QUANTILE` = 0.80，与上面
+    `quantile` 共用一根的话，调浅这道闸会连「不该买」那张域一起收紧，两笔账再也分不开）。
     """
     ok, n_limit = tradable_mask(s, d1, gate_mat, mtx)
     pool = pd.Series(ok, index=gate_mat.columns)
@@ -1035,7 +1043,7 @@ def screen_on_date(s, d1, mtx, rule_mats, gate_mat,
         #   共识闸挡了几只 / 并集剔了但共识闸放行几只
         n_consensus = int((pool & ~keep_buy).sum())
         n_lenient = int((pool & ~keep & keep_buy).sum())
-        blocked, blocked_n = buy_extra_block(rule_mats, s, pool, quantile)
+        blocked, blocked_n = buy_extra_block(rule_mats, s, pool, buy_extra_quantile)
         # 净新增：共识闸放行、却被独立闸挡掉的只数（池内命中数含与之重叠的那批，
         # 两个数都要报，否则读不出「这道闸今天到底新咬了几只」）
         n_extra_net = int((keep_buy & blocked).sum())

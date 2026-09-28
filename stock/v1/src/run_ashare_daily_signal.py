@@ -104,7 +104,7 @@ import time
 import pandas as pd
 
 from config import (ASHARE_BUY_TOP_N, ASHARE_BUY_MIN_HITS, ASHARE_FACTORS_JSON,
-                    ASHARE_BUY_EXTRA_RULES,
+                    ASHARE_BUY_EXTRA_QUANTILE,
                     ASHARE_PORT_MIN_AMOUNT, ASHARE_PORT_OUT,
                     ASHARE_SCREEN_QUANTILE, ASHARE_SIGNAL_DIR, ASHARE_SNAPSHOT_DIR,
                     ASHARE_ORDER_TOP_N, ASHARE_TRADABLE_GATE,
@@ -369,7 +369,9 @@ def main():
         # 独立闸不参与上面那个「命中几条」的计数，所以单独一行念清它咬了多少：
         # 池内命中含与共识闸重叠的那批，净新增才是它今天真正从名单里拿走的只数
         print(f"名单独立闸（不参与上面那道计数，各挡池内高分端 "
-              f"{ASHARE_SCREEN_QUANTILE:.0%}）："
+              f"{ASHARE_BUY_EXTRA_QUANTILE:.0%}，与「不该买」那根 {ASHARE_SCREEN_QUANTILE:.0%} "
+              f"是**两根旋钮**"
+              f"{'（当前同值 ⇒ 域没被这道闸带偏）' if ASHARE_BUY_EXTRA_QUANTILE == ASHARE_SCREEN_QUANTILE else '（当前不同值）'}）："
               + "、".join(f"{n} 池内命中 {bs['buy_extra_fired'][n]} 只"
                           for _k, n, _e, _d in extra)
               + f"　共识闸放行却被它挡掉 {bs['n_extra_net']} 只"
@@ -389,7 +391,7 @@ def main():
     if ls["n_short"]:
         print(f"　⚠️ 候选不足：名单只有 {ls['n_list']} 只（目标 {ASHARE_BUY_TOP_N}）"
               f"⇒ 等权那一格按实际只数算，别按 {ASHARE_BUY_TOP_N} 算")
-    print(f"候选漏斗：闸门内且过共识闸+独立闸 {bs['n_step1']} → 当日有成交 {bs['n_traded']} "
+    print(f"候选漏斗：闸门内且过共识闸{'＋独立闸' if extra else ''} {bs['n_step1']} → 当日有成交 {bs['n_traded']} "
           f"→ 非近涨停 {bs['n_traded'] - bs['n_chase']} → 非 ST {bs['n_cand']}"
           f"（剔 ST {bs['n_st']} 只{'' if bs['st_checked'] else '，今日无快照未跑'}）"
           f"　昨收取不到而放过 {bs['n_chg_unknown']} 只")
@@ -450,7 +452,9 @@ def main():
             # 两套剔除强度分开记：看板的「不该买」页读 quantile，「待买入」页读这个
             "buy_min_hits": ASHARE_BUY_MIN_HITS,
             # 名单层独立闸的口径自报（09-26 起）：审计要按**这一场记的那几条**复算，
-            # 老场次缺这个键 = 那天还没有这道闸，复算也就不叠它
+            # 老场次缺这两个键 = 那天还没有这道闸（或缺 09-26 晚之前的刀口独立记录），
+            # 复算也就不叠它 / 沿用上面那个 quantile
+            "buy_extra_quantile": ASHARE_BUY_EXTRA_QUANTILE,
             "buy_extra_rules": [{"key": k, "name": n, "expr": e,
                                  "fired": bs["buy_extra_fired"].get(n, 0)}
                                 for k, n, e, _d in extra],

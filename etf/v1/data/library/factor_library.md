@@ -1,6 +1,6 @@
 # 因子库
 
-> 自动生成于 `2026-09-29 22:44:22` | 共 **36** 个因子
+> 自动生成于 `2026-09-30 00:46:22` | 共 **36** 个因子
 
 ## 📊 元信息
 
@@ -15,11 +15,11 @@
 |------|--------|--------|-----|------|------|------|
 | 1 | `hybrid_0` | LLM-遗传混合因子1号 | +0.1037 | +0.000 | pipeline | active |
 | 2 | `1-day SMA of Price over 60-day SMA of Price` | (均线(数据,1))/(均线(数据,60)) | -0.0772 | -2.339 | official | active |
-| 3 | `5-day SMA of Price` | 均线(数据,5) | -0.0725 | -2.039 | official | active |
-| 4 | `mom_5` | 5日价格动量(模板) | -0.0718 | -1.798 | simple | active |
-| 5 | `momentum_10` | 10日动量 | -0.0697 | -1.235 | pipeline | active |
-| 6 | `1-day SMA of Price over 60-day MAX of Price` | (均线(数据,1))/(区间最高(数据,60)) | -0.0588 | -1.422 | official | active |
-| 7 | `1-day SMA of Price over 20-day MAX of Price` | (均线(数据,1))/(区间最高(数据,20)) | -0.0470 | -2.953 | official | active |
+| 3 | `mom_5` | 5日价格动量(模板) | -0.0718 | -1.798 | simple | active |
+| 4 | `momentum_10` | 10日动量 | -0.0697 | -1.235 | pipeline | active |
+| 5 | `5-day SMA of Price` | 均线(数据,5) | -0.0626 | -1.529 | official | active |
+| 6 | `1-day SMA of Price over 20-day MAX of Price` | (均线(数据,1))/(区间最高(数据,20)) | -0.0407 | -1.028 | official | active |
+| 7 | `1-day SMA of Price over 60-day MAX of Price` | (均线(数据,1))/(区间最高(数据,60)) | -0.0393 | -1.080 | official | active |
 | 8 | `vol_20` | 20日低波动(模板) | -0.0331 | -1.497 | llm | active |
 | 9 | `gp_0` | 遗传规划因子1号 | -0.0310 | -0.814 | genetic | active |
 | 10 | `10-day SMA of Volume` | 滚动均值(成交量,10) | -0.0306 | -0.841 | official | active |
@@ -577,8 +577,8 @@ ts_mean(ts_sum((-ts_mean(open, 240)), 60), 60)
 - **状态**: `active`
 - **来源**: `official`
 - **截面口径**: `etf`
-- **IC**: -0.0725
-- **ICIR**: -2.039
+- **IC**: -0.0626
+- **ICIR**: -1.529
 - **首次发现**: 2026-09-25 03:10:24
 
 **表达式**:
@@ -595,8 +595,8 @@ ma(df,5)
 - **状态**: `active`
 - **来源**: `official`
 - **截面口径**: `etf`
-- **IC**: -0.0588
-- **ICIR**: -1.422
+- **IC**: -0.0393
+- **ICIR**: -1.080
 - **首次发现**: 2026-09-25 03:10:24
 
 **表达式**:
@@ -649,8 +649,8 @@ ts_mean(volume,10)
 - **状态**: `active`
 - **来源**: `official`
 - **截面口径**: `etf`
-- **IC**: -0.0470
-- **ICIR**: -2.953
+- **IC**: -0.0407
+- **ICIR**: -1.028
 - **首次发现**: 2026-09-25 08:08:32
 
 **表达式**:

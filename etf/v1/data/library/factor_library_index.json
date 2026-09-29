@@ -583,7 +583,7 @@
     "ic": 0.020724096798543982,
     "icir": 0.7342708565616988,
     "source": "simple",
-    "status": "active",
+    "status": "inactive",
     "first_seen": "2026-09-20 10:56:10",
     "last_seen": "2026-09-29 01:29:30",
     "update_count": 19,
@@ -686,7 +686,7 @@
     ],
     "market": "etf",
     "status_reason": "丁2 库内判重(09-29)：与 mom_5 的逐日截面 |Spearman|=0.9990 >= RDAGENT_BAR=0.99，同簇留 |ic| 高者；读数 shell/etf/snap_ding2_0929/diagonal_remeasure_36.csv",
-    "status_time": "2026-09-29 00:38:26"
+    "status_time": "2026-09-29 12:37:00"
   },
   "rsi_14": {
     "name": "rsi_14",
@@ -1266,7 +1266,7 @@
     "ic": -0.01619181019342396,
     "icir": -0.5158578592239955,
     "source": "simple",
-    "status": "active",
+    "status": "inactive",
     "first_seen": "2026-09-24 09:31:34",
     "last_seen": "2026-09-29 01:29:30",
     "update_count": 12,
@@ -1334,7 +1334,7 @@
     ],
     "market": "etf",
     "status_reason": "丁2 库内判重(09-29)：与 vol_20 的逐日截面 |Spearman|=1.0000 >= RDAGENT_BAR=0.99，同簇留 |ic| 高者；读数 shell/etf/snap_ding2_0929/diagonal_remeasure_36.csv",
-    "status_time": "2026-09-29 00:38:26"
+    "status_time": "2026-09-29 12:37:00"
   },
   "momentum_20": {
     "name": "momentum_20",

@@ -36,4 +36,6 @@ vol_20,20日低波动(模板),"-ts_std(returns, 20)",-0.0331,-1.4971,llm,etf,act
 1-day SMA of Price over 60-day SMA of Price,"(均线(数据,1))/(均线(数据,60))","(ma(df,1))/(ma(df,60))",-0.01,-0.2878,official,etf,active,2026-09-25 10:26:39,2026-09-30 11:36:51,5
 ma_ratio_10_30,均线比(10日/30日),,0.0059,0.2013,simple,etf,active,2026-09-28 22:04:52,2026-10-01 15:59:05,5
 volatility_breakout_momentum,"滞后(区间最高(最高价, 5), -1) / 均线(数据, 90) - 滞后(区","delay(max(high, 5), -1) / ma(df, 90) - delay(min(low, 5), -1) / ma(df, 90)",0.0383,1.3403,llm,etf,active,2026-10-01 15:58:57,2026-10-01 15:59:05,2
-price_vol_asymmetry,"滚动分位(绝对值(差分(收盘价, 5)), 60) / (标准差(数据, 120","rank(abs(delta(close, 5)), 60) / (std(df, 120) + 1e-9)",0.0204,0.6043,llm,etf,active,2026-10-01 15:58:57,2026-10-01 15:59:05,2
+price_vol_asymmetry,"滚动分位(绝对值(差分(收盘价, 5)), 60) / (标准差(数据, 120","rank(abs(delta(close, 5)), 60) / (std(df, 120) + 1e-9)",0.0305,2.7605,llm,etf,active,2026-10-01 15:58:57,2026-10-01 16:07:36,3
+range_expansion_ratio,"(最高价 - 最低价) / (均线(数据,20) + 1e-9)","(high - low) / (ma(df,20) + 1e-9)",0.0787,3.4892,llm,etf,active,2026-10-01 16:07:36,2026-10-01 16:07:36,1
+log_volume_momentum,"差分(对数(成交量),5) / (均线(数据,40) + 1e-9)","delta(log(volume),5) / (ma(df,40) + 1e-9)",0.0671,2.5063,llm,etf,active,2026-10-01 16:07:36,2026-10-01 16:07:36,1

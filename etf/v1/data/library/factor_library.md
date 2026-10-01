@@ -1,12 +1,12 @@
 # 因子库
 
-> 自动生成于 `2026-10-01 15:59:05` | 共 **38** 个因子
+> 自动生成于 `2026-10-01 16:07:36` | 共 **40** 个因子
 
 ## 📊 元信息
 
-- 总因子数: 38
-- 活跃: 38
-- 来源分布: {'genetic': 3, 'pipeline': 20, 'simple': 7, 'official': 5, 'llm': 3}
+- 总因子数: 40
+- 活跃: 40
+- 来源分布: {'genetic': 3, 'pipeline': 20, 'simple': 7, 'official': 5, 'llm': 5}
 - 截面口径(market): `etf` —— IC 只在同口径内可比
 
 ## 🏆 Top 20 因子
@@ -14,25 +14,25 @@
 | 排名 | 因子名 | 中文名 | IC | ICIR | 来源 | 状态 |
 |------|--------|--------|-----|------|------|------|
 | 1 | `hybrid_0` | LLM-遗传混合因子1号 | +0.1037 | +0.000 | pipeline | active |
-| 2 | `momentum_10` | 10日动量 | -0.0697 | -1.235 | pipeline | active |
-| 3 | `1-day SMA of Price over 60-day MAX of Price` | (均线(数据,1))/(区间最高(数据,60)) | -0.0393 | -1.080 | official | active |
-| 4 | `volatility_breakout_momentum` | 滞后(区间最高(最高价, 5), -1) / 均线(数据, 90) - 滞后(区 | +0.0383 | +1.340 | llm | active |
-| 5 | `vol_20` | 20日低波动(模板) | -0.0331 | -1.497 | llm | active |
-| 6 | `mom_5` | 5日价格动量(模板) | -0.0317 | -0.974 | simple | active |
-| 7 | `gp_0` | 遗传规划因子1号 | -0.0310 | -0.814 | genetic | active |
-| 8 | `10-day SMA of Volume` | 滚动均值(成交量,10) | -0.0306 | -0.841 | official | active |
-| 9 | `gp_1` | 遗传规划因子2号 | -0.0306 | -0.885 | genetic | active |
-| 10 | `5-day SMA of Price` | 均线(数据,5) | -0.0293 | -0.774 | official | active |
-| 11 | `mogp_3` | 多目标遗传规划因子4号 | -0.0280 | +0.000 | pipeline | active |
-| 12 | `mogp_0` | 多目标遗传规划因子1号 | +0.0253 | +0.000 | pipeline | active |
-| 13 | `gp_2` | 遗传规划因子3号 | +0.0241 | +1.001 | genetic | active |
-| 14 | `mom_20` | 20日价格动量(模板) | -0.0238 | -0.631 | simple | active |
-| 15 | `mogp_1` | 多目标遗传规划因子2号 | -0.0227 | +0.000 | pipeline | active |
-| 16 | `mogp_2` | 多目标遗传规划因子3号 | -0.0224 | +0.000 | pipeline | active |
-| 17 | `gp_3` | 遗传规划因子4号 | +0.0213 | +0.644 | pipeline | active |
-| 18 | `reversal_5` | 5日反转 | +0.0209 | +0.741 | simple | active |
-| 19 | `price_vol_asymmetry` | 滚动分位(绝对值(差分(收盘价, 5)), 60) / (标准差(数据, 120 | +0.0204 | +0.604 | llm | active |
-| 20 | `gp_4` | 遗传规划因子5号 | +0.0198 | +0.643 | pipeline | active |
+| 2 | `range_expansion_ratio` | (最高价 - 最低价) / (均线(数据,20) + 1e-9) | +0.0787 | +3.489 | llm | active |
+| 3 | `momentum_10` | 10日动量 | -0.0697 | -1.235 | pipeline | active |
+| 4 | `log_volume_momentum` | 差分(对数(成交量),5) / (均线(数据,40) + 1e-9) | +0.0671 | +2.506 | llm | active |
+| 5 | `1-day SMA of Price over 60-day MAX of Price` | (均线(数据,1))/(区间最高(数据,60)) | -0.0393 | -1.080 | official | active |
+| 6 | `volatility_breakout_momentum` | 滞后(区间最高(最高价, 5), -1) / 均线(数据, 90) - 滞后(区 | +0.0383 | +1.340 | llm | active |
+| 7 | `vol_20` | 20日低波动(模板) | -0.0331 | -1.497 | llm | active |
+| 8 | `mom_5` | 5日价格动量(模板) | -0.0317 | -0.974 | simple | active |
+| 9 | `gp_0` | 遗传规划因子1号 | -0.0310 | -0.814 | genetic | active |
+| 10 | `10-day SMA of Volume` | 滚动均值(成交量,10) | -0.0306 | -0.841 | official | active |
+| 11 | `gp_1` | 遗传规划因子2号 | -0.0306 | -0.885 | genetic | active |
+| 12 | `price_vol_asymmetry` | 滚动分位(绝对值(差分(收盘价, 5)), 60) / (标准差(数据, 120 | +0.0305 | +2.761 | llm | active |
+| 13 | `5-day SMA of Price` | 均线(数据,5) | -0.0293 | -0.774 | official | active |
+| 14 | `mogp_3` | 多目标遗传规划因子4号 | -0.0280 | +0.000 | pipeline | active |
+| 15 | `mogp_0` | 多目标遗传规划因子1号 | +0.0253 | +0.000 | pipeline | active |
+| 16 | `gp_2` | 遗传规划因子3号 | +0.0241 | +1.001 | genetic | active |
+| 17 | `mom_20` | 20日价格动量(模板) | -0.0238 | -0.631 | simple | active |
+| 18 | `mogp_1` | 多目标遗传规划因子2号 | -0.0227 | +0.000 | pipeline | active |
+| 19 | `mogp_2` | 多目标遗传规划因子3号 | -0.0224 | +0.000 | pipeline | active |
+| 20 | `gp_3` | 遗传规划因子4号 | +0.0213 | +0.644 | pipeline | active |
 
 ## 📈 指标说明
 
@@ -715,14 +715,50 @@ delay(max(high, 5), -1) / ma(df, 90) - delay(min(low, 5), -1) / ma(df, 90)
 - **状态**: `active`
 - **来源**: `llm`
 - **截面口径**: `etf`
-- **IC**: +0.0204
-- **ICIR**: +0.604
+- **IC**: +0.0305
+- **ICIR**: +2.761
 - **首次发现**: 2026-10-01 15:58:57
 
 **表达式**:
 
 ```python
 rank(abs(delta(close, 5)), 60) / (std(df, 120) + 1e-9)
+```
+
+---
+
+### `range_expansion_ratio` · (最高价 - 最低价) / (均线(数据,20) + 1e-9)
+
+- **中文名**: (最高价 - 最低价) / (均线(数据,20) + 1e-9)
+- **状态**: `active`
+- **来源**: `llm`
+- **截面口径**: `etf`
+- **IC**: +0.0787
+- **ICIR**: +3.489
+- **首次发现**: 2026-10-01 16:07:36
+
+**表达式**:
+
+```python
+(high - low) / (ma(df,20) + 1e-9)
+```
+
+---
+
+### `log_volume_momentum` · 差分(对数(成交量),5) / (均线(数据,40) + 1e-9)
+
+- **中文名**: 差分(对数(成交量),5) / (均线(数据,40) + 1e-9)
+- **状态**: `active`
+- **来源**: `llm`
+- **截面口径**: `etf`
+- **IC**: +0.0671
+- **ICIR**: +2.506
+- **首次发现**: 2026-10-01 16:07:36
+
+**表达式**:
+
+```python
+delta(log(volume),5) / (ma(df,40) + 1e-9)
 ```
 
 ---

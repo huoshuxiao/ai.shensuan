@@ -1853,13 +1853,13 @@
   "price_vol_asymmetry": {
     "name": "price_vol_asymmetry",
     "expr": "rank(abs(delta(close, 5)), 60) / (std(df, 120) + 1e-9)",
-    "ic": 0.020421692032034356,
-    "icir": 0.604323687507191,
+    "ic": 0.030466250550323634,
+    "icir": 2.760530467223353,
     "source": "llm",
     "status": "active",
     "first_seen": "2026-10-01 15:58:57",
-    "last_seen": "2026-10-01 15:59:05",
-    "update_count": 2,
+    "last_seen": "2026-10-01 16:07:36",
+    "update_count": 3,
     "ic_history": [
       {
         "time": "2026-10-01 15:58:57",
@@ -1870,6 +1870,49 @@
         "time": "2026-10-01 15:59:05",
         "ic": 0.020421692032034356,
         "icir": 0.604323687507191
+      },
+      {
+        "time": "2026-10-01 16:07:36",
+        "ic": 0.030466250550323634,
+        "icir": 2.760530467223353
+      }
+    ],
+    "market": "etf"
+  },
+  "range_expansion_ratio": {
+    "name": "range_expansion_ratio",
+    "expr": "(high - low) / (ma(df,20) + 1e-9)",
+    "ic": 0.07867287540545531,
+    "icir": 3.4892312797490352,
+    "source": "llm",
+    "status": "active",
+    "first_seen": "2026-10-01 16:07:36",
+    "last_seen": "2026-10-01 16:07:36",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-10-01 16:07:36",
+        "ic": 0.07867287540545531,
+        "icir": 3.4892312797490352
+      }
+    ],
+    "market": "etf"
+  },
+  "log_volume_momentum": {
+    "name": "log_volume_momentum",
+    "expr": "delta(log(volume),5) / (ma(df,40) + 1e-9)",
+    "ic": 0.06709009933315728,
+    "icir": 2.5063113902726344,
+    "source": "llm",
+    "status": "active",
+    "first_seen": "2026-10-01 16:07:36",
+    "last_seen": "2026-10-01 16:07:36",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-10-01 16:07:36",
+        "ic": 0.06709009933315728,
+        "icir": 2.5063113902726344
       }
     ],
     "market": "etf"

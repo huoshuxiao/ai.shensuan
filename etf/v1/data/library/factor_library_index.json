@@ -1916,5 +1916,100 @@
       }
     ],
     "market": "etf"
+  },
+  "high_low_spread_momentum": {
+    "name": "high_low_spread_momentum",
+    "expr": "delta(close, 5) * ((high - low) / ma(df, 60))",
+    "ic": -0.03878822371630471,
+    "icir": -1.6022078683353604,
+    "source": "llm",
+    "status": "active",
+    "first_seen": "2026-10-01 16:16:39",
+    "last_seen": "2026-10-01 16:16:39",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-10-01 16:16:39",
+        "ic": -0.03878822371630471,
+        "icir": -1.6022078683353604
+      }
+    ],
+    "market": "etf"
+  },
+  "volume_spike_pullback": {
+    "name": "volume_spike_pullback",
+    "expr": "sign(delta(close, 10)) * (volume - ts_mean(volume, 60)) / (ts_std(volume, 60) + 1e-9)",
+    "ic": 0.023364264828756313,
+    "icir": 0.6628284004128931,
+    "source": "llm",
+    "status": "active",
+    "first_seen": "2026-10-01 16:16:39",
+    "last_seen": "2026-10-01 16:16:39",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-10-01 16:16:39",
+        "ic": 0.023364264828756313,
+        "icir": 0.6628284004128931
+      }
+    ],
+    "market": "etf"
+  },
+  "normalized_open_interest_change": {
+    "name": "normalized_open_interest_change",
+    "expr": "delta(close, 10) - delta(ma(close, 60), 10)",
+    "ic": -0.02208969521592688,
+    "icir": -0.7063754652739205,
+    "source": "llm",
+    "status": "active",
+    "first_seen": "2026-10-01 16:16:39",
+    "last_seen": "2026-10-01 16:16:39",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-10-01 16:16:39",
+        "ic": -0.02208969521592688,
+        "icir": -0.7063754652739205
+      }
+    ],
+    "market": "etf"
+  },
+  "volume_gap_reversion": {
+    "name": "volume_gap_reversion",
+    "expr": "(open - close) / ma(df, 30) * (volume / ts_mean(volume, 60))",
+    "ic": 0.02080252983182845,
+    "icir": 0.5231292341246166,
+    "source": "llm",
+    "status": "active",
+    "first_seen": "2026-10-01 16:16:39",
+    "last_seen": "2026-10-01 16:16:39",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-10-01 16:16:39",
+        "ic": 0.02080252983182845,
+        "icir": 0.5231292341246166
+      }
+    ],
+    "market": "etf"
+  },
+  "rsi_like_volatility_filter": {
+    "name": "rsi_like_volatility_filter",
+    "expr": "delay(((close - ma(df, 20)) / std(df, 20) + 1e-9), 5) * min(std(df, 60) / std(df, 30), 2.0)",
+    "ic": 0.020568860412726146,
+    "icir": 0.5469872966209264,
+    "source": "llm",
+    "status": "active",
+    "first_seen": "2026-10-01 16:16:39",
+    "last_seen": "2026-10-01 16:16:39",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-10-01 16:16:39",
+        "ic": 0.020568860412726146,
+        "icir": 0.5469872966209264
+      }
+    ],
+    "market": "etf"
   }
 }

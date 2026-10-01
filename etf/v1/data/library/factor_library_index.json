@@ -1805,5 +1805,43 @@
       }
     ],
     "market": "etf"
+  },
+  "volatility_breakout_momentum": {
+    "name": "volatility_breakout_momentum",
+    "expr": "delay(max(high, 5), -1) / ma(df, 90) - delay(min(low, 5), -1) / ma(df, 90)",
+    "ic": 0.038293661058738826,
+    "icir": 1.3403429818720562,
+    "source": "llm",
+    "status": "active",
+    "first_seen": "2026-10-01 15:58:57",
+    "last_seen": "2026-10-01 15:58:57",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-10-01 15:58:57",
+        "ic": 0.038293661058738826,
+        "icir": 1.3403429818720562
+      }
+    ],
+    "market": "etf"
+  },
+  "price_vol_asymmetry": {
+    "name": "price_vol_asymmetry",
+    "expr": "rank(abs(delta(close, 5)), 60) / (std(df, 120) + 1e-9)",
+    "ic": 0.020421692032034356,
+    "icir": 0.604323687507191,
+    "source": "llm",
+    "status": "active",
+    "first_seen": "2026-10-01 15:58:57",
+    "last_seen": "2026-10-01 15:58:57",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-10-01 15:58:57",
+        "ic": 0.020421692032034356,
+        "icir": 0.604323687507191
+      }
+    ],
+    "market": "etf"
   }
 }

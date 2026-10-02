@@ -7,9 +7,9 @@ gp_3,遗传规划因子4号,"(volume * (-ts_sum(log(delta(volume, 20)), 5)))",0.
 gp_4,遗传规划因子5号,"ts_mean(((high / (((high / ((delta(close, 10) + (high / low)) * open)) + (delta(abs(high), 10) + (high / low))) * open)) + (delta(close, 10) + (high / low))), 20)",0.0198,0.6429,pipeline,etf,active,2026-09-20 10:56:10,2026-09-22 17:03:10,10
 hybrid_1,LLM-遗传混合因子2号,"((ts_mean((returns * volume), 10) - open) * ts_sum((abs(high) * (open * close)), 10))",0.0168,0.0,pipeline,etf,active,2026-09-20 10:56:10,2026-09-22 17:03:10,6
 hybrid_2,LLM-遗传混合因子3号,close,-0.0159,0.0,pipeline,,active,2026-09-20 10:56:10,2026-09-21 16:02:56,4
-volume_ratio_20,20日量比,"(volume / ts_mean(volume, 20.0))",0.0061,0.2,simple,etf,active,2026-09-20 10:56:10,2026-10-02 22:42:43,13
+volume_ratio_20,20日量比,"(volume / ts_mean(volume, 20.0))",0.0061,0.2,simple,etf,active,2026-09-20 10:56:10,2026-10-03 01:28:44,14
 mogp_3,多目标遗传规划因子4号,"ts_mean(returns, 10)",-0.028,0.0,pipeline,etf,active,2026-09-20 10:56:10,2026-09-25 00:27:58,6
-reversal_5,5日反转,"(1 - close / delay(close, 5.0))",0.0208,0.7231,simple,etf,active,2026-09-20 10:56:10,2026-10-02 22:42:43,23
+reversal_5,5日反转,"(1 - close / delay(close, 5.0))",0.0208,0.7231,simple,etf,active,2026-09-20 10:56:10,2026-10-03 01:28:44,24
 rsi_14,14日RSI相对强弱,"(1 - 2 / (1 + ts_mean(np.maximum(delta(close, 1.0), 0.0), 14.0) / (ts_mean(np.maximum(-delta(close, 1.0), 0.0), 14.0) + 1e-9)))",0.0118,0.413,pipeline,etf,active,2026-09-20 10:56:10,2026-09-22 17:03:10,6
 mogp_4,多目标遗传规划因子5号,"(delta(ts_std(ts_sum(volume, 60), 10), 60) + (returns - (-abs(returns))))",-0.015,0.0,pipeline,etf,active,2026-09-20 10:56:10,2026-09-22 17:03:10,6
 mogp_5,多目标遗传规划因子6号,"ts_mean(returns, 20)",0.0174,0.0,pipeline,etf,active,2026-09-20 10:56:10,2026-09-25 00:27:58,8
@@ -25,16 +25,16 @@ momentum_10,10日动量,"(close / delay(close, 10.0) - 1)",-0.0697,-1.2351,pipel
 hybrid_7,LLM-遗传混合因子8号,"ts_mean(ts_sum((-ts_mean(open, 240)), 60), 60)",-0.01,0.0,pipeline,etf,active,2026-09-20 12:33:37,2026-09-25 00:27:58,3
 gp_6,遗传规划因子7号,"((low - (-(low - close))) + ((delay((high / low), 60) / abs((low * returns))) - (-(sign(high) + (-volume)))))",-0.0152,-0.4526,pipeline,,active,2026-09-20 12:33:37,2026-09-20 12:33:37,1
 hybrid_9,LLM-遗传混合因子10号,"(delta(ts_std(ts_sum(volume, 240), 20), 240) + (returns - (-abs(returns))))",0.006,0.0,pipeline,,active,2026-09-20 12:33:37,2026-09-20 12:33:37,1
-volatility_20,20日低波动,"(-ts_std(returns, 20.0))",-0.0162,-0.5194,simple,etf,active,2026-09-24 09:31:34,2026-10-02 22:42:43,16
+volatility_20,20日低波动,"(-ts_std(returns, 20.0))",-0.0162,-0.5194,simple,etf,active,2026-09-24 09:31:34,2026-10-03 01:28:44,17
 momentum_20,20日动量,"(close / delay(close, 20.0) - 1)",-0.0052,-0.1778,simple,etf,active,2026-09-24 09:31:34,2026-09-27 11:17:21,10
 hybrid_5,LLM-遗传混合因子6号,"(-delta(close, 3)) / (ma(df, 10) + 1e-9)",0.019,0.0,pipeline,etf,active,2026-09-24 18:50:54,2026-09-25 00:27:58,2
-5-day SMA of Price,"均线(数据,5)","ma(df,5)",-0.0288,-0.7615,official,etf,active,2026-09-25 03:10:24,2026-10-03 01:28:38,13
+5-day SMA of Price,"均线(数据,5)","ma(df,5)",-0.0288,-0.7615,official,etf,active,2026-09-25 03:10:24,2026-10-03 01:28:44,14
 1-day SMA of Price over 60-day MAX of Price,"(均线(数据,1))/(区间最高(数据,60))","(ma(df,1))/(max(df,60))",-0.0393,-1.0798,official,etf,active,2026-09-25 03:10:24,2026-09-30 00:46:22,7
 vol_20,20日低波动(模板),"-ts_std(returns, 20)",-0.0331,-1.4971,llm,etf,active,2026-09-25 05:13:18,2026-09-30 11:40:40,6
 10-day SMA of Volume,"滚动均值(成交量,10)","ts_mean(volume,10)",-0.0306,-0.8413,official,etf,active,2026-09-25 06:40:50,2026-09-29 22:44:22,2
-1-day SMA of Price over 20-day MAX of Price,"(均线(数据,1))/(区间最高(数据,20))","(ma(df,1))/(max(df,20))",-0.0138,-0.4391,official,etf,active,2026-09-25 08:08:32,2026-10-03 01:28:38,10
-1-day SMA of Price over 60-day SMA of Price,"(均线(数据,1))/(均线(数据,60))","(ma(df,1))/(ma(df,60))",-0.0097,-0.2782,official,etf,active,2026-09-25 10:26:39,2026-10-03 01:28:38,8
-ma_ratio_10_30,均线比(10日/30日),,0.0056,0.1931,simple,etf,active,2026-09-28 22:04:52,2026-10-02 22:42:43,6
+1-day SMA of Price over 20-day MAX of Price,"(均线(数据,1))/(区间最高(数据,20))","(ma(df,1))/(max(df,20))",-0.0138,-0.4391,official,etf,active,2026-09-25 08:08:32,2026-10-03 01:28:44,11
+1-day SMA of Price over 60-day SMA of Price,"(均线(数据,1))/(均线(数据,60))","(ma(df,1))/(ma(df,60))",-0.0097,-0.2782,official,etf,active,2026-09-25 10:26:39,2026-10-03 01:28:44,9
+ma_ratio_10_30,均线比(10日/30日),,0.0056,0.1931,simple,etf,active,2026-09-28 22:04:52,2026-10-03 01:28:44,7
 volatility_breakout_momentum,"滞后(区间最高(最高价, 5), -1) / 均线(数据, 90) - 滞后(区","delay(max(high, 5), -1) / ma(df, 90) - delay(min(low, 5), -1) / ma(df, 90)",0.0383,1.3403,llm,etf,active,2026-10-01 15:58:57,2026-10-01 15:59:05,2
 price_vol_asymmetry,"滚动分位(绝对值(差分(收盘价, 5)), 60) / (标准差(数据, 120","rank(abs(delta(close, 5)), 60) / (std(df, 120) + 1e-9)",0.0305,2.7605,llm,etf,active,2026-10-01 15:58:57,2026-10-01 16:07:36,3
 range_expansion_ratio,"(最高价 - 最低价) / (均线(数据,20) + 1e-9)","(high - low) / (ma(df,20) + 1e-9)",0.0787,3.4892,llm,etf,active,2026-10-01 16:07:36,2026-10-01 16:07:36,1
@@ -50,5 +50,5 @@ tick_strength_momentum,"滚动分位(差分(最高价, 5) - 差分(最低价, 5)
 gap_reversal_signal,符号((收盘价 - 开盘价) / (最高价 - 最低价 + 1e-9)) * 绝,"sign((close - open) / (high - low + 1e-9)) * abs(delta(close, 3) / ma(df, 20) + 1e-9)",-0.0395,-2.2234,llm,etf,active,2026-10-02 22:57:47,2026-10-02 22:57:47,1
 vol_breakout_momentum,"(差分(收盘价, 5) - 差分(收盘价, 1)) / (均线(数据, 60) ","(delta(close, 5) - delta(close, 1)) / (ma(df, 60) + 1e-9)",-0.0394,-1.6436,llm,etf,active,2026-10-02 23:03:24,2026-10-02 23:03:24,1
 high_low_spread_rank,"滚动分位((区间最高(最高价, 240) - 区间最低(最低价, 240)) /","rank((max(high, 240) - min(low, 240)) / ma(close, 60), 120)",0.0201,0.4118,llm,etf,active,2026-10-02 23:03:24,2026-10-02 23:03:24,1
-1-day SMA of Price over 5-day SMA of Price,"(均线(数据,1))/(均线(数据,5))","(ma(df,1))/(ma(df,5))",-0.0177,-0.5599,official,etf,active,2026-10-03 01:28:38,2026-10-03 01:28:38,1
-volatility_reversion,"-(最高价 - 最低价) / (均线(收盘价, 20) + 1e-9)","-(high - low) / (ma(close, 20) + 1e-9)",-0.024,-0.5935,llm,etf,active,2026-10-03 01:28:38,2026-10-03 01:28:38,1
+1-day SMA of Price over 5-day SMA of Price,"(均线(数据,1))/(均线(数据,5))","(ma(df,1))/(ma(df,5))",-0.0177,-0.5599,official,etf,active,2026-10-03 01:28:38,2026-10-03 01:28:44,2
+volatility_reversion,"-(最高价 - 最低价) / (均线(收盘价, 20) + 1e-9)","-(high - low) / (ma(close, 20) + 1e-9)",-0.024,-0.5935,llm,etf,active,2026-10-03 01:28:38,2026-10-03 01:28:44,2

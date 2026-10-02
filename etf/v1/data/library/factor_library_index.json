@@ -1702,13 +1702,13 @@
   "1-day SMA of Price over 20-day MAX of Price": {
     "name": "1-day SMA of Price over 20-day MAX of Price",
     "expr": "(ma(df,1))/(max(df,20))",
-    "ic": -0.013911833171515935,
-    "icir": -0.44476479316832335,
+    "ic": -0.013843348265685547,
+    "icir": -0.439101140355875,
     "source": "official",
     "status": "active",
     "first_seen": "2026-09-25 08:08:32",
-    "last_seen": "2026-09-30 11:36:51",
-    "update_count": 7,
+    "last_seen": "2026-10-02 22:42:35",
+    "update_count": 8,
     "ic_history": [
       {
         "time": "2026-09-25 08:08:32",
@@ -1744,6 +1744,11 @@
         "time": "2026-09-30 11:36:51",
         "ic": -0.013911833171515935,
         "icir": -0.44476479316832335
+      },
+      {
+        "time": "2026-10-02 22:42:35",
+        "ic": -0.013843348265685547,
+        "icir": -0.439101140355875
       }
     ],
     "market": "etf"
@@ -1751,13 +1756,13 @@
   "1-day SMA of Price over 60-day SMA of Price": {
     "name": "1-day SMA of Price over 60-day SMA of Price",
     "expr": "(ma(df,1))/(ma(df,60))",
-    "ic": -0.00995016454960303,
-    "icir": -0.2878480209787153,
+    "ic": -0.009653899234373448,
+    "icir": -0.2782130086848027,
     "source": "official",
     "status": "active",
     "first_seen": "2026-09-25 10:26:39",
-    "last_seen": "2026-09-30 11:36:51",
-    "update_count": 5,
+    "last_seen": "2026-10-02 22:42:35",
+    "update_count": 6,
     "ic_history": [
       {
         "time": "2026-09-25 10:26:39",
@@ -1783,6 +1788,11 @@
         "time": "2026-09-30 11:36:51",
         "ic": -0.00995016454960303,
         "icir": -0.2878480209787153
+      },
+      {
+        "time": "2026-10-02 22:42:35",
+        "ic": -0.009653899234373448,
+        "icir": -0.2782130086848027
       }
     ],
     "market": "etf"
@@ -2008,6 +2018,25 @@
         "time": "2026-10-01 16:16:39",
         "ic": 0.020568860412726146,
         "icir": 0.5469872966209264
+      }
+    ],
+    "market": "etf"
+  },
+  "vol_gap_resist": {
+    "name": "vol_gap_resist",
+    "expr": "(high - close) / (ma(df, 60) + 1e-9) * ts_sum(volume, 30)",
+    "ic": 0.028847805626040432,
+    "icir": 0.639972285458123,
+    "source": "llm",
+    "status": "active",
+    "first_seen": "2026-10-02 22:42:35",
+    "last_seen": "2026-10-02 22:42:35",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-10-02 22:42:35",
+        "ic": 0.028847805626040432,
+        "icir": 0.639972285458123
       }
     ],
     "market": "etf"

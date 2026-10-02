@@ -52,3 +52,4 @@ vol_breakout_momentum,"(差分(收盘价, 5) - 差分(收盘价, 1)) / (均线(�
 high_low_spread_rank,"滚动分位((区间最高(最高价, 240) - 区间最低(最低价, 240)) /","rank((max(high, 240) - min(low, 240)) / ma(close, 60), 120)",0.0201,0.4118,llm,etf,active,2026-10-02 23:03:24,2026-10-02 23:03:24,1
 1-day SMA of Price over 5-day SMA of Price,"(均线(数据,1))/(均线(数据,5))","(ma(df,1))/(ma(df,5))",-0.0177,-0.5599,official,etf,active,2026-10-03 01:28:38,2026-10-03 01:28:44,2
 volatility_reversion,"-(最高价 - 最低价) / (均线(收盘价, 20) + 1e-9)","-(high - low) / (ma(close, 20) + 1e-9)",-0.024,-0.5935,llm,etf,active,2026-10-03 01:28:38,2026-10-03 01:28:44,2
+shadow_pressure,-(最高价 - 收盘价) / (收盘价 + 1e-9),-(high - close) / (close + 1e-9),-0.0532,-2.4536,llm,etf,active,2026-10-03 01:49:48,2026-10-03 01:49:48,1

@@ -2268,5 +2268,24 @@
       }
     ],
     "market": "etf"
+  },
+  "shadow_pressure": {
+    "name": "shadow_pressure",
+    "expr": "-(high - close) / (close + 1e-9)",
+    "ic": -0.05323177994351306,
+    "icir": -2.453603979244774,
+    "source": "llm",
+    "status": "active",
+    "first_seen": "2026-10-03 01:49:48",
+    "last_seen": "2026-10-03 01:49:48",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-10-03 01:49:48",
+        "ic": -0.05323177994351306,
+        "icir": -2.453603979244774
+      }
+    ],
+    "market": "etf"
   }
 }

@@ -45,3 +45,6 @@ normalized_open_interest_change,"差分(收盘价, 10) - 差分(均线(收盘价
 volume_gap_reversion,"(开盘价 - 收盘价) / 均线(数据, 30) * (成交量 / 滚动均值(成","(open - close) / ma(df, 30) * (volume / ts_mean(volume, 60))",0.0208,0.5231,llm,etf,active,2026-10-01 16:16:39,2026-10-01 16:16:39,1
 rsi_like_volatility_filter,"滞后(((收盘价 - 均线(数据, 20)) / 标准差(数据, 20) + 1","delay(((close - ma(df, 20)) / std(df, 20) + 1e-9), 5) * min(std(df, 60) / std(df, 30), 2.0)",0.0206,0.547,llm,etf,active,2026-10-01 16:16:39,2026-10-01 16:16:39,1
 vol_gap_resist,"(最高价 - 收盘价) / (均线(数据, 60) + 1e-9) * 滚动求和","(high - close) / (ma(df, 60) + 1e-9) * ts_sum(volume, 30)",0.0288,0.64,llm,etf,active,2026-10-02 22:42:35,2026-10-02 22:42:43,2
+range_efficiency_rank,"滚动分位((最高价 - 最低价) / 均线(数据, 5), 120)","rank((high - low) / ma(df, 5), 120)",0.0772,3.352,llm,etf,active,2026-10-02 22:57:47,2026-10-02 22:57:47,1
+tick_strength_momentum,"滚动分位(差分(最高价, 5) - 差分(最低价, 5), 60)","rank(delta(high, 5) - delta(low, 5), 60)",0.074,9.8553,llm,etf,active,2026-10-02 22:57:47,2026-10-02 22:57:47,1
+gap_reversal_signal,符号((收盘价 - 开盘价) / (最高价 - 最低价 + 1e-9)) * 绝,"sign((close - open) / (high - low + 1e-9)) * abs(delta(close, 3) / ma(df, 20) + 1e-9)",-0.0395,-2.2234,llm,etf,active,2026-10-02 22:57:47,2026-10-02 22:57:47,1

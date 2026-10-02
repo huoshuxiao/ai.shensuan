@@ -2075,5 +2075,62 @@
       }
     ],
     "market": "etf"
+  },
+  "range_efficiency_rank": {
+    "name": "range_efficiency_rank",
+    "expr": "rank((high - low) / ma(df, 5), 120)",
+    "ic": 0.07717411000180031,
+    "icir": 3.352046006540804,
+    "source": "llm",
+    "status": "active",
+    "first_seen": "2026-10-02 22:57:47",
+    "last_seen": "2026-10-02 22:57:47",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-10-02 22:57:47",
+        "ic": 0.07717411000180031,
+        "icir": 3.352046006540804
+      }
+    ],
+    "market": "etf"
+  },
+  "tick_strength_momentum": {
+    "name": "tick_strength_momentum",
+    "expr": "rank(delta(high, 5) - delta(low, 5), 60)",
+    "ic": 0.0739674248425478,
+    "icir": 9.85533113298438,
+    "source": "llm",
+    "status": "active",
+    "first_seen": "2026-10-02 22:57:47",
+    "last_seen": "2026-10-02 22:57:47",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-10-02 22:57:47",
+        "ic": 0.0739674248425478,
+        "icir": 9.85533113298438
+      }
+    ],
+    "market": "etf"
+  },
+  "gap_reversal_signal": {
+    "name": "gap_reversal_signal",
+    "expr": "sign((close - open) / (high - low + 1e-9)) * abs(delta(close, 3) / ma(df, 20) + 1e-9)",
+    "ic": -0.03954543154045124,
+    "icir": -2.2234067149550323,
+    "source": "llm",
+    "status": "active",
+    "first_seen": "2026-10-02 22:57:47",
+    "last_seen": "2026-10-02 22:57:47",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-10-02 22:57:47",
+        "ic": -0.03954543154045124,
+        "icir": -2.2234067149550323
+      }
+    ],
+    "market": "etf"
   }
 }

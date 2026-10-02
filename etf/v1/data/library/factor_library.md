@@ -1,12 +1,12 @@
 # 因子库
 
-> 自动生成于 `2026-10-02 22:57:47` | 共 **49** 个因子
+> 自动生成于 `2026-10-02 23:03:24` | 共 **51** 个因子
 
 ## 📊 元信息
 
-- 总因子数: 49
-- 活跃: 49
-- 来源分布: {'genetic': 3, 'pipeline': 20, 'simple': 7, 'official': 5, 'llm': 14}
+- 总因子数: 51
+- 活跃: 51
+- 来源分布: {'genetic': 3, 'pipeline': 20, 'simple': 7, 'official': 5, 'llm': 16}
 - 截面口径(market): `etf` —— IC 只在同口径内可比
 
 ## 🏆 Top 20 因子
@@ -20,19 +20,19 @@
 | 5 | `momentum_10` | 10日动量 | -0.0697 | -1.235 | pipeline | active |
 | 6 | `log_volume_momentum` | 差分(对数(成交量),5) / (均线(数据,40) + 1e-9) | +0.0671 | +2.506 | llm | active |
 | 7 | `gap_reversal_signal` | 符号((收盘价 - 开盘价) / (最高价 - 最低价 + 1e-9)) * 绝 | -0.0395 | -2.223 | llm | active |
-| 8 | `1-day SMA of Price over 60-day MAX of Price` | (均线(数据,1))/(区间最高(数据,60)) | -0.0393 | -1.080 | official | active |
-| 9 | `high_low_spread_momentum` | 差分(收盘价, 5) * ((最高价 - 最低价) / 均线(数据, 60)) | -0.0388 | -1.602 | llm | active |
-| 10 | `volatility_breakout_momentum` | 滞后(区间最高(最高价, 5), -1) / 均线(数据, 90) - 滞后(区 | +0.0383 | +1.340 | llm | active |
-| 11 | `vol_20` | 20日低波动(模板) | -0.0331 | -1.497 | llm | active |
-| 12 | `mom_5` | 5日价格动量(模板) | -0.0317 | -0.974 | simple | active |
-| 13 | `gp_0` | 遗传规划因子1号 | -0.0310 | -0.814 | genetic | active |
-| 14 | `10-day SMA of Volume` | 滚动均值(成交量,10) | -0.0306 | -0.841 | official | active |
-| 15 | `gp_1` | 遗传规划因子2号 | -0.0306 | -0.885 | genetic | active |
-| 16 | `price_vol_asymmetry` | 滚动分位(绝对值(差分(收盘价, 5)), 60) / (标准差(数据, 120 | +0.0305 | +2.761 | llm | active |
-| 17 | `5-day SMA of Price` | 均线(数据,5) | -0.0293 | -0.774 | official | active |
-| 18 | `vol_gap_resist` | (最高价 - 收盘价) / (均线(数据, 60) + 1e-9) * 滚动求和 | +0.0288 | +0.640 | llm | active |
-| 19 | `mogp_3` | 多目标遗传规划因子4号 | -0.0280 | +0.000 | pipeline | active |
-| 20 | `mogp_0` | 多目标遗传规划因子1号 | +0.0253 | +0.000 | pipeline | active |
+| 8 | `vol_breakout_momentum` | (差分(收盘价, 5) - 差分(收盘价, 1)) / (均线(数据, 60)  | -0.0394 | -1.644 | llm | active |
+| 9 | `1-day SMA of Price over 60-day MAX of Price` | (均线(数据,1))/(区间最高(数据,60)) | -0.0393 | -1.080 | official | active |
+| 10 | `high_low_spread_momentum` | 差分(收盘价, 5) * ((最高价 - 最低价) / 均线(数据, 60)) | -0.0388 | -1.602 | llm | active |
+| 11 | `volatility_breakout_momentum` | 滞后(区间最高(最高价, 5), -1) / 均线(数据, 90) - 滞后(区 | +0.0383 | +1.340 | llm | active |
+| 12 | `vol_20` | 20日低波动(模板) | -0.0331 | -1.497 | llm | active |
+| 13 | `mom_5` | 5日价格动量(模板) | -0.0317 | -0.974 | simple | active |
+| 14 | `gp_0` | 遗传规划因子1号 | -0.0310 | -0.814 | genetic | active |
+| 15 | `10-day SMA of Volume` | 滚动均值(成交量,10) | -0.0306 | -0.841 | official | active |
+| 16 | `gp_1` | 遗传规划因子2号 | -0.0306 | -0.885 | genetic | active |
+| 17 | `price_vol_asymmetry` | 滚动分位(绝对值(差分(收盘价, 5)), 60) / (标准差(数据, 120 | +0.0305 | +2.761 | llm | active |
+| 18 | `5-day SMA of Price` | 均线(数据,5) | -0.0293 | -0.774 | official | active |
+| 19 | `vol_gap_resist` | (最高价 - 收盘价) / (均线(数据, 60) + 1e-9) * 滚动求和 | +0.0288 | +0.640 | llm | active |
+| 20 | `mogp_3` | 多目标遗传规划因子4号 | -0.0280 | +0.000 | pipeline | active |
 
 ## 📈 指标说明
 
@@ -921,6 +921,42 @@ rank(delta(high, 5) - delta(low, 5), 60)
 
 ```python
 sign((close - open) / (high - low + 1e-9)) * abs(delta(close, 3) / ma(df, 20) + 1e-9)
+```
+
+---
+
+### `vol_breakout_momentum` · (差分(收盘价, 5) - 差分(收盘价, 1)) / (均线(数据, 60) 
+
+- **中文名**: (差分(收盘价, 5) - 差分(收盘价, 1)) / (均线(数据, 60) 
+- **状态**: `active`
+- **来源**: `llm`
+- **截面口径**: `etf`
+- **IC**: -0.0394
+- **ICIR**: -1.644
+- **首次发现**: 2026-10-02 23:03:24
+
+**表达式**:
+
+```python
+(delta(close, 5) - delta(close, 1)) / (ma(df, 60) + 1e-9)
+```
+
+---
+
+### `high_low_spread_rank` · 滚动分位((区间最高(最高价, 240) - 区间最低(最低价, 240)) /
+
+- **中文名**: 滚动分位((区间最高(最高价, 240) - 区间最低(最低价, 240)) /
+- **状态**: `active`
+- **来源**: `llm`
+- **截面口径**: `etf`
+- **IC**: +0.0201
+- **ICIR**: +0.412
+- **首次发现**: 2026-10-02 23:03:24
+
+**表达式**:
+
+```python
+rank((max(high, 240) - min(low, 240)) / ma(close, 60), 120)
 ```
 
 ---

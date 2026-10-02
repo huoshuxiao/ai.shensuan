@@ -48,3 +48,5 @@ vol_gap_resist,"(最高价 - 收盘价) / (均线(数据, 60) + 1e-9) * 滚动�
 range_efficiency_rank,"滚动分位((最高价 - 最低价) / 均线(数据, 5), 120)","rank((high - low) / ma(df, 5), 120)",0.0772,3.352,llm,etf,active,2026-10-02 22:57:47,2026-10-02 22:57:47,1
 tick_strength_momentum,"滚动分位(差分(最高价, 5) - 差分(最低价, 5), 60)","rank(delta(high, 5) - delta(low, 5), 60)",0.074,9.8553,llm,etf,active,2026-10-02 22:57:47,2026-10-02 22:57:47,1
 gap_reversal_signal,符号((收盘价 - 开盘价) / (最高价 - 最低价 + 1e-9)) * 绝,"sign((close - open) / (high - low + 1e-9)) * abs(delta(close, 3) / ma(df, 20) + 1e-9)",-0.0395,-2.2234,llm,etf,active,2026-10-02 22:57:47,2026-10-02 22:57:47,1
+vol_breakout_momentum,"(差分(收盘价, 5) - 差分(收盘价, 1)) / (均线(数据, 60) ","(delta(close, 5) - delta(close, 1)) / (ma(df, 60) + 1e-9)",-0.0394,-1.6436,llm,etf,active,2026-10-02 23:03:24,2026-10-02 23:03:24,1
+high_low_spread_rank,"滚动分位((区间最高(最高价, 240) - 区间最低(最低价, 240)) /","rank((max(high, 240) - min(low, 240)) / ma(close, 60), 120)",0.0201,0.4118,llm,etf,active,2026-10-02 23:03:24,2026-10-02 23:03:24,1

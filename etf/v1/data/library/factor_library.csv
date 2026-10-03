@@ -57,3 +57,5 @@ return_accelerated_rank,"滚动分位(差分(收益率, 3), 40) - 滚动分位(�
 range_expansion_filter,"(最高价 - 最低价) / 均线(收盘价, 5) * 滚动分位(绝对值(差分(收","(high - low) / ma(close, 5) * rank(abs(delta(close, 5)), 60)",0.0374,4.1955,llm,etf,active,2026-10-03 13:25:41,2026-10-03 13:25:41,1
 trend_acceleration_ratio,"差分(差分(收盘价, 5), 10) / (标准差(收盘价, 240) + 1e","delta(delta(close, 5), 10) / (std(close, 240) + 1e-9)",-0.0329,-1.0983,llm,etf,active,2026-10-03 13:25:41,2026-10-03 13:25:41,1
 volume_weighted_price_range,"(最高价 - 最低价) / (均线(收盘价, 5) * 均线(成交量, 10))","(high - low) / (ma(close, 5) * ma(volume, 10)) * rank(ma(close, 20), 60)",0.0211,1.2425,llm,etf,active,2026-10-03 13:25:41,2026-10-03 13:25:41,1
+volume_weighted_price_change,"(滚动求和(成交量, 60) * 差分(收盘价, 5)) / (均线(数据, 2","(ts_sum(volume, 60) * delta(close, 5)) / (ma(df, 20) + 1e-9)",-0.0428,-1.8668,llm,etf,active,2026-10-03 13:35:59,2026-10-03 13:35:59,1
+vol_spike_momentum,"(差分(收盘价, 5) - 差分(收盘价, 20)) / (标准差(收盘价, 6","(delta(close, 5) - delta(close, 20)) / (std(close, 60) + 1e-9)",-0.0323,-0.8498,llm,etf,active,2026-10-03 13:35:59,2026-10-03 13:35:59,1

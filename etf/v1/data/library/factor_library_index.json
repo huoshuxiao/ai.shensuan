@@ -2607,5 +2607,43 @@
       }
     ],
     "market": "etf"
+  },
+  "vol_priced_momentum": {
+    "name": "vol_priced_momentum",
+    "expr": "delta(close, 5) / (std(high - low, 15) + 1e-9)",
+    "ic": -0.030747569924640547,
+    "icir": -1.3919473213639355,
+    "source": "llm",
+    "status": "active",
+    "first_seen": "2026-10-04 00:06:03",
+    "last_seen": "2026-10-04 00:06:03",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-10-04 00:06:03",
+        "ic": -0.030747569924640547,
+        "icir": -1.3919473213639355
+      }
+    ],
+    "market": "etf"
+  },
+  "intraday_range_momentum": {
+    "name": "intraday_range_momentum",
+    "expr": "ts_mean(high - low, 240) * returns / (std(close, 60) + 1e-9)",
+    "ic": -0.02125676063238876,
+    "icir": -0.5428262085069187,
+    "source": "llm",
+    "status": "active",
+    "first_seen": "2026-10-04 00:06:03",
+    "last_seen": "2026-10-04 00:06:03",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-10-04 00:06:03",
+        "ic": -0.02125676063238876,
+        "icir": -0.5428262085069187
+      }
+    ],
+    "market": "etf"
   }
 }

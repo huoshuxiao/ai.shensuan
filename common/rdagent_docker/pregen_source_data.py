@@ -9,7 +9,7 @@ data_folder / data_folder_debug；这两个目录一旦存在，官方流程就�
 触发容器内生成，绕开三方代码假设与本机的 docker 依赖。
 
 数据来自哪份 qlib bin 由环境变量 QLIB_PROVIDER_URI 显式给出（分树后
-两条线各有一份：stock/v1/data/qlib/... 与 etf/v1/data/qlib/...）。脚本
+两条线各有一份：common/data/stock/qlib/... 与 common/data/etf/qlib/...）。脚本
 不再默认去 rdagent 包里 copy 那份 A 股 daily_pv_all.h5——ETF 线一旦沿用
 就会拿个股行情去跑 ETF 因子。确实要复现成容器产物时用
 QLIB_PREGEN_SOURCE_H5 指明路径。
@@ -23,7 +23,7 @@ QLIB_PREGEN_SOURCE_H5 指明路径。
 否则重算。否则「拉了最新数据」这一步会静默被旧 h5 挡掉。
 
 用法（在 rdagent conda 环境、工作区目录下）：
-    QLIB_PROVIDER_URI=/abs/path/<line>/v1/data/qlib/qlib_data/cn_data \
+    QLIB_PROVIDER_URI=/abs/path/common/data/<line>/qlib/qlib_data/cn_data \
         python .../pregen_source_data.py <workspace_out_dir>
 """
 
@@ -92,7 +92,7 @@ def init_qlib() -> None:
     if not PROVIDER.is_dir():
         raise SystemExit(
             f"QLIB_PROVIDER_URI 未设置或目录不存在: {PROVIDER or '(空)'}\n"
-            "指向本线的 data/qlib/qlib_data/cn_data（见 RDAGENT_QLIB_PROVIDER）")
+            "指向本线的 common/data/<线>/qlib/qlib_data/cn_data（见 RDAGENT_QLIB_PROVIDER）")
     import qlib
     qlib.init(provider_uri=str(PROVIDER))
     print(f"qlib.init provider_uri={PROVIDER}")
@@ -114,8 +114,24 @@ def missing_alias(df: pd.DataFrame) -> list:
 
 
 def save(df: pd.DataFrame, path: Path) -> None:
+    """整表落盘：写同目录 `.part` → 回读元数据核形状 → `os.replace` 原子顶上。
+
+    旧写法 `to_hdf(mode='w')` 是**原地覆盖**：写到一半崩了（内存被杀 / 断电 / Ctrl-C）
+    留在盘上的是一张半档，而下游 ③④⑤ 与官方循环都只认这个文件名 ⇒ 坏档不会被任何
+    一步察觉。`.part` 与目标同目录 = 同一文件系统，`os.replace` 才是原子换名。
+    回读只取 HDF5 元数据里的 shape（实测 0.001s / 峰值内存 0.10GiB），不把 15,176,062 行搬进内存。
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    df.to_hdf(path, key="data", mode="w")   # mode='w': 整文件覆盖，避免重复 key 报错
+    tmp = path.with_name(path.name + ".part")
+    try:
+        df.to_hdf(tmp, key="data", mode="w")   # mode='w': 整文件覆盖，避免重复 key 报错
+        with pd.HDFStore(tmp, mode="r") as store:
+            got = tuple(store.get_storer("data").shape)
+        if got != tuple(df.shape):
+            raise SystemExit(f"回读形状不符 {got} != {tuple(df.shape)}，不覆盖 {path}")
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)   # 换名成功后此处已无 .part；失败时把半档扫干净
     print(f"wrote {path} rows={len(df)} cols={len(df.columns)} "
           f"end={panel_end(df).date()}")
 

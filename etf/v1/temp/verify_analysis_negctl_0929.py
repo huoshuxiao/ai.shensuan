@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """`verify_analysis()` 的正反两支自检（09-29）
 
-为什么要这一支：③ 的验收 A–F 是「分析面真的跑了」的唯一凭据，如果它恒绿，
+为什么要这一支：③ 的验收 A–G 是「分析面真的跑了」的唯一凭据，如果它恒绿，
 链路就等于把「没跑」报成「跑对」。所以除了拿 09-29 那场真产物形状喂它（正支，应全绿），
 还要**人造五种坏**（负支，每一条都必须变红）：
     N1 四张核心表一张都没写（mtime 全在起链时刻之前）⇒ A 红
@@ -12,6 +12,10 @@
        （① 和 ③ 现在都走这一张表打印机，它错了两张表一起错）
 判据本体不在这份文件里重写：直接 import 入口模块的 `verify_analysis`，
 保证自检与链路用的是同一把尺子。
+
+10-01 同步（加了 G 格之后）：`LOG_OK` 里补了一行真的 official 产出行 ⇒ **P 支现在要求
+七条全绿（一格都不许红、也不许是 ⚪）**；原先 P 只要求"红的条数覆盖空集"＝恒真，
+这一格不能留成那样的尺子。G 自己的正反两支在 `check_official_leg_gate_1001.py`。
 """
 import os
 import sys
@@ -41,28 +45,33 @@ def good_pair():
     return before, after
 
 
-LOG_OK = "  最终资金      : 100.00"
+LOG_OK = ("  最终资金      : 100.00\n"
+          "  ✅ official   产出 9 个因子\n  多源挖掘追加: 2\n")
 LOG_BAD = "  最终资金      : 4321.00"
 
 results = []
 
 
-def judge(tag, checks, must_red):
-    """must_red：这一支里**必须**变红的判据序号（0 起）"""
-    red = [i for i, (_, ok, _) in enumerate(checks) if not ok]
+def judge(tag, checks, must_red, exact=False):
+    """must_red：这一支里**必须**变红的判据序号（0 起）；exact ⇒ 红名单必须**恰好**等于它
+
+    三态里只有 `False` 算红（`None` 是「判不出、只念不拦」，与 `print_checks` 同一口径）。
+    """
+    red = [i for i, (_, ok, _) in enumerate(checks) if ok is False]
     want = set(must_red)
     got = set(red)
-    ok = want <= got
+    ok = (got == want) if exact else (want <= got)
     results.append((tag, ok, sorted(got), sorted(want)))
     for i, (name, is_ok, ev) in enumerate(checks):
-        print(f"    {'✅' if is_ok else '❌'} [{i}] {name}：{ev}")
+        mark = "✅" if is_ok is True else ("❌" if is_ok is False else "⚪")
+        print(f"    {mark} [{i}] {name}：{ev}")
     return ok
 
 
-print("\n──── 正支 P：09-29 真产物形状（六条都该绿）────")
+print("\n──── 正支 P：09-29 真产物形状 + 真 official 产出行（七条 A–G 一条都不许红）────")
 b, a = good_pair()
 p = chain.verify_analysis(b, a, T_START, LOG_OK)
-judge("P 全绿", p, must_red=[])
+judge("P 全绿", p, must_red=[], exact=True)
 
 print("\n──── 负支 N1：四张核心表一张没写（mtime 都早于起链时刻）────")
 b, a = good_pair()
@@ -106,4 +115,5 @@ for tag, ok, got, want in results:
     print(f"  {tag:<18} {'✅' if ok else '❌'} 红的条数={got} 要求覆盖={want}")
 if bad:
     raise SystemExit(f"[自检失败] {bad} ⇒ 验收判据与它的对照不一致，链路的 ③ 验收不可信")
-print("[自检通过] 正支全绿 + 五支人造坏各红在指定的那一条 ⇒ A–F 与那张表打印机都不是恒绿")
+print("[自检通过] 正支七条 A–G 全绿（exact）+ 五支人造坏各红在指定的那一条 "
+      "⇒ A–G 与那张表打印机都不是恒绿")

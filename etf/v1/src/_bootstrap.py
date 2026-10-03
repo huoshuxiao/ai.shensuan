@@ -18,11 +18,13 @@ _SRC = os.path.dirname(os.path.abspath(__file__))
 _REPO = os.path.dirname(os.path.dirname(os.path.dirname(_SRC)))
 _COMMON = os.path.join(_REPO, "common", "src")
 
-# 本线专属：config/data/strategy/backtest/live 只有 ETF 线有，
+# 本线专属：config/strategy/backtest/live 只有 ETF 线有，
 # core/feedback 是「本线残留 + common 主体」同名双目录，故本线必须在前
-_OWN = ("config", "data", "core", "strategy", "backtest", "live", "feedback")
+# （data 于 09-29 搬进 common/src/data/etf，已挪到下面的 _SHARED）
+_OWN = ("config", "core", "strategy", "backtest", "live", "feedback")
 # 共享内核：整个 common/src 也挂上，log_kit / config_base 这类根级模块在此解析
-_SHARED = ("", "core", "optimizer", "feedback", "report", "view")
+# data/etf 只挂本线那一格——两格同时挂会让 etf 与 stock 的同名模块互相遮挡。
+_SHARED = ("", "core", "optimizer", "feedback", "report", "view", "data/etf")
 
 for _d in _OWN:
     _p = os.path.join(_SRC, _d)

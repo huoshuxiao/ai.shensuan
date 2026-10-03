@@ -1,0 +1,2 @@
+name,expr,pearson_max,nearest_lib,pearson_signed,pearson_second,spearman_max,bar,verdict
+[待买入轴] 20-day STD of Volume,"ts_std(volume,20)",1.0,20-day STD of Volume,1.0,0.9265970413140342,1.0,0.99,会被判重复

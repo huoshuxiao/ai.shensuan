@@ -70,8 +70,8 @@ ASHARE_ROLLING_YEARLY = os.environ.get(
     "STOCK_ROLLING_YEARLY", os.path.join(RESULTS_DIR, "ashare_ic_yearly.csv"))
 # 滚动窗 = 252 个交易日 ≈ 1 自然年：读数直接当「这一年的 IC」念
 ASHARE_ROLL_WINDOW = int(os.environ.get("STOCK_ROLL_WINDOW", "252"))
-# 等分折数：按时间顺序切成 5 段各算一次 IC，看的是「段段同号」还是「靠一年撑起来」
-ASHARE_ROLL_FOLDS = int(os.environ.get("STOCK_ROLL_FOLDS", "5"))
+# 等分折数：按时间顺序把整段等分成 25 段各算一次 IC，看的是「段段同号」还是「靠一年撑起来」。09-30 从 5 拨到 25（段长 ≈162 天）：起点平移 j=0..9 的十种相位下打脸名单不搬家（恒 7 条），且这 7 条与自然年腿、滚动一年腿的打脸名单逐条相同 ⇒ 25 是唯一同时过这两关的档。⚠️ 噪声底 p50=4（10-01 归档刷新后实测；09-30 那版 3）⇒「打脸条数」本身不当判据；这根旋钮仍不进任何准入判据链（只喂看板「稳不稳」那列，归档 10-01 已重跑同版，且**同一天起归档自带 `fold_n` 列**记下当次实切的段数 ⇒ 拨过旋钮没重跑，看板会当场警告而不是让人肉发现）。
+ASHARE_ROLL_FOLDS = int(os.environ.get("STOCK_ROLL_FOLDS", "25"))
 # 「近 N 年」窗（自然年），用来和全样本比符号是否还站得住
 ASHARE_ROLL_RECENT_YEARS = int(os.environ.get("STOCK_ROLL_RECENT_YEARS", "3"))
 
@@ -143,10 +143,10 @@ ASHARE_SCREEN_RULES = os.environ.get(
 # 名单层的**独立**额外闸（09-26 接；判据本体在 strategy/ashare_screen.BUY_EXTRA_RULES）。
 # 与上面四条的差别在**用途**不在强度：不进剔除并集、不改「不该买」那张域，只在待买入名单
 # 入口单独一票否决；键名见 BUY_EXTRA_RULES，**空串 = 关掉**（回到 09-26 之前的口径）。
-# 名单层那一档（配额 top50、570 个调仓日、扣双边 15bp，`shell/stock/a158_five_rule_ctrl_0926.py`）：
+# 名单层那一档（配额 top50、570 个调仓日、扣双边 15bp，`stock/v1/temp/a158_five_rule_ctrl_0926.py`）：
 # 现口径（并集 4 条≥3）+0.28%/年｜并进并集 ≥1/≥2/≥3/≥4/≥5 = -3.22/+0.00/+0.04/+0.16/+0.08%｜
 # **独立叠在名单层 +1.04%/年** ⇒ 这条构造只有不参与「命中几条」计数时才为正，并进会冲掉共识闸。
-# ⚠️ 上面全是**名单层**的账。搬到真正掏钱的 5 席下单层（`shell/stock/dd_scale_0926.py`、`dd_gate_depth_0927.py`）
+# ⚠️ 上面全是**名单层**的账。搬到真正掏钱的 5 席下单层（`stock/v1/temp/dd_scale_0926.py`、`dd_gate_depth_0927.py`）
 # **反号**：@0.80 年均 -8.78pp 超额、10/12 年为负、337/570 场整篮换人、单程换手 0.272→0.419；刀口
 # 0.80/0.85/0.90/0.95 四档全负且不单调（-8.78/-4.10/-1.57/-5.14 ⇒ 税单调好转、信号是噪音）。
 # 2023 单年 -50.03pp 里 96% 是选股不是税（`dd_gate_2023_0927.py`）⇒ **09-27 用户拍「退闸」= 默认空串**；判据本体一行没删，想再打开只要 `STOCK_BUY_EXTRA_RULES=low0`（零代码）。
@@ -171,7 +171,7 @@ ASHARE_BUY_EXTRA_RULES = os.environ.get("STOCK_BUY_EXTRA_RULES", "")
 # （第一天 = 下一场 ③）。空串关掉 ASHARE_BUY_EXTRA_RULES 时本旋钮无意义。
 ASHARE_BUY_EXTRA_QUANTILE = float(os.environ.get("STOCK_BUY_EXTRA_QUANTILE", "0.80"))
 # 量能构造吃哪一套成交量口径。面板的 $volume 不是真实手数，而是**复权成交量**
-# = 真实手数 / $factor（09-23 探针 shell/stock/probe_live_sources4_0923.py 逐票证成：
+# = 真实手数 / $factor（09-23 探针 stock/v1/temp/probe_live_sources4_0923.py 逐票证成：
 # 54 只票跨 $factor 0.007~1.24，V·f/L=1.0000 全中，corr(log(V/L), log f) = -1.000）。
 # 默认 "adj" = 面板原值，与历史基线、RD-Agent 沙箱、factors.json 的 expr 同一套口径；
 # "real" 把 DSL 里的 volume 绑成 $volume*$factor（真实手数），只为口径复核对照跑而设，
@@ -282,7 +282,7 @@ ASHARE_BUY_MIN_HITS = int(os.environ.get("STOCK_BUY_MIN_HITS", "3"))
 # 用户 09-24 明确：**个人账户科创板 / 创业板 / 北交所均有权限**。这条事实有两处后果，
 # 都在执行层，都不改排序判据：
 #  ① 原来第三道执行闸用**单一** ASHARE_PORT_LIMIT_UP=0.095 判「贴涨停」，那是主板 ±10%
-#     的近似。对另外三段它是误伤：全面板实测（shell/stock/probe_board_limits_0924.py），
+#     的近似。对另外三段它是误伤：全面板实测（stock/v1/temp/probe_board_limits_0924.py），
 #     涨幅过 0.095 的格子里有 **81%（科创）/ 85%（创业）/ 82%（北交）** 离自己的涨停
 #     还远 —— 也就是说这道闸系统性地丢掉本账户明明买得进的那三段票。
 #     09-23 当日**并集保留池**（2928 只）涨幅最高只有 7.25%，看着一只都没咬到；但
@@ -361,19 +361,19 @@ ASHARE_ORDER_MAX_PER_INDUSTRY = int(os.environ.get("STOCK_ORDER_MAX_PER_INDUSTRY
 # 但 2024~2025 有过 4/5 只落在北交所的调仓日，cap=3 正好卡住那一类）
 ASHARE_ORDER_MAX_PER_BOARD = int(os.environ.get("STOCK_ORDER_MAX_PER_BOARD", "3"))
 
-# ========== qlib bin 日更（data/update_qlib_bin_daily.py） ==========
-# 全市场收盘快照 CSV + 逐场记账表的落位。放在 data/ 而不是 results/：它是
-# **行情中间产物**（每天一份、可重算但不该进版本库），而 results/ 里的东西
-# 都是要入库的研究结论；.gitignore 对这一个目录单独放行。
+# ========== qlib bin 日更（common/src/data/stock/update_qlib_bin_daily.py） ==========
+# 全市场收盘快照 CSV + 逐场记账表的落位。放在基础数据目录（09-29 起在
+# common/data/stock/daily_snapshot/）而不是 results/：它是**行情中间产物**（每天
+# 一份、可重算但不该进版本库），而 results/ 里的东西都是要入库的研究结论。
 ASHARE_SNAPSHOT_DIR = os.environ.get(
-    "STOCK_SNAPSHOT_DIR", os.path.join(DATA_DIR, "daily_snapshot"))
+    "STOCK_SNAPSHOT_DIR", os.path.join(BASE_DATA_DIR, "daily_snapshot"))
 
-# ========== 行业分类落盘（data/fetch_industry_map.py，09-24） ==========
+# ========== 行业分类落盘（common/src/data/stock/fetch_industry_map.py，09-24） ==========
 # 面板只有 OHLCV + factor，没有任何行业字段 ⇒ 「5 只会不会全挤在同一个板块」这类
 # 集中风险原本判不了。这份映射是**可重算的外部参考数据**（新浪 + 深市官方两源），
 # 所以落 cache/ 而不是 results/（results/ 里全是要入库的研究结论）。
 ASHARE_INDUSTRY_CSV = os.environ.get(
-    "STOCK_INDUSTRY_CSV", os.path.join(DATA_DIR, "cache", "industry_map.csv"))
+    "STOCK_INDUSTRY_CSV", os.path.join(CACHE_DIR, "industry_map.csv"))
 # 超过这个天数就重新抓（行业分类变动很慢，30 天足够日频名单用）
 ASHARE_INDUSTRY_MAX_AGE = int(os.environ.get("STOCK_INDUSTRY_MAX_AGE", "30"))
 
@@ -397,3 +397,13 @@ ASHARE_FILL_PRICE_TOL = float(os.environ.get("STOCK_FILL_PRICE_TOL", "0.21"))
 # 参数是拿同一段历史挑的，只有往后每天落一行才是没被用过的样本。
 ASHARE_EXPOSURE_LEDGER = os.environ.get(
     "STOCK_EXPOSURE_LEDGER", os.path.join(RESULTS_DIR, "exposure_forward.csv"))
+
+# ========== ST 闸的备用名称表（③ spot_labels，09-30） ==========
+# 挂在新段落末尾而不是插在 ASHARE_SNAPSHOT_DIR 旁边：引证闸门按物理行号锚 config 里的
+# 常量，中间插行会把下面每一条的锚点顶漂。
+# 为什么要有这张表：`spot_<场次>.csv` **只有 ① 会创建**，而 09-29 那一场是拿社区 qlib
+# 包接进 bin 的（没走过 ①），于是 ③ 查不到当日快照 ⇒ ST 闸空跑、50 只名单里混进 1 只
+# *ST（SH603429，第 21 名）。09-29 的批量快照已经取不回来（东财不可用，新浪只给当天价）。
+# 默认空串 = 关掉：行为与加这道口子之前逐字节相同，日更链永远不会因为「忘带 env」而
+# 悄悄用一张过期名称表。它只在**本场没有 spot_*.csv** 时顶上，真快照在场时一律用真快照。
+ASHARE_SPOT_NAME_FALLBACK = os.environ.get("STOCK_SPOT_NAME_FALLBACK", "")

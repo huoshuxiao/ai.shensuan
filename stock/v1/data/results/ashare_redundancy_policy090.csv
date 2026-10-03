@@ -1,0 +1,14 @@
+name,expr,pearson_max,nearest_lib,pearson_signed,pearson_second,spearman_max,bar,verdict
+[现轴对照] 20-day SMA of Volume,"ts_mean(volume,20)",1.0,20-day SMA of Volume,1.0,0.9737622927685248,1.0,0.99,会被判重复
+[0.90新挡] 20-day MIN of Volume,volume.rolling(20).min(),0.9464121164446627,20-day SMA of Volume,0.9464121164446627,0.9028807784342461,0.9418906832054292,0.99,危险区(同簇)
+[换窗] 60-day SMA of Volume,"ts_mean(volume,60)",0.9408664098584714,20-day SMA of Volume,0.9408664098584714,0.9025570690467765,0.9459714294668474,0.99,危险区(同簇)
+[复现针] 5-day SMA of Price over 20-day SMA of Price,"ma(df,5)/ma(df,20)",0.8365049552440578,20-day Momentum of Price,0.8365049552440578,0.5048840606383935,0.8133596971646259,0.99,可提名
+[比值·量比] 10-day SMA of Volume over 20-day SMA of Volume,"ts_mean(volume,10)/ts_mean(volume,20)",0.7746502046235899,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,0.7746502046235899,0.46228370514662753,0.7714554832874883,0.99,可提名
+[比值·跨窗] 5-day STD of Volume over 20-day SMA of Volume,"ts_std(volume,5)/ts_mean(volume,20)",0.7394271101142416,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,0.7394271101142416,0.5859936217271392,0.7100951274544378,0.99,可提名
+[新窗口MOM] 10-day MOM of Volume,"volume/delay(volume,10)-1",0.6089448783224546,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,0.6089448783224546,0.608468296002236,0.653969432629639,0.99,可提名
+[复现针] 5-day STD of Volume over 20-day STD of Volume,"ts_std(volume,5)/ts_std(volume,20)",0.6043391480333722,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,0.6043391480333722,0.37297744360007445,0.7009892287855563,0.99,可提名
+[E路·CV10] 10-day STD of Volume over 10-day SMA of Volume,"ts_std(volume,10)/ts_mean(volume,10)",0.47026505202329666,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,0.47026505202329666,0.4304339246308289,0.4097412605428362,0.99,可提名
+[E路·真手数CV] 20-day STD of realVolume over 20-day SMA of realVolume,"ts_std(df[""volume""]*df[""factor""],20)/ts_mean(df[""volume""]*df[""factor""],20)",0.427818500454601,20-day MOM of Volume,0.427818500454601,0.3105995623860857,0.3835468599023715,0.99,可提名
+[E路·CV20] 20-day STD of Volume over 20-day SMA of Volume,"ts_std(volume,20)/ts_mean(volume,20)",0.4265497069538454,20-day MOM of Volume,0.4265497069538454,0.31030305858583135,0.38368690391044386,0.99,可提名
+[复现针] 20-day STD of Price over 20-day SMA of Price,"std(df,20)/ma(df,20)",0.3276571433844764,20-day Momentum of Price,0.3276571433844764,0.27422745567580914,0.5262777015810025,0.99,可提名
+[E路·倒CV] 20-day SMA of Volume over 20-day STD of Volume,"ts_mean(volume,20)/ts_std(volume,20)",0.2820482275796151,20-day MOM of Volume,-0.2820482275796151,0.19168512332258286,0.38368690513629017,0.99,可提名

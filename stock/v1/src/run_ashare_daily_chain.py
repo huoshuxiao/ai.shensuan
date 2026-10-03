@@ -20,7 +20,7 @@
        重生成 `daily_pv.h5`。**必须**带 `QLIB_PROVIDER_URI=<本线 RDAGENT_QLIB_PROVIDER>`：
        缺了它默认落到 cwd，`FileNotFoundError: calendars/day.txt`，死在读陈旧度检查、
        一行字节都不写（所以失败是干净的，面板不会被污染）。
-       它自己的复用判据是三条**同时**成立（`pregen_source_data.py:131`）：
+       它自己的复用判据是三条**同时**成立（`pregen_source_data.py:147`，09-29 因该文件加了原子写 +16 行）：
        面板末格 >= 日历末格、无缺别名列、面板股数 >= `instruments/all.txt` 股数。
        实测今天（09-24）是 `instruments=6101/6161` 第三条不满足 ⇒ **每天走全量重生成**
        （重写 0.8GB；耗时没有常量：命令行 120s、页面起的两遍自报 36s 与 81s，差的是页缓存冷热
@@ -254,7 +254,7 @@ def main():
     # ① 快照 → bin
     if advance:
         check_cancel("① 快照→bin")
-        cmd = [P310, os.path.join("data", "update_qlib_bin_daily.py")]
+        cmd = [P310, os.path.normpath(os.path.join(SRC, *[".."] * 3, "common", "src", "data", "stock", "update_qlib_bin_daily.py"))]
         if a.dry_run:
             cmd.append("--dry-run")
         run("① 当日日线 append 进 qlib bin", cmd)

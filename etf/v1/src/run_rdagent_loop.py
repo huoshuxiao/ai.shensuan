@@ -3,7 +3,7 @@
 
 与股票线同名脚本几乎一样，差别只在配置来源：本文件的 `from config import
 RDAGENT_OUTPUT_DIR` 经 _bootstrap 解析到 **ETF 线自己的** config，于是循环的
-cwd = etf/v1/data/results/rdagent_output、qlib 挂载 = etf/v1/data/qlib、
+cwd = etf/v1/data/results/rdagent_output、qlib 挂载 = common/data/etf/qlib、
 因子库 = etf/v1/data/library，全程碰不到股票线那份 A 股数据。
 
 只在 ETF 线进程里作为脚本执行才有效应：全部动作收在 main() 里，

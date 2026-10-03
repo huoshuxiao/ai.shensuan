@@ -107,8 +107,8 @@ from config import (ASHARE_BUY_TOP_N, ASHARE_BUY_MIN_HITS, ASHARE_FACTORS_JSON,
                     ASHARE_BUY_EXTRA_QUANTILE,
                     ASHARE_PORT_MIN_AMOUNT, ASHARE_PORT_OUT,
                     ASHARE_SCREEN_QUANTILE, ASHARE_SIGNAL_DIR, ASHARE_SNAPSHOT_DIR,
-                    ASHARE_ORDER_TOP_N, ASHARE_TRADABLE_GATE,
-                    ASHARE_LIST_SCHEME, LOT_SIZE)
+                    ASHARE_SPOT_NAME_FALLBACK, ASHARE_ORDER_TOP_N,
+                    ASHARE_TRADABLE_GATE, ASHARE_LIST_SCHEME, LOT_SIZE)
 from ashare_screen import (BUY_EXPR, BUY_NAME, INDUSTRY_UNKNOWN, VOLUME_RULES,
                            active_buy_extra_rules, active_rules, build_matrices,
                            factor_matrices, gate_desc,
@@ -134,24 +134,50 @@ def pick_date(index):
 
 
 def spot_labels(s):
-    """当日收盘快照里的 (代码→名称, ST/*ST 代码集)；没有快照就返回两个空并如实报
+    """当日收盘快照里的 (代码→名称, ST/*ST 代码集, 名称来源)；没有快照就返回两个空并如实报
 
     面板本身没有股票名称字段（只有行情列），ST 标记只能从 akshare 收盘快照的「名称」
     列拿，而那份 CSV 由 data/update_qlib_bin_daily.py 在 append 当天落盘。
     匹配按**大小写敏感**：ST 标记在名称里一律大写，写成 case-insensitive 会把
     带小写字母的简称一起捞进来，那是错的判据。
+
+    备用名称表（`ASHARE_SPOT_NAME_FALLBACK`，09-30）：默认空串 = 上面那段的行为逐字节
+    不变，日更链不碰这道口子。指到一张 CSV 才生效，且**只在本场没有 spot 时**顶上 ——
+    真快照是当日行情、名称表只是标签，拿标签顶掉行情是错的。它只有一个用途：补 09-29
+    那一场（那天是拿社区 qlib 包接进 bin 的、没走 ① ⇒ 没落 spot_20260929.csv ⇒ ST 闸
+    空跑，50 只名单里混进 1 只 *ST）。来源如实做成第三个返回值并落进 meta 的
+    `name_source`，事后对账能认出这一场的名称是哪天取的。
     """
+    def labels(df):
+        codes = df["代码"].astype(str).str[:2].str.upper() + df["代码"].astype(str).str[2:]
+        nm = df["名称"].astype(str)
+        return dict(zip(codes, nm)), set(codes[nm.str.contains("ST")])
+
     path = os.path.join(ASHARE_SNAPSHOT_DIR, f"spot_{s:%Y%m%d}.csv")
     if not os.path.exists(path):
-        print(f"[待买入] 无 {path}：名称列留空，ST 这道闸今日未跑（stats.st_checked=False）")
-        return {}, set()
-    sp = pd.read_csv(path, encoding="utf-8-sig")
-    codes = sp["代码"].astype(str).str[:2].str.upper() + sp["代码"].astype(str).str[2:]
-    nm = sp["名称"].astype(str)
-    st = set(codes[nm.str.contains("ST")])
-    print(f"[待买入] 快照 {os.path.basename(path)}：{len(codes)} 只带名称，"
+        fb = ASHARE_SPOT_NAME_FALLBACK
+        if not fb:
+            print(f"[待买入] 无 {path}：名称列留空，ST 这道闸今日未跑（stats.st_checked=False）")
+            return {}, set(), "none"
+        if not os.path.exists(fb):
+            print(f"[待买入] ⚠️ 备用名称表 {fb} 不在：名称列留空，ST 这道闸今日未跑")
+            return {}, set(), "none"
+        t = pd.read_csv(fb, encoding="utf-8-sig")
+        miss = sorted({"代码", "名称"} - set(t.columns))
+        if miss:
+            print(f"[待买入] ⚠️ 备用名称表 {os.path.basename(fb)} 缺列 {miss}："
+                  f"名称列留空，ST 这道闸今日未跑")
+            return {}, set(), "none"
+        age = str(t["取数日"].iloc[0]) if "取数日" in t.columns and len(t) else "取数日未知"
+        names, st = labels(t)
+        print(f"[待买入] ⚠️ 无本场快照 {os.path.basename(path)} ⇒ 改用备用名称表 "
+              f"{os.path.basename(fb)}（取数日 {age}，只当名称/ST 标记、不当当日行情）："
+              f"{len(names)} 只带名称，其中名称含 ST 标记 {len(st)} 只")
+        return names, st, f"fallback:{os.path.basename(fb)}(取数日 {age})"
+    names, st = labels(pd.read_csv(path, encoding="utf-8-sig"))
+    print(f"[待买入] 快照 {os.path.basename(path)}：{len(names)} 只带名称，"
           f"其中名称含 ST 标记 {len(st)} 只")
-    return dict(zip(codes, nm)), st
+    return names, st, f"spot_{s:%Y%m%d}.csv"
 
 
 # 09-24 换掉的旧轴表达式，只用来在账单里把那一档行找出来做对照
@@ -265,7 +291,7 @@ def main():
     print(f"[筛选] 启用构造 {len(rules)} 条：" + "、".join(n for _k, n, _e, _d in rules))
 
     gate = rule_mats[VOLUME_RULES[0][2]]          # 闸门用「量能水平」那条判因子有值
-    names, st_codes = spot_labels(s)
+    names, st_codes, name_source = spot_labels(s)
     r = screen_on_date(s, d1, mtx, rule_mats, gate, ASHARE_SCREEN_QUANTILE,
                        top_n=ASHARE_BUY_TOP_N, st_codes=st_codes,
                        buy_min_hits=ASHARE_BUY_MIN_HITS)
@@ -445,6 +471,10 @@ def main():
     meta = {"signal_date": str(s.date()),
             "next_trade_day": None if d1 is None else str(d1.date()),
             "panel_end": str(mtx["close"].index[-1].date()),
+            # 名称/ST 标记是哪份表给的：spot_<场次>.csv（当日真快照）/ fallback:<表>(取数日)
+            # / none（两道都没有 ⇒ 这一场的 ST 闸没跑）。审计与看板据此认出「名单里为什么
+            # 有 ST」，不用回头猜那天到底取没取到快照
+            "name_source": name_source,
             "quantile": ASHARE_SCREEN_QUANTILE,
             # 口径自报：换 STOCK_TRADABLE_GATE 重跑过的名单与旧名单不是一回事，
             # 事后对账只能从这份 meta 认

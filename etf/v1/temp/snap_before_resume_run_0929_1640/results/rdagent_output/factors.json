@@ -1,0 +1,82 @@
+[
+  {
+    "name": "1-day SMA of Price over 60-day MAX of Price",
+    "expr": "(ma(df,1))/(max(df,60))",
+    "formulation": "P_{t} / P_{t-60} - 1 / (P_{t-1} / P_{t-61} - 1)",
+    "code": "import pandas as pd\n\ndef calculate_1_day_SMA_of_Price_over_60_day_MAX_of_Price():\n    df = pd.read_hdf('daily_pv.h5', key='data').sort_index()\n    window = 60  # put the factor's window here\n    max_price = df['close'].groupby(level='instrument', sort=False).rolling(window).max().droplevel(0)\n    values = df['close'] / max_price - 1  # a Series, same index as df\n    result = values.to_frame('1-day SMA of Price over 60-day MAX of Price').reindex(df.index)  # keeps datetime+instrument index\n    result.to_hdf('result.h5', key='data')\n\nif __name__ == '__main__':\n    calculate_1_day_SMA_of_Price_over_60_day_MAX_of_Price()",
+    "mean_ic": 0.0084699322877141,
+    "icir": 0.0385484725394689,
+    "rank_ic": 0.0039545867734875,
+    "rank_icir": 0.0171935023690178
+  },
+  {
+    "name": "1-day SMA of Price over 20-day MAX of Price",
+    "expr": "(ma(df,1))/(max(df,20))",
+    "formulation": "P_{t} / P_{t-20} - 1 / (P_{t-1} / P_{t-21} - 1)",
+    "code": "import pandas as pd\n\ndef calculate_1_day_SMA_of_Price_over_20_day_MAX_of_Price():\n    df = pd.read_hdf(\"daily_pv.h5\", key=\"data\").sort_index()\n    window = 20  # Put the factor's window here\n    close = df[\"close\"]\n    max_price = close.groupby(level=\"instrument\", sort=False).rolling(window).max().droplevel(0)\n    values = close / max_price - 1  # A Series, same index as df\n    result = values.to_frame(\"1-day SMA of Price over 20-day MAX of Price\").reindex(df.index)  # Keeps datetime+instrument index\n    result.to_hdf(\"result.h5\", key=\"data\")\n\nif __name__ == \"__main__\":\n    calculate_1_day_SMA_of_Price_over_20_day_MAX_of_Price()",
+    "mean_ic": 0.0084699322877141,
+    "icir": 0.0385484725394689,
+    "rank_ic": 0.0039545867734875,
+    "rank_icir": 0.0171935023690178
+  },
+  {
+    "name": "1-day SMA of Price over 60-day SMA of Price",
+    "expr": "(ma(df,1))/(ma(df,60))",
+    "formulation": "P_{t} / P_{t-1} - 1 / (P_{t-60} / P_{t-59} - 1)",
+    "code": "",
+    "mean_ic": 0.0,
+    "icir": 0.0,
+    "rank_ic": 0.0,
+    "rank_icir": 0.0
+  },
+  {
+    "name": "1-day SMA of Price over 30-day MAX of Price",
+    "expr": "(ma(df,1))/(max(df,30))",
+    "formulation": "P_{t} / MAX(P_{t-30}) - 1",
+    "code": "import pandas as pd\n\ndef calculate_1_day_SMA_of_Price_over_30_day_MAX_of_Price():\n    df = pd.read_hdf('daily_pv.h5', key='data').sort_index()\n    window = 30  # put the factor's window here\n    g = df['close'].groupby(level='instrument', sort=False)\n    num = g.rolling(window).mean().droplevel(0)\n    den = g.rolling(window).max().droplevel(0)\n    values = num / den - 1\n    result = values.to_frame('1-day SMA of Price over 30-day MAX of Price').reindex(df.index)\n    result.to_hdf('result.h5', key='data')\n\nif __name__ == '__main__':\n    calculate_1_day_SMA_of_Price_over_30_day_MAX_of_Price()",
+    "mean_ic": 0.0032682944980405,
+    "icir": 0.0157874439092986,
+    "rank_ic": -0.0027970595568722,
+    "rank_icir": -0.0125963751757535
+  },
+  {
+    "name": "1-day SMA of Price over 20-day MIN of Price",
+    "expr": "(ma(df,1))/(min(df,20))",
+    "formulation": "P_{t} / \text{SMA}_{20}(P_{t-i}) - 1",
+    "code": "import pandas as pd\n\ndef calculate_1_day_SMA_of_Price_over_20_day_MIN_of_Price():\n    df = pd.read_hdf(\"daily_pv.h5\", key=\"data\").sort_index()\n    window = 20  # 20-day SMA window\n    close_series = df[\"close\"]\n    min_price = close_series.groupby(level=\"instrument\", sort=False).rolling(window).min().droplevel(0)\n    sma_price = close_series.groupby(level=\"instrument\", sort=False).rolling(window).mean().droplevel(0)\n    values = sma_price / min_price - 1\n    result = values.to_frame(\"1-day SMA of Price over 20-day MIN of Price\").reindex(df.index)\n    result.to_hdf(\"result.h5\", key=\"data\")\n\nif __name__ == \"__main__\":\n    calculate_1_day_SMA_of_Price_over_20_day_MIN_of_Price()",
+    "mean_ic": 0.0084699322877141,
+    "icir": 0.0385484725394689,
+    "rank_ic": 0.0039545867734875,
+    "rank_icir": 0.0171935023690178
+  },
+  {
+    "name": "5-day SMA of Price",
+    "expr": "ma(df,5)",
+    "formulation": "P_{t-5} = \\frac{1}{5} \\sum_{i=0}^{4} P_{t-i}",
+    "code": "import pandas as pd\n\ndef calculate_5DaySMAOfPrice():\n    df = pd.read_hdf(\"daily_pv.h5\", key=\"data\").sort_index()\n    # rolling MUST be per instrument: a plain df[col].rolling(n) on the\n    # (datetime, instrument) index mixes different stocks inside one window\n    window = 5                              # put the factor's window here\n    values = df[\"close\"].groupby(level=\"instrument\", sort=False).rolling(window).mean().droplevel(0)\n    result = values.to_frame(\"5DaySMAOfPrice\").reindex(df.index)   # keeps datetime+instrument index\n    result.to_hdf(\"result.h5\", key=\"data\")\n\nif __name__ == \"__main__\":\n    calculate_5DaySMAOfPrice()",
+    "mean_ic": 0.0084699322877141,
+    "icir": 0.0385484725394689,
+    "rank_ic": 0.0039545867734875,
+    "rank_icir": 0.0171935023690178
+  },
+  {
+    "name": "10-day SMA of Volume",
+    "expr": "ts_mean(volume,10)",
+    "formulation": "V_{t-10} = \\frac{1}{10} \\sum_{i=0}^{9} V_{t-i}",
+    "code": "import pandas as pd\n\ndef calculate_10day_sma_volume():\n    df = pd.read_hdf('daily_pv.h5', key='data').sort_index()\n    window = 10  # put the factor's window here\n    values = df['volume'].groupby(level='instrument', sort=False).rolling(window).mean().droplevel(0)\n    result = values.to_frame('10_day_sma_of_volume').reindex(df.index)  # keeps datetime+instrument index\n    result.to_hdf('result.h5', key='data')\n\nif __name__ == '__main__':\n    calculate_10day_sma_volume()",
+    "mean_ic": 0.0084699322877141,
+    "icir": 0.0385484725394689,
+    "rank_ic": 0.0039545867734875,
+    "rank_icir": 0.0171935023690178
+  },
+  {
+    "name": "5-day STD of Volume",
+    "expr": "ts_std(volume,5)",
+    "formulation": "V_{t-5} = \\sqrt{\\frac{1}{5} \\sum_{i=0}^{4} (V_{t-i} - \\bar{V}_{t-5})^2}",
+    "code": "",
+    "mean_ic": 0.0,
+    "icir": 0.0,
+    "rank_ic": 0.0,
+    "rank_icir": 0.0
+  }
+]

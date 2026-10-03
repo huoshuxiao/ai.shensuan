@@ -1,5 +1,4 @@
 ﻿factor,cluster,is_rep
-reversal_5,1,True
-volatility_20,4,True
-momentum_20,2,True
-volume_ratio_20,3,True
+volume_weighted_price_change,1,True
+volume_price_divergence,1,False
+vol_spike_momentum,2,True

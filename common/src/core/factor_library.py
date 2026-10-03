@@ -10,6 +10,7 @@ from datetime import datetime
 from collections import OrderedDict
 from config import FACTOR_LIBRARY, LIBRARY_DIR, MARKET
 from factor_naming import cn_name, METRIC_GLOSSARY
+from factor_static_check import check_expr
 
 
 class FactorLibrary:
@@ -18,6 +19,8 @@ class FactorLibrary:
         self.md_path = self.p["md_path"]
         self.index_path = self.p["index_path"]
         self.factors = OrderedDict()
+        # 被静态闸挡住的条目（name → 拒因）。只给账单用，不参与任何判定
+        self.rejected = OrderedDict()
         self._load_index()
 
     def _load_index(self):
@@ -36,8 +39,27 @@ class FactorLibrary:
             json.dump(dict(self.factors), f,
                       ensure_ascii=False, indent=2)
 
+    @staticmethod
+    def _static_gate(expr):
+        """写库前的静态尺子：'' 放行，否则拒因（未来函数/未知名字/非法语法…）。
+
+        expr 为空时**放行**：这把尺子对空表达式没有判断面（`check_expr("")` 报的是
+        语法错误），而库里确有 expr 为空的存量行（10-01 实测 45 行里的那 1 行）；
+        拒它只会把整行冻在旧 IC 上——与"不许偷看未来"无关的第二笔影响。空 expr
+        真正的毛病（求值层跑不出数）归 IC 闸那一层管。
+        """
+        e = (expr or "").strip()
+        return check_expr(e) if e else ""
+
     def upsert(self, name, expr, ic, icir, source,
                status="active", extra=None):
+        """写一条因子。**返回 False 表示被静态闸挡住、一个字段都没动**"""
+        if self.p.get("static_gate", True):
+            why = self._static_gate(expr)
+            if why:
+                self.rejected[name] = why
+                print(f"  🚫 {name} 未入库（静态体检）: {why}")
+                return False
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if name in self.factors:
             f = self.factors[name]
@@ -62,14 +84,17 @@ class FactorLibrary:
                 # 的 IC 不可横比，分线之后仍要留这一列防混用
                 "market": MARKET,
                 **(extra or {})}
+        return True
 
     def batch_upsert(self, factors, source, status="active"):
-        for f in factors:
-            self.upsert(f.get("name", "unknown"),
-                        f.get("expr", ""),
-                        f.get("mean_ic", f.get("ic", 0.0)),
-                        f.get("icir", 0.0), source, status)
-        print(f"  📚 因子库更新: +{len(factors)} (来源={source})")
+        """逐条 upsert；被静态闸挡住的**不计入"因子库更新"**那行数"""
+        written = sum(1 for f in factors if self.upsert(
+            f.get("name", "unknown"), f.get("expr", ""),
+            f.get("mean_ic", f.get("ic", 0.0)),
+            f.get("icir", 0.0), source, status))
+        rej = len(factors) - written
+        print(f"  📚 因子库更新: +{written} (来源={source})"
+              + (f" / 🚫 静态体检挡掉 {rej}" if rej else ""))
 
     def mark_status(self, name, status, reason=""):
         if name in self.factors:

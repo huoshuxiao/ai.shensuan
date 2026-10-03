@@ -159,9 +159,22 @@ def merge_factors(all_factors, weights=None):
     return merged
 
 
-def multi_source_mine(pool):
+def multi_source_mine(pool, fold=None):
+    """多源并行挖因子。
+
+    fold 非 None ⇒ 本折是 walk-forward 折内。此时若 `MULTI_SOURCE["official_in_fold"]`
+    为假就剔掉 official 这一源（丙-2，09-30 用户裁定）：
+    `try_official_rdagent()` 的 `output_dir` 默认是不分折的固定目录，折内那一轮容器被子进程
+    `kill()` 后驱动 `finally` 里的回收没来得及写，三折于是都读到同一份**全历史面板**上挖出来的
+    `factors.json`（09-30 探针现量：候选池同一个 9 条文件、各折挑中 2/3/3 条、两两只重合
+    1~2 条）⇒ 折内 official 不是点时的。主线与自动重挖不传 fold，照旧吃 official。
+    """
     print("\n========== 多因子源并行 ==========")
     sources = MULTI_SOURCE["sources"]
+    if (fold is not None and "official" in sources
+            and not MULTI_SOURCE.get("official_in_fold", True)):
+        sources = [s for s in sources if s != "official"]
+        print(f"  ℹ️ 折 {fold}：official 源已在折内停用（回收目录不分折 ⇒ 非点时，丙-2）")
     timeout = MULTI_SOURCE["timeout_seconds"]
 
     runners = {"official": _run_official, "llm": _run_llm,

@@ -80,7 +80,8 @@ def test_stage_validation_passes_fold_index_into_mining(pool, monkeypatch,
     import factor_genetic
     seen = {}
 
-    def fake_run(p, universe, factor_fn, backtest_fn, trial_counter=None):
+    def fake_run(p, universe, factor_fn, backtest_fn, trial_counter=None,
+                 checkpoint=None, wide_pool=None):
         got = factor_fn(p, p[next(iter(p))].index, fold=2)
         seen["n"] = len(got)
         seen["sources"] = {f["source"] for f in got}

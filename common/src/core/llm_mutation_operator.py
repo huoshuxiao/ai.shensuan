@@ -15,7 +15,7 @@ MUTATION_SYSTEM_PROMPT = """你是量化因子研究员。给定一个因子表�
 1. 保留核心逻辑（动量/反转/波动率）
 2. 针对弱点做改进
 3. 一行 Python 表达式，用 df 输入
-4. 可用算子: close, open, high, low, volume, returns, ma(df,n), std(df,n), max(df,n), min(df,n), delay(s,n), delta(s,n), ts_sum(s,n), ts_mean(s,n), ts_std(s,n), abs(s), log(s), sign(s)
+4. 可用算子: close, open, high, low, volume, returns, ma(x,n), std(x,n), max(x,n), min(x,n), delay(s,n), delta(s,n), ts_sum(s,n), ts_mean(s,n), ts_std(s,n), abs(s), log(s), sign(s)；ma/std/max/min 的第一个参数**可以直接传列**（如 ma(volume, 20)），传 df 时按 close 算
 
 输出 JSON:
 {"expr": "新表达式", "reason": "改进逻辑"}

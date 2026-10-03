@@ -4,9 +4,9 @@
 为什么要串（现状是从产物反推的，不是猜的）
 ------------------------------------------
 ETF 线此前有四个各自为政的时钟，`scheduler.py` 里那四条 job 又没有进程在跑：
-    `data/universe_all/`   871 只全市场镜像        ← 只靠手敲 `data/update_etf_daily.py`
-    `data/cache/*_daily`   主线池逐只缓存          ← 同一个脚本第二段
-    `data/risk/`           份额/净值长表（3 张）    ← 同一个脚本内联调 `collect_daily()`
+    `common/data/etf/universe_all/`   871 只全市场镜像   ← 只靠手敲 `common/src/data/etf/update_etf_daily.py`
+    `common/data/etf/cache/*_daily`   主线池逐只缓存     ← 同一个脚本第二段
+    `common/data/etf/risk/`           份额/净值长表（3 张）← 同一个脚本内联调 `collect_daily()`
     `data/results/*_daily` 回测三张表              ← 只靠周一 09:00 那条 `main.py`（实测 52 分钟）
 三面数据面 `update_etf_daily.py` 已经串成一条命令（本链直接复用它，不重写第二份判据），
 缺的是**外面那一层**：该不该补、补完有没有真推进、失败了算谁的、能不能中途停、
@@ -47,15 +47,23 @@ ETF 线此前有四个各自为政的时钟，`scheduler.py` 里那四条 job �
           实测代价（从产物与日志反推）：09-28 那场 22:04:15→22:34:35 = **30 分 20 秒**，
           其中 [8/9] 走查+PBO+多策略 18.5 分、[9/9] 的 LLM SHAP 7.5 分；
           09-27 另一场 52 分钟 ⇒ 墙钟由"RD-Agent 前置检查过不过"决定，别拿均值排程。
+          ⚠️ 10-01 补一刀：**前置检查绿 ≠ 那一腿真起了容器**——同一条链路上 b) 闸念的是
+          ✅ 2/2（bin/面板都新鲜），而共享层逐项体检里的 `docker info` 单次 20s 超时
+          ⇒ 那一腿还是静默产出 0、墙钟 1h17m。探测已改成 2 次 × 45s（甲-1），
+          缺席则由验收 G 格把链路打成非零（甲-2）。
           **起之前链路先读三张闸**（`analysis_gate_readings()`，三条都能红）：
-            a) 重挖冷却：`data/cache/remining_state.json` 的
+            a) 重挖冷却：`common/data/etf/cache/remining_state.json` 的
                `current_bar − last_remining_bar < cooldown_bars` ⇒ 不在冷却就**拒起**
                （要起得再加 `--allow-remining`），因为那一支会把 30 分钟变成几小时；
-            b) RD-Agent 数据新鲜度（**调用官方那道判据** `core.official_rdagent
+            b) RD-Agent 数据新鲜度：判据**调用官方那一把** `core.official_rdagent
                ._rdagent_data_checks`，不在这儿重抄一份 mtime 比较——09-29 重抄时就把
                方向写反过）：`bin/面板 的 mtime ≥ 行情源目录最新 mtime` 才算跟上。
                **落后 ⇒ 前置检查挡死 official 支（产出 0）⇒ ③ 只花 30 分钟**（09-28 那场）；
-               跟上 ⇒ 容器循环会起 ⇒ 墙钟是小时级（#47）；
+               跟上 ⇒ 容器循环会起 ⇒ 墙钟是小时级（#47）。
+               ⇒ 这一张闸**念完之后、③ 真起之前**链路会把两块产物各重建一遍
+               （`rebuild_rdagent_data_surface()`，实测 28.9 秒，并再念一次重建后的闸）：
+               这道闸比的是 mtime，而 ① 每天重写 871 只镜像 ⇒ 只要不重建它就**结构性恒红**，
+               official 那一支就永远产出 0（#47 定档「丙」＝常态化重建）；
             c) LLM 端点可达性：不可达不是崩，是降级（三次重试后走模板兜底）。
           **它不可幂等**：`trial_counter.json` 每场只增（DSR 的分母），SHAP 正文每次
           由 LLM 重写 ⇒ 同一份数据重跑两遍，归档**不该**逐字节相同。链路的验收因此
@@ -92,7 +100,17 @@ ETF 线此前有四个各自为政的时钟，`scheduler.py` 里那四条 job �
          C `signals_daily.csv` 与 `equity_daily.csv` 末日必须**同一天**（同一次生成）；
          D 日志回显的「最终资金」必须等于 `equity_daily.csv` 的末值（跨层对表：
            一个念的是终端、一个念的是文件，写坏了必红）；
-         E `trial_counter.json` 只许变大（它是累计格，缩了说明被谁重置）。
+         E `trial_counter.json` 只许变大（它是累计格，缩了说明被谁重置）；
+         F 有日期列的那几张表**末日不得倒退**（一张都读不出日期列时判红，不判绿——
+           `all([])` 恒真是条恒真判据，09-29 加）；
+         G **official 这条腿真的交出了因子**（10-01 加）：主线日志里那一行
+           「official 产出 N 个因子」若 N=0 —— 无论是链路自陈「本次未运行」还是
+           一声不响地交了白卷 —— 判红 ⇒ ② 不起、全场非零退出。
+           来历：10-01 15:5x 那场 `docker info` 单次 20s 探测超时 ⇒ 这一腿静默产出 0、
+           共享层照打 ✅、子进程与链路退出码都是 0，墙钟 1h17m（真起容器是 3~5 小时）
+           ⇒ "腿没了但全场绿"这一类此前只有验收脚本在盯、链路自己没有闸。
+           产出行整条不存在时判 ⚪（`--resume` 命中主线断点就不重算、不重印，不该打红）；
+           确实要让这一腿缺席还往下走：`--allow-official-absent`（只把 G 降成 ⚪）。
        这几条只判"这场真的写了、且写出来的东西自洽"，**不判**新旧两场数值相同：
        ③ 天然不可幂等（`trial_counter` 递增、SHAP 正文由 LLM 现生成、因子库若被
        并行会话改过则因子集会换），所以"重跑一遍数字一模一样"不是这条链的判据。
@@ -124,9 +142,6 @@ ETF 线此前有四个各自为政的时钟，`scheduler.py` 里那四条 job �
        归档、还会打 `[factor-lib]` commit，这些都不是"贴一行日线"该顺带干的事），
        但**完全没有这一块**同样不对——它就是"单独敲脚本会丢块"的那个块。
        ⇒ 折中：`--with-analysis` 显式起，起则带 A~F 六条字节级验收。
-          ③ 跑完链路会自动补一次「人工下架重放」（见 `replay_manual_delist`）：
-          共享层 `upsert()` 对已在库条目**无条件**写 status="active"，不补这一刀，
-          人工判重的决定每天被复活一次。
     `data/etf_universe.py` 的 `build()`：候选池"不每天重算"，且它的上市日期抓取是
        420s×12 轮的并发（`etf_universe.py:168-206`），日更里等它等于天天赌十几分钟。
     三条研究评估入口 `run_etf_factor_eval` / `run_etf_portfolio_eval` /
@@ -148,11 +163,6 @@ ETF 线此前有四个各自为政的时钟，`scheduler.py` 里那四条 job �
     ... run_etf_daily_chain.py --audit            # **只读**盘点：从产物字节级读数反推
                                                   #   三块各跑在哪一天、谁把谁的新度盖过去了
                                                   #   （= 单独敲过某个脚本、丢了别的块 的检查）
-                                                  #   末尾顺带念一行「人工下架被复活 N 条」
-    ... run_etf_daily_chain.py --replay-delist    # 只压下架：把「带人工判重理由却被 ③ 复活成
-                                                  #   active」的条目标回 inactive 并落盘。
-                                                  #   跑 ③ 时链路末尾本来就会自动做一次，
-                                                  #   这一档留给「今天不想重跑 ③、只想把库按回去」
     全链一键（09-29 重跑 09-28 那场用的就是这条）：
         /usr/bin/python3.10 run_etf_daily_chain.py --audit        # 先看缺哪几块
         /usr/bin/python3.10 run_etf_daily_chain.py --with-analysis \
@@ -171,7 +181,7 @@ import time
 
 import pandas as pd
 
-from config import LOG_DIR, REPORT_DIR, RESULTS_DIR, UNIVERSE_ALL_DIR
+from config import BASE_DATA_DIR, CACHE_DIR, LOG_DIR, REPORT_DIR, RESULTS_DIR, RISK_DIR, UNIVERSE_ALL_DIR
 
 SRC = os.path.dirname(os.path.abspath(__file__))
 P310 = "/usr/bin/python3.10"
@@ -237,7 +247,7 @@ def check_cancel(stage):
         f"要继续这一场：再跑一次 `{P310} {os.path.abspath(__file__)}`。")
 
 
-def run(step, cmd, soft=False):
+def run(step, cmd, soft=False, extra_env=None):
     """跑一步，输出**逐行**透传（不是等它跑完才吐）；非零退出默认整链停（`soft=True` 只打 ⚠️）
 
     为什么要逐行：③ 一步就是 30~52 分钟，而老写法把子进程 stdout 整块攒在内存里、
@@ -245,14 +255,16 @@ def run(step, cmd, soft=False):
     「字节数没变」猜它是卡了还是在跑（09-28 那次 11 分钟的链路就被这么误判过一回，
     只不过那次的病根是块缓冲）。现在改成边读边打，链路日志的字节数就是活的心跳。
     """
-    print(f"\n──────── {step} ────────\n$ " + " ".join(cmd))
+    print(f"\n──────── {step} ────────\n$ "
+          + "".join(f"{k}={v} " for k, v in (extra_env or {}).items())
+          + " ".join(cmd))
     t0 = time.time()
     lines = []
     p = subprocess.Popen(cmd, cwd=SRC, stdout=subprocess.PIPE,
                          stderr=subprocess.STDOUT, text=True,
                          encoding="utf-8", errors="replace", bufsize=1,
                          # 子进程自己也得别块缓冲，否则我这边逐行读到的还是"一坨最后到达"
-                         env=dict(os.environ, PYTHONUNBUFFERED="1"))
+                         env=dict(os.environ, **(extra_env or {}), PYTHONUNBUFFERED="1"))
     for line in p.stdout:
         lines.append(line)
         print(line, end="", flush=True)
@@ -387,9 +399,9 @@ def backtest_lag_days(ends):
     return int(len(pd.bdate_range(sig_end + pd.Timedelta(days=1), mirror_end))), sig_end
 
 
-DATA_DIR = os.path.dirname(RESULTS_DIR)
+DATA_DIR = os.path.dirname(RESULTS_DIR)   # 本线产物根（results/ library/ live/）
 ANALYSIS_PY = os.path.join(SRC, "run_daily_backtest.py")   # = main.main()，freq 由 env 定
-REMINE_STATE = os.path.join(DATA_DIR, "cache", "remining_state.json")
+REMINE_STATE = os.path.join(CACHE_DIR, "remining_state.json")
 # ③ 会写的产物（路径从 main.py 的 stage_validation :372-489、存盘块 :730-758 与
 # [9/9] 的分析块反推，不是猜的）。验收只看这四张真写过才会动的量：
 # mtime、字节数、行数、末日/末值。
@@ -400,15 +412,15 @@ AUX_ARTIFACTS = ["results/walk_forward_daily.csv", "results/pbo_result.json",
                  "results/optimized_params_daily.json",
                  "library/factor_library_index.json",
                  "cache/trial_counter.json"]
-# 「人工判重下架」那批的理由前缀（09-29 丁2 落的就是这一串，见 CHANGELOG 同名条目）。
-# `replay_manual_delist()` 只认它 ⇒ 将来若另立一种人工下架口径，要同批改这一根常量，
-# 否则新口径不会被重放（宁可漏压，不要误压：多压一条就是替库做一次没做过的判据决定）。
-MANUAL_DELIST_TAG = "丁2 库内判重"
 
 
 def stamp(rel, with_tail=True):
     """一个产物的字节级读数 ⇒ dict（不存在也返回，好让验收能念"缺"而不是崩）"""
-    p = os.path.join(DATA_DIR, rel)
+    # 09-29 起数据分两棵树：cache/ 这类抓来的行情在 BASE_DATA_DIR（common/data/etf），
+    # results/ library/ live/ 这些本线结论仍在 DATA_DIR。rel 的首段决定去哪边找。
+    root = BASE_DATA_DIR if rel.split(os.sep)[0] in ("cache", "risk",
+                                                     "universe_all") else DATA_DIR
+    p = os.path.join(root, rel)
     if not os.path.exists(p):
         return {"exists": False}
     st = os.stat(p)
@@ -514,11 +526,52 @@ def analysis_gate_readings():
     return r, block
 
 
-def verify_analysis(before, after, t_start, log_text):
-    """③ 的字节级跨步验收 ⇒ [(判据名, 过不过, 证据)]。
+def official_leg_evidence(log_text):
+    """从 ③ 的 stdout 里拆出 official（RD-Agent(Q) 容器循环）这条腿的三处自陈。
+
+    只读、不判（判在 `verify_analysis` 的 G 格里）。返回 dict：
+      `n`          主线那行「official   产出 N 个因子」的 N；整行不存在 ⇒ None
+      `skip`       链路自陈「本次未运行（前置依赖缺失: X）」里的 X；没有这句 ⇒ None
+      `red_items`  前置检查那一屏里 ❌ 的那几条（只吃检查表那一段连着的行，防容器回显混进来）
+      `segment_ran` 多源那一段在本线**有没有跑**（认另一条腿的产出行或「多源挖掘追加」）
+                   ⇒ 用来把「产出行整条不见」拆成两种：这一段压根没重算（`--resume` 命中，
+                   判 ⚪）vs 这一段跑了、唯独这一条腿的字一行都没落（判红，别让它蒙过去）
+
+    为什么只看主线（`--- 折 ` 之前）：折内那一条腿由 `MULTI_SOURCE["official_in_fold"]`
+    单独裁（丙-2 = 折内停用，09-30）⇒ 折内缺席是**判决不是事故**，不许和本线的
+    "静默 0 产出"并成一笔总账。
+    """
+    txt = log_text or ""
+    fold_at = re.search(r"^--- 折 \d", txt, re.M)
+    main = txt[: fold_at.start()] if fold_at else txt
+    prod = re.search(r"official\s+产出\s*(\d+)\s*个因子", main)
+    skip = re.search(r"RD-Agent\(Q\) 本次未运行（前置依赖缺失:\s*(.+)）", main)
+    at = main.find("RD-Agent(Q) 前置检查:")
+    reds = []
+    if at >= 0:
+        # 只吃检查表那**连着**的 ✅/❌ 行：往后走一大片是 RD-Agent 容器的回显，
+        # 里面的 IC 判定行也带 ❌，拿整段去抠红项会把"全绿但容器真跑了"那一场念成有红项
+        for ln in main[at:].splitlines()[1:]:
+            if not ln.lstrip().startswith(("✅", "❌")):
+                break
+            if ln.lstrip().startswith("❌"):
+                reds.append(ln.lstrip()[1:].strip())
+    return {"n": int(prod.group(1)) if prod else None,
+            "skip": skip.group(1) if skip else None,
+            "red_items": reds, "has_preflight": at >= 0,
+            "segment_ran": ("多源挖掘追加" in main
+                            or bool(re.search(r"(?:llm|simple|genetic)\s+产出\s*\d+\s*个因子",
+                                              main)))}
+
+
+def verify_analysis(before, after, t_start, log_text, allow_official_absent=False):
+    """③ 的字节级跨步验收 ⇒ [(判据名, 过不过, 证据)]，七条 A–G。
 
     每条都必须"没跑/跑一半"时给不出同一个读数（09-29 的教训：可失败的那一步
     最会藏恒真判据）。**不判**与上一场数值相同——③ 天然不可幂等。
+
+    `allow_official_absent=True` 只把 G 从 ❌ 降成 ⚪（A–F 一条不动）：那一腿缺席时
+    仍然把字念出来，但不拦 ②。
     """
     checks = []
     fresh = [k for k in CORE_ARTIFACTS
@@ -559,36 +612,102 @@ def verify_analysis(before, after, t_start, log_text):
                    "一张表都读不出日期列 ⇒ 无可比对象" if not dated else
                    "、".join(f"{k.split('/')[-1]} {before[k]['last_date']}"
                              f"→{after[k].get('last_date') or '缺表'}" for k in dated)))
+    # G official 这条腿：**没跑不许读成跑对**。10-01 15:5x 那场实测——`docker info` 单次
+    # 20s 探测超时 ⇒ 前置检查判红 ⇒ 这条腿一个因子没产、共享层还照打「✅ official 产出 0 个因子」、
+    # 子进程与整条链的退出码都是 0 ⇒ 墙钟 1h17m（真起容器是 3~5 小时），只有翻日志才发现腿没了。
+    # 重试已在共享层加过（甲-1，2 次 × 45s），这一格补的是**退出码**那一半。
+    ev = official_leg_evidence(log_text)
+    if ev["n"] is None and ev["segment_ran"]:
+        g_ok, g_ev = False, ("多源那一段在本线跑了（有另一条腿的产出行或「多源挖掘追加」），"
+                             "**唯独 official 那行一个字没落** ⇒ 这一腿是整段失踪，不是产出 0，"
+                             "更不是没重算")
+    elif ev["n"] is None:
+        # 产出行整条不存在 **且** 这一段也没跑：`--resume` 命中主线断点时属正常
+        g_ok, g_ev = None, ("主线日志里没有多源那一段的任何产出行 ⇒ 这一段没重算"
+                           "（`--resume` 命中主线断点时正常）⇒ 这一格判不出，只念不拦")
+    elif ev["n"] == 0:
+        g_ok = False
+        g_ev = (f"official 产出 0 个因子（前置检查红项 {len(ev['red_items'])} 条"
+                + (f"：{ '；'.join(ev['red_items'])[:160]}" if ev["red_items"] else "")
+                + (f"；链路自陈未运行＝{ev['skip']}" if ev["skip"] else
+                   "；且**没有任何一句自陈** ⇒ 共享层打了 ✅ 却交了白卷"
+                   "（真·静默，比上一支更难发现）")
+                + f"；本场 llm 等其余各腿照写、子进程退出码照 0 ⇒ 只有这一格在拦）")
+    elif ev["skip"]:
+        g_ok, g_ev = False, (f"自陈「本次未运行（{ev['skip']}）」却又报产出 {ev['n']} 个"
+                             "⇒ 两处对不上，有一处在说谎")
+    elif ev["red_items"]:
+        g_ok, g_ev = False, (f"前置检查有 {len(ev['red_items'])} 条 ❌"
+                             f"（{ev['red_items'][0][:120]}）却产出 {ev['n']} 个 ⇒ 对不上")
+    else:
+        g_ok, g_ev = True, f"official 产出 {ev['n']} 个因子，前置检查无 ❌、无自陈缺席"
+    if g_ok is False and allow_official_absent:
+        g_ev = ("--allow-official-absent 已给 ⇒ 只念不拦。" + g_ev)
+        g_ok = None
+    checks.append(("G official 这条腿真的交出了因子（不是静默 0）", g_ok, g_ev))
     return checks
 
 
-def replay_manual_delist(apply=True, lib=None):
-    """把被 ③ 的 upsert **复活**的「人工判重下架」条目重新标回 inactive ⇒ (命中的名字, 落盘了吗)
+def rebuild_rdagent_data_surface():
+    """③ 起之前把 RD-Agent 的两块数据面（qlib bin + `daily_pv.h5`）重建一遍 ⇒ 让新鲜度闸有机会绿
 
-    为什么需要这一步（09-29 重跑实测）：共享层 `core/factor_library.py:49` 的 `upsert()`
-    对**已在库**的条目无条件写 `f["status"] = status`，而调用侧
-    `batch_upsert(..., status="active")`（同文件 :66）的默认值就是 `active` ⇒ 丁2 手工
-    下架的重复条目只要还在那批喂进去的名单里，**每天日更都会把它复活一次**。09-29 那场
-    就把 `reversal_5`（与 `mom_5` 带符号相关 −0.998953）和 `volatility_20`（与 `vol_20`
-    |corr|=1.0000）翻回 active，库从 27 活跃涨到 29。
+    为什么要链路来干（#47，09-29 定档「丙」＝常态化重建）：`core.official_rdagent
+    ._rdagent_data_checks` 比的是 **mtime**，而 ① 每天把 871 只镜像 csv 整批重写一遍 ⇒
+    哪怕行情末日一格没变，mtime 一翻新这道闸就判红；判红不是崩，是**静默跳过** official
+    那一支（打印「本次未运行」后产出 0 个因子）。等这一支长期跑不了 —— 09-27 起连场产出 0，09-29 那场 4 个折全部「产出 0 个因子」。
 
-    名单从哪来：不另建文件、天天维护一份下架名单是负担，而 `upsert()` **不碰**
-    `status_reason` ⇒ 人工下架的理由原样留在库里，它本身就是那张名单。命中口径只认
-    `MANUAL_DELIST_TAG` 开头的那一批（别的 `status_reason` 一律不动），判据零改动。
+    实测代价（09-29 15:25 本机一场真跑）：a) `dump_qlib_bin.py` **14 秒**（871 只 /
+    950,589 行，日历推到 09-28）+ b) `pregen_source_data.py` **15 秒**（含 conda 冷启动；
+    面板 951,589 行 × 12 列，末行 09-28）⇒ 合计 **28.9 秒**，换来 official 支从
+    "恒产出 0"变成"真起容器循环"（墙钟从 30 分钟跳到小时级）。
+
+    为什么放在 ③ 之前而不是 ① 之后：不带 `--with-analysis` 的日常日更根本不跑
+    RD-Agent，没必要天天烧这 35 秒；而 pregen 写的正是 `rdagent_output/` 底下的面板，
+    必须赶在 ③ 那批容器起来**之前**写完，并行会互相盖产物。
+
+    失败不拦路：dump 挂了（比如基准指数抓不到）或 conda 不在，都由紧接着那张 b) 闸
+    照实念红，链路不替它遮。**判据仍是官方那一把**，这里不造第二把尺子。
     """
-    if lib is None:
-        from factor_library import get_library
-        lib = get_library()
-    hit = [n for n, f in lib.factors.items()
-           if f.get("status") == "active"
-           and str(f.get("status_reason", "")).startswith(MANUAL_DELIST_TAG)]
-    if not hit or not apply:
-        return hit, False
-    for n in hit:
-        # 理由一字不改地留档，只把状态压回去；status_time 记本次重放时刻
-        lib.mark_status(n, "inactive", lib.factors[n]["status_reason"])
-    lib.save_markdown()
-    return hit, True
+    from config import RDAGENT_SOURCE_DIR
+    if not RDAGENT_SOURCE_DIR or not os.path.isdir(RDAGENT_SOURCE_DIR):
+        print("[重建 RD-Agent 数据面] 本线没有行情源目录 ⇒ 官方判据整组跳过，一个字节不动")
+        return
+    import core.official_rdagent as off
+    # 两块产物的重建入口都从**官方那份源码同一批常量**里取，不写死路径：
+    # 写死过一次就在 #47 上栽过（两处各抄一份会飘）。
+    dump_py = os.path.join(os.path.dirname(DATA_PY), "dump_qlib_bin.py")
+    pregen_py = os.path.normpath(os.path.join(
+        SRC, *[".."] * 3, "common", "rdagent_docker", "pregen_source_data.py"))
+    run("③ 前置重建 a) qlib bin（全市场镜像 → calendars/features/instruments）",
+        [P310, dump_py], soft=True)
+    conda = off._find_conda()
+    if not conda:
+        print("[⚠️ 不阻断] PATH 与常见安装位都没有 conda ⇒ `daily_pv.h5` 造不出来，"
+              "official 支会被新鲜度闸挡死（产出 0）")
+        return
+    run("③ 前置重建 b) 源数据面板 daily_pv.h5（rdagent 环境，写进 rdagent_output/）",
+        [conda, "run", "--no-capture-output", "-n", off.RDAGENT_CONDA_ENV,
+         "python", pregen_py, off.RDAGENT_OUTPUT_DIR],
+        soft=True, extra_env={"QLIB_PROVIDER_URI": off.RDAGENT_QLIB_PROVIDER})
+    # 重建之后**照实再念一遍**：念的还是官方那一把尺子，不自己下结论。
+    # 为什么不能省：pregen 有一条"面板内容已经够新就整块跳过、连名都不换"的复用规则
+    # （`pregen_source_data.py:143-149`），跳过 ⇒ h5 的 mtime 不翻新 ⇒ 这道 mtime 闸照红。
+    # 09-29 实测面板日历只到 09-24 而镜像已贴到 09-28，所以本场走的是全量重算；
+    # 真要撞上"日历 == bin 末交易日"，这里会念出来，而不是让调用侧以为重建成功了。
+    try:
+        checks = off._rdagent_data_checks(None)
+        bad = [c for c in checks if not c[1]]
+        if not checks:
+            print("  [重建之后] 官方判据返回空 ⇒ 无从判定，③ 会按「可能真跑挖掘」排时间")
+        elif bad:
+            print(f"  [重建之后] ⚠️ 仍落后 {len(bad)}/{len(checks)} 道："
+                  + "、".join(c[0] for c in bad)
+                  + "\n            ⇒ 这一场 official 支**产出仍会是 0**，上面两段子进程的输出就是原因")
+        else:
+            print(f"  [重建之后] ✅ {len(checks)}/{len(checks)} 道跟上 ⇒ official 支放行，"
+                  "③ 的墙钟按「小时」排，不是 30 分钟")
+    except Exception as e:
+        print(f"  [重建之后] 调不到官方判据（{type(e).__name__}: {e}）⇒ 以 ③ 自己那行前置检查为准")
 
 
 def newest_mtime(dirpath, suffixes=None):
@@ -642,9 +761,9 @@ def audit_report():
     mirror_end = max(mirror) if mirror else None
     blocks = []
     data_mt = max(filter(None, [
-        newest_mtime(os.path.join(DATA_DIR, "universe_all"), (".csv",)),
-        newest_mtime(os.path.join(DATA_DIR, "cache"), (".csv",)),
-        newest_mtime(os.path.join(DATA_DIR, "risk"), (".csv",))]), default=None)
+        newest_mtime(UNIVERSE_ALL_DIR, (".csv",)),
+        newest_mtime(CACHE_DIR, (".csv",)),
+        newest_mtime(RISK_DIR, (".csv",))]), default=None)
     ana = stamp("results/signals_daily.csv")
     fb_mt, fb_which = feedback_evidence()
     blocks.append(("① 数据面", data_mt,
@@ -680,11 +799,6 @@ def audit_report():
         s = stamp(k, with_tail=False)
         print(f"     · {k.split('/')[-1]:<32}"
               + (f"{s['when']}  {s['bytes']:>9,}B" if s["exists"] else "（不存在）"))
-    # 人工下架有没有被上一场 ③ 复活：这一格只读数、不落盘（`apply=False`）
-    hit, _ = replay_manual_delist(apply=False)
-    print(f"  ⇒ 人工下架被复活 {len(hit)} 条"
-          + (f"：{hit}\n    ⇒ 说一句「下架」就压回去：`{P310} {os.path.abspath(__file__)} --replay-delist`"
-             if hit else "（0 条 ⇒ 丁2 那批清理现在站着）"))
     return blocks
 
 
@@ -752,13 +866,23 @@ def main():
     ap.add_argument("--allow-remining", action="store_true",
                     help="允许 ③ 在「重挖冷却已过」时照跑（默认这时**拒起**，"
                          "因为 [9/9] 可能踢出几小时级的容器重挖）")
+    ap.add_argument("--allow-official-absent", action="store_true",
+                    help="允许 ③ 在 official 这条腿**一个因子没交**时照走 ②（默认这时"
+                         "验收 G 判红 ⇒ ② 不起、链路非零退出）。这一腿靠 RD-Agent 容器循环，"
+                         "前置检查任何一项红（docker 探测超时 / bin 或面板不新鲜 / 无 conda）"
+                         "都会让它静默产出 0 而子进程退出码照 0。只在这场本来就没打算起容器"
+                         "（例如明知 daemon 没起、只要 llm 那几条）时用")
+    ap.add_argument("--resume", action="store_true",
+                    help="③ 开段级断点续传（env ETF_RUN_RESUME=1）：主线多源与样本外"
+                         "各折各自把「挖出来的因子」落盘，重启/被杀后从已完成的那一段"
+                         "接着算，不再重起容器循环。**默认不带 = 九步全部重算，"
+                         "与这套机器存在前逐字节同行为**。作废闸是**逐条**的：每条条目"
+                         "带自己的指纹作用域（折内段读折几何与折内开关，主线段不读），"
+                         "拨折配置那几颗键只作废各折条目、主线那 ≈1h40m 留着；数据一推进"
+                         "才整批失效。详见 src/run_checkpoint.py")
     ap.add_argument("--audit", action="store_true",
                     help="**只读**盘点：不动任何字节，从产物 mtime/末日/行数反推三块各跑在哪天、"
                          "谁把谁的新度盖过去了（= 查「单独敲了一个脚本」的后遗症）")
-    ap.add_argument("--replay-delist", action="store_true",
-                    help="只做一件事：把「带人工判重下架理由、却被 ③ 的 upsert 复活成 active」"
-                         "的条目压回 inactive 并落盘（含一次 [factor-lib] 提交）。"
-                         "日更跑完 ③ 之后本来就会自动做一次，这一档是给『今天不想重跑 ③』时用")
     a = ap.parse_args()
     # 每一块到底是"跑了"还是"被谁关掉了"，收尾要打成一张表念出来。
     # 09-29 的诉求就是这张表：链路块丢失最阴的地方不是崩，是**默默没跑**还 exit 0。
@@ -772,14 +896,6 @@ def main():
     print(f"[复跑闸] /proc 里没有别的 {LOCK_PATTERN}（本进程 {os.getpid()}）")
     if a.audit:
         audit_report()
-        return
-    if a.replay_delist:
-        hit, wrote = replay_manual_delist()
-        print(f"[重放人工下架] 命中 {len(hit)} 条"
-              + (f" ⇒ 已压回 inactive 并落盘（一次 [factor-lib] 提交）：{'、'.join(hit)}"
-                 if hit and wrote else
-                 " ⇒ 但没落盘（`enabled=False` 或写盘失败）" if hit else
-                 "：库里没有「带人工下架理由却仍是 active」的条目 ⇒ 一个字节未动"))
         return
     check_cancel("前置体检")
 
@@ -886,15 +1002,21 @@ def main():
         elif blockers:
             print("[③ 闸] ⚠️ " + "；".join(blockers) + "\n⇒ `--allow-remining` 已给 ⇒ 照起，"
                   "**墙钟可能是几小时**，不是 30 分钟")
+        # 重建放在闸 a) 之后：上面"拒起"那条路径要保住它念的「链路一个字节没动」，
+        # 而走到这一行就是 ③ 真要起 ⇒ official 支能不能跑，取决于这两块产物新不新。
+        rebuild_rdagent_data_surface()
         t_analysis = time.time()
         before_a = stamp_all(CORE_ARTIFACTS + AUX_ARTIFACTS)
         block_ran["③ 分析面"] = time.strftime("%H:%M:%S 起", time.localtime(t_analysis))
-        out3 = run("③ 分析面九步（覆写 data/results/ 归档 + upsert 因子库 + [factor-lib] commit）",
-                   [P310, ANALYSIS_PY]) or ""
+        out3 = run("③ 分析面九步（覆写 data/results/ 归档 + upsert 因子库 + [factor-lib] commit）"
+                   + ("｜断点续传已开" if a.resume else ""),
+                   [P310, ANALYSIS_PY],
+                   extra_env={"ETF_RUN_RESUME": "1"} if a.resume else None) or ""
         after_a = stamp_all(CORE_ARTIFACTS + AUX_ARTIFACTS)
         failed = print_checks(
             "验收 ③（全部从产物反推；③ 天然不可幂等，所以不判「和上一场一样」）",
-            verify_analysis(before_a, after_a, t_analysis, out3))
+            verify_analysis(before_a, after_a, t_analysis, out3,
+                            allow_official_absent=a.allow_official_absent))
         if failed:
             # ② 吃的是 ③ 写出来的归档：分析面半口血就往 ② 走，日报会把一个坏掉的净值当今天的成绩
             raise SystemExit(f"[验收 ③ 失败] {failed} ⇒ **② 不起**：归档是三张表的唯一来源，"
@@ -907,16 +1029,6 @@ def main():
                  else "（一次没有 ⇒ `[4/9]` 没判出净变化，`git log -1 --oneline` 应当还是上一场那条）"))
         print(f"  [附] 副产物 {sum(1 for k in AUX_ARTIFACTS if after_a[k]['mtime'] >= t_analysis)}"
               f"/{len(AUX_ARTIFACTS)} 张本场被写过")
-        # 紧跟 ③ 压一次下架：upsert 会把「已在库」条目的 status 无条件写成调用侧默认值
-        # （active），人不重说一遍，人工判重的决定每天被复活一次。判据零改动。
-        hit, wrote = replay_manual_delist()
-        if hit:
-            print(f"  [重放下架] {len(hit)} 条被 upsert 复活 ⇒ 压回 inactive"
-                  + ("并落盘（含一次 [factor-lib] 提交）" if wrote else "（未落盘）")
-                  + "：" + "、".join(hit))
-        else:
-            print("  [重放下架] 0 条：库里没有「带人工下架理由却仍是 active」的条目"
-                  " ⇒ 一个字节未动")
 
     if a.no_feedback:
         print("[② 跳过] --no-feedback")

@@ -17,20 +17,21 @@ from genetic_multi_objective import (
     crowding_distance,
 )
 from llm_client import make_openai_client, endpoint_enabled
+from hypothesis_roles import fill
 
 
 SEED_SYSTEM_PROMPT = """你是量化因子研究员。生成一批因子表达式作为遗传编程的"种子"。
 
 可用算子：
 - 数据列: close, open, high, low, volume, returns
-- 滚动: ma(df, n), std(df, n), max(df, n), min(df, n)
+- 滚动: ma(x, n), std(x, n), max(x, n), min(x, n) —— **ma/std/max/min 的 x 可以直接传列**（ma(volume, 20)、std(low, 60)、max(high, 240) 都合法），传 df 时按 close 算
 - 序列: delay(s, n), delta(s, n), ts_sum(s, n), ts_mean(s, n), ts_std(s, n)
 - 数学: abs(s), log(s), sign(s)
 
 要求：
 1. 每个表达式一行 Python，用 df 作输入
 2. 有清晰的金融逻辑
-3. 生成 {n} 个种子
+3. 生成 <<N>> 个种子
 
 输出 JSON:
 {"seeds": [{"name": "xxx", "expr": "表达式", "logic": "逻辑"}]}
@@ -38,9 +39,9 @@ SEED_SYSTEM_PROMPT = """你是量化因子研究员。生成一批因子表达�
 
 
 FEEDBACK_SYSTEM_PROMPT = """你是量化因子研究员。遗传编程已进化了若干代，以下是当前帕累托前沿：
-{front}
+<<FRONT>>
 
-请基于这些结果，生成 {n} 个**互补**的新种子。
+请基于这些结果，生成 <<N>> 个**互补**的新种子。
 
 输出 JSON:
 {"seeds": [{"name": "xxx", "expr": "表达式", "logic": "逻辑"}]}
@@ -87,7 +88,7 @@ class LLMSeedGenerator:
         try:
             content = self._chat([
                 {"role": "system",
-                 "content": SEED_SYSTEM_PROMPT.format(n=n)},
+                 "content": fill(SEED_SYSTEM_PROMPT, n)},
                 {"role": "user", "content": f"生成 {n} 个种子因子。"}])
             return json.loads(content).get("seeds", [])
         except Exception as e:
@@ -102,11 +103,14 @@ class LLMSeedGenerator:
                                     indent=2)
             content = self._chat([
                 {"role": "system",
-                 "content": FEEDBACK_SYSTEM_PROMPT.format(
-                     front=front_str, n=n)},
+                 "content": fill(FEEDBACK_SYSTEM_PROMPT, n).replace(
+                     "<<FRONT>>", front_str)},
                 {"role": "user", "content": "生成互补种子。"}])
             return json.loads(content).get("seeds", [])
-        except Exception:
+        except Exception as e:
+            # 原来这里连打印都没有：prompt 撞 KeyError 时整条「互补种子」支路
+            # 静默返回 []，谁也看不出这一路从没跑过
+            print(f"    ⚠️ LLM 互补种子生成失败: {type(e).__name__}: {e}")
             return []
 
 

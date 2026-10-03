@@ -5,7 +5,8 @@
 - 列名（close/open/.../returns）在求值环境里绑定为该 ETF 的实际
   Series，表达式直接当向量用（GP 终端即依赖此形态）；
 - 算子（ma/std/delta/...）保持函数调用，第一个参数传序列
-  （df 类算子如 ma(df, n) 例外，收 DataFrame）。
+  （`ma/std/max/min` 这四种历史上写的是 `ma(df, n)`——**收 DataFrame 时取 close**，
+  10-01 起同时收 Series，见 `_price_series`）。
 
 **这里是「能求值」的注册表，不是「会生成」的白名单**：GP 的算子集在
 `config_base.GENETIC_OPERATORS`、LLM 的算子清单在四处提示词里各自**硬编码**，都不读本字典
@@ -17,6 +18,24 @@ import pandas as pd
 
 
 # ===================== 窗口算子的实现 =====================
+def _price_series(x):
+    """把 `ma/std/max/min` 的第一个参数归一成 Series。
+
+    - 传 DataFrame（历史写法 `ma(df, n)`，两条线的生产链与 RD-Agent 翻译都这么传）
+      → 取 `df["close"]`，与 10-01 之前的行为逐位相同；
+    - 传 Series（模型自然写出来的传列写法 `ma(volume, n)`、`std(df['volume'], 60)`、
+      `min(low, 20)`）→ 直接用它。
+
+    改之前只认第一种，第二种当场 `KeyError: 'close'`（Series 上没有 'close' 这一列），
+    经 `safe_eval` 包成 ValueError 后在定稿闸计入 `dropped_compile`、在 IC 闸报
+    「全部标的求值失败」⇒ 表达式**语义完全合法**却因为写法被整条丢掉。10-01 实测那一组
+    A/B：两臂各 3 条、共 6 条假设里 3 条求值失败，**其中 2 条正是这个写法坑**
+    （另 1 条是模型自己括号没闭合，本条救不了），见
+    `etf/v1/temp/tmp_roles_smoke_1001/ab_prompt_1001.log`。
+    """
+    return x["close"] if isinstance(x, pd.DataFrame) else x
+
+
 # 一律沿用本线既有口径：`rolling(n)` 的 min_periods 默认等于 n ⇒ **窗口内含缺值则该点为
 # NaN**（qlib 的 IdxMax/Quantile/Slope 用 min_periods=1，缺值只是被跳过；两者在停牌股上
 # 会得到「一个数」和「没有数」的区别，跨实现对表时先确认这一条）。
@@ -31,7 +50,7 @@ def _rank(s, n):
     与 `pd.Series(window).rank(pct=True).iloc[-1]` **逐位等价**（ties 走 average 法：
     名次 = 严格小于的个数 + (相等个数+1)/2，分母 = 非缺值个数），但比
     `rolling.apply(raw=False)` 快一个量级。单价是本模块自己复测的（09-26，A 股全市场
-    面板 299 只抽样外推，见 `shell/stock/rank_speed_0926.py`）：447 → 38 ms/只，
+    面板 299 只抽样外推，见 `stock/v1/temp/rank_speed_0926.py`）：447 → 38 ms/只，
     即单条 `rank(close,20)` 扫全市场 2538s → 215s，快 11.8 倍。
     """
     n = int(n)
@@ -49,7 +68,8 @@ def _rank(s, n):
 
 
 def _ts_max(s, n):
-    """窗口最大值（作用于任意列；`max` 那四个钉死 close，本条不钉）"""
+    """窗口最大值（作用于任意列；`max` 那四个 10-01 起也收 Series，
+    传列时与本条等价，保留本条只为兼容既有表达式）"""
     return s.rolling(int(n)).max()
 
 
@@ -129,11 +149,11 @@ FACTOR_DSL = {
     # 造出「复牌日 0% 收益 + 次日跳空」的假收益序列（A 股全市场样本里
     # 停牌很常见）。无缺口的数据（ETF 日线）两种写法结果完全一致。
     "returns": lambda df: df["close"].pct_change(fill_method=None),   # 日收益率 r_t = P_t/P_{t-1} - 1
-    # ---- 价格类窗口算子（作用于 close） ----
-    "ma":     lambda df, n: df["close"].rolling(int(n)).mean(),    # 简单移动平均
-    "std":    lambda df, n: df["close"].rolling(int(n)).std(),     # 价格窗口标准差
-    "max":    lambda df, n: df["close"].rolling(int(n)).max(),     # 窗口最高收盘
-    "min":    lambda df, n: df["close"].rolling(int(n)).min(),     # 窗口最低收盘
+    # ---- 价格类窗口算子（第一个参数：DataFrame 取 close，Series 直接用） ----
+    "ma":     lambda x, n: _price_series(x).rolling(int(n)).mean(),   # 简单移动平均
+    "std":    lambda x, n: _price_series(x).rolling(int(n)).std(),     # 窗口标准差
+    "max":    lambda x, n: _price_series(x).rolling(int(n)).max(),     # 窗口最大值
+    "min":    lambda x, n: _price_series(x).rolling(int(n)).min(),     # 窗口最小值
     # ---- 通用序列变换（作用于任意 Series s） ----
     "delay":  lambda s, n: s.shift(int(n)),                        # 滞后 n 期（防未来函数关键件）
     "delta":  lambda s, n: s.diff(int(n)),                         # 一阶差分 Δs = s_t - s_{t-n}
@@ -148,7 +168,9 @@ FACTOR_DSL = {
     #   只是把全市场单条 2538s 降到 215s——含停牌缺值的窗口两边也相等，实测过。）
     "rank":   _rank,
     # ---- 09-26 为 Alpha158 全市场扫描新增：7 个新语义 + 2 个「极值放宽到任意列」 ----
-    # 注意 `max/min` 仍钉死作用于 close（上面那四个），要极值别的列用 ts_max/ts_min。
+    # 10-01 起 `max/min` 也收 Series（`max(high,20)` 求得出），但 `ts_max/ts_min`
+    # 不能删：在库因子（`price_position_20` 等）、Alpha158 翻译
+    # `rdagent_driver:35` 与 `alpha158_translate_0926:144` 都按这两个名字写死。
     "ts_max": _ts_max,            # 窗口最大值（任意列）
     "ts_min": _ts_min,            # 窗口最小值（任意列）
     "corr":   _corr,              # 两序列滚动 Pearson 相关 ∈ [-1, 1]

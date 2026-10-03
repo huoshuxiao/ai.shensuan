@@ -166,7 +166,7 @@ def test_multi_source_entrypoints_are_wrapped(monkeypatch, daily_pool):
         return got
 
     monkeypatch.setattr(rdagent_facade, "mine_factors_multi_source",
-                        lambda pool: [_foreign_factor(pool)])
+                        lambda pool, fold=None: [_foreign_factor(pool)])
     monkeypatch.setattr(main_mod, "recount_foreign_ic", spy)
     main_mod.mine_with_engines(daily_pool, ["multi_source"], tag="接线")
     assert seen and seen[0] != [0.9]
@@ -187,9 +187,9 @@ def test_library_source_uses_engine_tag(monkeypatch, tmp_lib):
     monkeypatch.setattr(main_mod, "FACTOR_CLUSTERING", {"enabled": False})
     monkeypatch.setattr("factor_library.get_library", lambda: tmp_lib)
     main_mod.stage_library_and_clustering(
-        [{"name": "hybrid_0", "expr": "x", "mean_ic": 0.01,
+        [{"name": "hybrid_0", "expr": "ts_mean(close, 5)", "mean_ic": 0.01,
           "icir": 0.5, "source": "hybrid"},
-         {"name": "mogp_3", "expr": "y", "mean_ic": 0.02, "icir": 0.7}],
+         {"name": "mogp_3", "expr": "ma(volume, 10)", "mean_ic": 0.02, "icir": 0.7}],
         {})
     assert tmp_lib.factors["hybrid_0"]["source"] == "hybrid"
     assert tmp_lib.factors["mogp_3"]["source"] == "pipeline"
@@ -204,7 +204,7 @@ def test_library_source_is_rewritten_on_existing_row(monkeypatch, tmp_lib):
     tmp_lib.upsert("official_a", "", 0.01, 0.4, "pipeline")
     assert tmp_lib.factors["official_a"]["source"] == "pipeline"
     main_mod.stage_library_and_clustering(
-        [{"name": "official_a", "expr": "z", "mean_ic": 0.03,
+        [{"name": "official_a", "expr": "delta(close, 5)", "mean_ic": 0.03,
           "icir": 0.9, "source": "official"}], {})
     assert tmp_lib.factors["official_a"]["source"] == "official"
     assert tmp_lib.factors["official_a"]["ic"] == pytest.approx(0.03)

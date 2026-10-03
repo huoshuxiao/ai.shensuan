@@ -7,9 +7,10 @@ from datetime import datetime
 from tenacity import retry, stop_after_attempt, wait_exponential
 from config import LLM_MODEL, LLM_API_KEY_ENV, RESULTS_DIR
 from llm_client import (make_openai_client, endpoint_enabled)
+from hypothesis_roles import fill
 
 
-RESEARCH_PROMPT = """你是量化研究主管。根据团队当前状态，制定未来 {days} 天研究计划。
+RESEARCH_PROMPT = """你是量化研究主管。根据团队当前状态，制定未来 <<N>> 天研究计划。
 
 输出 JSON:
 {"plan": [{"title": "方向", "rationale": "为什么",
@@ -40,7 +41,7 @@ class LLMResearchPlanner:
         try:
             content = self._chat([
                 {"role": "system",
-                 "content": RESEARCH_PROMPT.format(days=days)},
+                 "content": fill(RESEARCH_PROMPT, days)},
                 {"role": "user", "content": user}])
             plan = json.loads(content)
             plan["generated_at"] = datetime.now().isoformat()

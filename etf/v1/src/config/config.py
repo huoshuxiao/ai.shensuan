@@ -47,7 +47,7 @@ MIN_COMMISSION = 0.1
 
 # ========== ETF 池 ==========
 # 兜底池不再手写名单：全部行情源都挂时，直接用本地已缓存的日线目录
-# （data/cache/ 与 data/universe_all/）里现存过的代码，程序按数据说了算。
+# （common/data/etf/cache/ 与 common/data/etf/universe_all/）里现存过的代码，程序按数据说了算。
 FALLBACK_UNIVERSE = []
 FALLBACK_SOURCES = [CACHE_DIR, os.path.join(os.path.dirname(CACHE_DIR),
                                             "universe_all")]
@@ -114,7 +114,7 @@ DATA_SOURCES = {
 }
 
 # ========== RD-Agent(Q)（ETF 线） ==========
-# 本线有自己的 qlib bin（data/qlib/qlib_data/cn_data）、daily_pv.h5 与工作区，
+# 本线有自己的 qlib bin（common/data/etf/qlib/qlib_data/cn_data）、daily_pv.h5 与工作区，
 # 数据隔离经实测成立。09-23 上午那轮（11:27 落盘）已跑通到 running 步并带回
 # 官方 IC（`ma(df,5)`、`ts_mean(volume,10)` 各 IC≈0.0085），故 official 源
 # 默认与股票线一致地打开；不想让主线带上这 ~50min 循环时置
@@ -122,10 +122,10 @@ DATA_SOURCES = {
 RDAGENT_USE_OFFICIAL_FALLBACK = os.environ.get(
     "ETF_RDAGENT_OFFICIAL_FALLBACK", "true").lower() in ("1", "true", "yes")
 # RD-Agent 数据新鲜度比对基准：dump_qlib_bin 的输入池是全市场 ETF 缓存
-# （data/universe_all/，871 只），不是主线那 20 只代表池 data/cache/——
+# （universe_all/，871 只），不是主线那 20 只代表池 cache/——
 # 拿 cache 比对会让体检天天报"过期"，因为主线缓存只按需刷新十几只。
 RDAGENT_SOURCE_DIR = os.environ.get(
-    "ETF_RDAGENT_SOURCE_DIR", os.path.join(DATA_DIR, "universe_all"))
+    "ETF_RDAGENT_SOURCE_DIR", os.path.join(BASE_DATA_DIR, "universe_all"))
 # coding 阶段演化轮数。09-22 那轮 7B 把 result.h5 写成只剩 datetime 一层索引，
 # 4 轮耗尽仍没过格式 critic → running 被跳过、回收不到官方 IC；critic 反馈是
 # 逐轮累积的，多给轮数是最可能收敛的单一旋钮（不动数据、不改生成代码）。
@@ -136,7 +136,7 @@ RDAGENT_COSTEER_MAX_LOOP = os.environ.get("ETF_RDAGENT_COSTEER_MAX_LOOP", "8")
 # 几何已于 09-24 定档（用户选「路径 1+2 叠加」）：train_ratio 0.7 → 0.5，
 # 配合 backtest/walk_forward.py 的合并样本外 DSR。为什么要动：DSR 的运气门槛
 # 与各段自己的 bar 数挂钩（T 越短、纯运气能摸到的夏普越高），09-24 探针
-# （shell/i15_threshold_probe_0924.py，账本 N=43、该条净值偏度 7.70/峰度 264.74）
+# （etf/v1/temp/i15_threshold_probe_0924.py，账本 N=43、该条净值偏度 7.70/峰度 264.74）
 # 反解"过 DSR=0.95 所需年化夏普"：
 #   单折 402 bar → 4.33｜合并 1206 bar → 1.75｜单折 672 bar → 2.61｜
 #   0.5 + 合并 ≈2.0 千 bar → 1.31（当时三折实测年化夏普 0.83/1.14/1.47）
@@ -145,7 +145,20 @@ RDAGENT_COSTEER_MAX_LOOP = os.environ.get("ETF_RDAGENT_COSTEER_MAX_LOOP", "8")
 #   每折测试段 402 → 672/672/673 bar（拼接 2014 根逐 bar 收益）；
 #   训练段 947 → 677 bar/折 ⇒ 折 1 可用标的从 6 只缩到 **4 只**（100 只池），
 #   早期折挖出的因子样本更薄，这一点在跨折稳定性上要一起读。
-WALK_FORWARD = {"enabled": True, "n_splits": 3,
+# ⚠️09-30 改档 3 折 → **2 折**（起点仍 2010，train_ratio 仍 0.5）。理由是宽度与折数
+#   对不上：探针 `temp/fold_breadth_probe_0930.py` 实测现状池下三折的可投标的
+#   4 / 17 / 69 只，折 1 那一折全盘只有 4 只 ETF 能买 ⇒ 测试段"钱没动"是宽度饿死
+#   （同一批标的反复换手），不是因子无效；`temp/fold_geometry_probe_0930.py` 把
+#   (折数,训练比) 七档 × 两种起点 × 两种池挑法量完，结论是：
+#   ① 折 1 的宽度**修不到**——点时重挑在 2010~2012 只给 5 只（现状池给 4 只），
+#      这是物理天花板（那年头全市场就这几只 ETF 过流动性/波动闸），不是挑法问题；
+#   ② `n_splits=6` 会整段空转：每折训练段只剩 237 bar < 240 那道闸 ⇒ 六折全部
+#      "⏭️ 本折跳过"，walk-forward 一个数都不产出；
+#   ③ 2 折把每折跨度从 677 拉到 1016 根训练 bar、测试段从 673 拉到 ~1012 根
+#      ⇒ 折 2 的"≥30 只可算 IC 天数"从 69.2% 起继续往后堆，拼接样本外长度不变
+#      （仍 ≈2 千根），代价是**折数从 3 降到 2 ⇒ 跨折稳定性那把尺子少一档**，
+#      以及折 1 的读数更依赖 2010~2014 这段"ETF 几乎没上市"的历史。
+WALK_FORWARD = {"enabled": True, "n_splits": 2,
                 "train_ratio": 0.5,
                 "embargo_bars": LOOKBACK_BARS // 4,
                 # 折内挖掘引擎：与主链同构，样本外验证才覆盖得到 GP/DSL 因子。
@@ -153,14 +166,31 @@ WALK_FORWARD = {"enabled": True, "n_splits": 3,
                 # multi_source=多源（含 RD-Agent/LLM）。
                 # 09-25 改成 ["registry","multi_source"] 以对齐本轮只跑
                 # official+llm 的主链。已知代价，两条都要读数时一起看：
-                #   ① 每折各拉起一次 RD-Agent 容器循环（~50min/轮，3 折 ≈2.5h）；
+                #   ① 每折各拉起一次 RD-Agent 容器循环（09-25 按 3 折实测 ≈2.5h；
+                #      折数随 n_splits 变，10-01 起 2 折 ⇒ 按比例缩到 ≈1.7h）；
                 #   ② official **不是点时**的——multi_source_mining._run_official(pool)
                 #      没把 pool 传给容器，循环读的是全样本 daily_pv.h5 与 rdagent
                 #      自己 conf 的区间，折内只用 _attach_impl 在切片池子上重算 IC。
                 #      ⇒ 表达式带着未来信息，合并样本外 DSR 对 official 那几条
                 #      只能当"折内重算 IC"读，不能当"挖它时还看不到未来"读。
                 #      llm 源没有这个问题（LLMFactorAgent(pool) 真吃折内池子）。
-                "fold_engines": ["registry", "multi_source"]}
+                "fold_engines": ["registry", "multi_source"],
+                # ⚠️WP-2（09-30）折内候选池改成点时挑法。开关关掉 ⇒ 逐字节退回
+                # "今日成交额挑 100 只喂给所有折"的现状（含那道幸存者+前视泄漏）。
+                # 口径与实测账单见 `src/fold_pool.py` 头部；五档对照在
+                # `temp/fold_pit_pool_probe_0930.py`：
+                #   折 1  现状 7 只 → 点时 6 只（早折宽度是物理天花板，挑法救不动）
+                #   折 2  现状 54 只 → 点时 113 只（截断前）；日均厚 37.5→92.6、
+                #         「≥30 只可算 IC 的天数」69.2%→100%
+                # min_share=0.5：该标的在本折训练段里**过半交易日**都过闸才算入选。
+                # max_codes=100：与今日池同宽 ⇒ 截断代价不变，只是把"按谁挑"换成点时。
+                # 本轮按用户裁定**不做「每指数一只代表」去重** ⇒ 宽度含共线重复。
+                # 10-01 两臂对拍（`temp/wf_pit_verify_0930.py`，只开 registry 引擎、
+                # 不写 data/results）：折 1 挖掘层宽度 7→6、折 2 55→100（其中 67 只
+                # 不在今日池）、折 2「截面尺子有牙天数」69.2%→**100%**；合并样本外
+                # 年化夏普 0.7239→0.8046、DSR 0.6638→0.7034（两臂都没过 0.95 那条线）。
+                "pit_pool": {"enabled": True, "min_share": 0.5,
+                             "max_codes": 100}}
 
 # ========== 归因 ==========
 FACTOR_ATTRIBUTION = {
@@ -279,17 +309,17 @@ UNIVERSE_CACHE = os.path.join(CACHE_DIR, "etf_universe_cache.csv")
 # 全市场 ETF 日线（约 1.6 千只，剔货币/债/理财后）：只喂 dump_qlib_bin.py 与
 # RD-Agent(Q) 循环，主线轮动池仍是上面的 max_count 截断池，两者互不读取
 UNIVERSE_ALL_DIR = os.environ.get(
-    "ETF_UNIVERSE_ALL_DIR", os.path.join(os.path.dirname(CACHE_DIR),
+    "ETF_UNIVERSE_ALL_DIR", os.path.join(BASE_DATA_DIR,
                                          "universe_all"))
 # 全市场 ETF 上市日期持久缓存 {code: "YYYY-MM-DD"}：按"最早上市"选代表
 # 需要先拿到所有候选的上市日期（逐只拉取），缓存后增量补拉
 ETF_LIST_DATE_CACHE = os.path.join(CACHE_DIR, "etf_list_dates.json")
 # ========== ETF 特有风险面板（份额 / 净值 / 规模 / 折溢价） ==========
-# 长表目录：由 `data/fetch_etf_risk_panel.py` **只增不改**地追加（那是它唯一的写权限），
+# 长表目录：由 `common/src/data/etf/fetch_etf_risk_panel.py` **只增不改**地追加（那是它唯一的写权限），
 # 裁判链 `etf_admission.py` 与主线日更只读它。规模/折溢价都是派生量，**不落盘**：
 # 它们要用当日收盘价，而日线镜像每天在长，把派生量存成文件就等于存一份过期的真相。
 # 两份 derived 产物（折溢价与清盘线日报）走 RESULTS_DIR，与裁判链同源。
-RISK_DIR = os.environ.get("ETF_RISK_DIR", os.path.join(DATA_DIR, "risk"))
+RISK_DIR = os.environ.get("ETF_RISK_DIR", os.path.join(BASE_DATA_DIR, "risk"))
 RISK_SHARES_SSE = os.path.join(RISK_DIR, "shares_sse.csv")
 RISK_SHARES_SZSE = os.path.join(RISK_DIR, "shares_szse.csv")
 RISK_NAV_THS = os.path.join(RISK_DIR, "nav_ths.csv")
@@ -313,6 +343,13 @@ DASHBOARD = {
 # 与 GENETIC["enabled"] 无关——所以本轮把两处清单一起改成 registry+multi_source，
 # 否则会出现"主线没有 GP、折内却在挖 GP"的错配。
 MULTI_SOURCE["sources"] = ["official", "llm"]
+# 丙-2（09-30 用户裁）：**折内停用 official 源**。理由有实测数：三折回收的是同一份
+# `data/results/rdagent_output/factors.json`（9 条候选，戳 09-29 18:36，全历史面板上挖的），
+# 各折挑中 2/3/3 条、两两只重合 1~2 条 ⇒ `recount_foreign_ic` 只在本折重算了 IC，
+# "候选从哪来"这一层没人重算。主线与自动重挖不传 fold ⇒ 照旧吃 official。
+# 这个键同时进断点缓存指纹（run_checkpoint.make_fingerprint），且属于**折内作用域**
+# （FOLD_ONLY_KEYS）⇒ 翻它只作废各折条目，主线那 ≈1h40m 的缓存留着（10-01 WP-1）。
+MULTI_SOURCE["official_in_fold"] = False
 # 外层天花板必须高于子进程自己的 RDAGENT_TIMEOUT_SEC：multi_source_mine 里
 # `as_completed(futures, timeout=...)` 抛的 TimeoutError 落在 try 之外，底座默认
 # 300s 一到就整段多源连 llm 已收的产物一起丢（09-24「GP 那 4 个因子整段被跳过」

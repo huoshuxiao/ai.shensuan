@@ -64,8 +64,9 @@ def build(line_root, env_prefix="ETF_", freq_default="daily", market="etf"):
     freq = d["FREQ"]
 
     # ========== 目录 ==========
-    # line_root = 本线项目根（etf/v1 或 stock/v1），所有产物目录由它派生，
-    # 两条线的 data/ report/ log/ 因此天然物理隔离
+    # line_root = 本线项目根（etf/v1 或 stock/v1），本线的**产物**目录由它派生，
+    # 两条线的 data/ report/ log/ 因此天然物理隔离；只有抓来的基础行情数据例外，
+    # 它落 common/data/<线>/（见下面 BASE_DATA_DIR），线内 data/ 只留研究结论
     d["V1_ROOT"] = line_root
     # 本线的本地 LLM 与覆盖项统一从 <line_root>/.env 读取。
     # override=False：已在 shell 导出的变量优先，便于临时覆盖。
@@ -79,11 +80,24 @@ def build(line_root, env_prefix="ETF_", freq_default="daily", market="etf"):
     d["REPORT_DIR"] = env("REPORT_DIR", os.path.join(line_root, "report"))
     # 实盘原始数据目录（live_orders/live_attribution/feedback_report.json 等输入）
     d["LIVE_DATA_DIR"] = os.path.join(d["DATA_DIR"], "live")
-    d["CACHE_DIR"] = os.path.join(d["DATA_DIR"], "cache")
+    # 基础行情数据根（09-29 进 common）：抓来的日线镜像、qlib 行情 bin、当日全
+    # 市场快照、份额/净值长表这类"给所有工程喂数"的目录，统一落
+    # common/data/<线名>/。别的工程（live2etf 要只读 ETF 全池日线算流动性闸）
+    # 从此指这一个稳定入口，不再写死对方线内的 data/。
+    # 分析产物（results / library / live / report）刻意**不跟着搬**，仍是本线私有：
+    # 它们是这条线挖出来的结论，换一条线就读不到，放进 common 反而被误当成公共品。
+    d["BASE_DATA_DIR"] = env(
+        "BASE_DATA_DIR",
+        os.path.join(_common, "data", os.path.basename(
+            os.path.dirname(os.path.abspath(line_root)))))
+    d["CACHE_DIR"] = os.path.join(d["BASE_DATA_DIR"], "cache")
+    # qlib 行情 bin 根：容器侧 provider_uri 由它派生（见 RDAGENT_QLIB_PROVIDER）
+    d["QLIB_DATA_DIR"] = os.path.join(d["BASE_DATA_DIR"], "qlib")
     d["LIBRARY_DIR"] = os.path.join(d["DATA_DIR"], "library")
     d["LOG_DIR"] = env("LOG_DIR", os.path.join(line_root, "log"))
     for _p in ("DATA_DIR", "RESULTS_DIR", "REPORT_DIR", "LIVE_DATA_DIR",
-               "CACHE_DIR", "LIBRARY_DIR", "LOG_DIR"):
+               "BASE_DATA_DIR", "CACHE_DIR",
+               "LIBRARY_DIR", "LOG_DIR"):
         os.makedirs(d[_p], exist_ok=True)
 
     # ========== 费率（公共口径，各线按标的规则覆写） ==========
@@ -124,6 +138,13 @@ def build(line_root, env_prefix="ETF_", freq_default="daily", market="etf"):
     d["MULTI_SOURCE"] = {
         "enabled": True,
         "sources": ["official", "llm", "simple", "genetic"],
+        # 折内（walk-forward）是否启用 official 源。official 的回收目录不分折
+        # （try_official_rdagent 的 output_dir 固定），折内那一轮容器被 kill 后
+        # 驱动 finally 里的回收没来得及写 ⇒ 各折都读同一份全历史 factors.json，
+        # 不是点时的。ETF 线 09-30 按用户裁「丙-2」置 False；默认 True 保持原行为。
+        # ⚠️ 这个键进了断点缓存的数据指纹（run_checkpoint.make_fingerprint），
+        # 翻它 ⇒ 旧缓存整批作废，不会"续传命中 = 开关空转"。
+        "official_in_fold": True,
         "timeout_seconds": 300,
         "merge_mode": "union_dedup",
         "corr_dedup_threshold": 0.85,
@@ -332,6 +353,18 @@ def build(line_root, env_prefix="ETF_", freq_default="daily", market="etf"):
     # ========== 因子库 ==========
     d["FACTOR_LIBRARY"] = {
         "enabled": True,
+        # 写库之前的静态体检（`factor_static_check.check_expr`：未来函数/未知名字/
+        # 非法语法/非法属性）。默认开。为什么由它默认开而不是像 HYPOTHESIS_ROLES
+        # 那样默认关：那把尺子原本只在默认关闭的多角色定稿闸里被调用一次 ⇒
+        # "IC 过线 → 写库" 这条生产路上**一道静态检查都没有**，10-01 因此让
+        # `delay(max(high, 5), -1)`（读下一根 K 线）带着虚高约一半的 IC 进了库
+        # （+0.0551→+0.0290 去掉偷看，见 etf/v1/temp/lookahead_price_1001.py）。
+        # 误杀账单：拿同一把尺子扫当时在库 45 行 ⇒ 43 放行、1 判红（就是那条
+        # 偷看的）、1 条 expr 为空按放行处理（空 expr 不是未来函数，拒它等于把
+        # 已存在的行冻在旧 IC 上，那是这一裁决之外的第二笔影响）。
+        # 关掉=回到"IC 过线就写库"：`ETF_LIBRARY_STATIC_GATE=0`（股票线同名 STOCK_）。
+        "static_gate": env("LIBRARY_STATIC_GATE", "1").strip().lower() in (
+            "1", "true", "on", "yes"),
         "md_path": os.path.join(d["LIBRARY_DIR"], "factor_library.md"),
         "index_path": os.path.join(d["LIBRARY_DIR"],
                                    "factor_library_index.json"),
@@ -407,8 +440,9 @@ def build(line_root, env_prefix="ETF_", freq_default="daily", market="etf"):
     # 官方循环在独立 conda 环境的子进程中运行（rdagent/pyqlib 依赖树与
     # 管线进程隔离，避免双 Python 环境互相污染）
     d["RDAGENT_CONDA_ENV"] = env("RDAGENT_ENV", "rdagent")
-    # qlib 行情数据根：物理落位在**本线自己的** data/qlib/qlib_data/cn_data，
-    # 两条线各自一份 bin，不再共用宿主的 ~/.qlib（A 股个股数据曾串到 ETF 线）。
+    # qlib 行情数据根：物理落位在**本线自己的** common/data/<线>/qlib/qlib_data/
+    # cn_data（09-29 由 data/qlib 搬进 common），两条线各自一份 bin，不再共用
+    # 宿主的 ~/.qlib（A 股个股数据曾串到 ETF 线）。
     # 为什么必须保留 qlib_data/cn_data 这两级尾巴：rdagent 的 QTDockerEnv.prepare
     # 拿挂载目录拼 <mount>/qlib_data/cn_data 做存在性检查，缺了就在容器里联网
     # 重拉数据；而容器侧真正开数据的 provider_uri 在官方模板里是写死的
@@ -416,8 +450,8 @@ def build(line_root, env_prefix="ETF_", freq_default="daily", market="etf"):
     # 内部两级结构原样保留。它同时被 official_rdagent 的前置体检读（判存在性）。
     _qlib_provider = env(
         "RDAGENT_QLIB_PROVIDER",
-        os.path.join(os.path.abspath(d["DATA_DIR"]),
-                     "qlib", "qlib_data", "cn_data"))
+        os.path.join(os.path.abspath(d["QLIB_DATA_DIR"]),
+                     "qlib_data", "cn_data"))
     d["RDAGENT_QLIB_PROVIDER"] = _qlib_provider
     # 本线喂给 dump_qlib_bin 的行情源目录（akshare 日线 csv 所在）。体检用它
     # 判 qlib bin 与 daily_pv.h5 是否落后于行情——这两步重建目前只能手跑，
@@ -428,6 +462,12 @@ def build(line_root, env_prefix="ETF_", freq_default="daily", market="etf"):
     # 变量，注入驱动子进程后**优先于**工作区 .env（load_dotenv 默认不覆盖已有
     # 变量），留空表示沿用 .env 里的值。
     d["RDAGENT_COSTEER_MAX_LOOP"] = env("RDAGENT_COSTEER_MAX_LOOP", "").strip()
+    # official 支线用哪个本地聊天模型＝「跑一次到底起几个模型」的唯一入口。
+    # 留空＝不注入、以本线 rdagent_output/.env 的 LITELLM_CHAT_MODEL 为准（历史默认，
+    # 两份 .env 各写各的）；给了值就在父进程注入、压过那份 .env。**值必须带 litellm 的
+    # provider 前缀**（本仓两份 .env 都写全名 `ollama_chat/…`）——10-03 实测少前缀＝官方
+    # 支第一次调用 10 连败退出。它与 LLM_MODEL（主线侧）是两个模型，两支并发⇒同时常驻。
+    d["RDAGENT_LLM_MODEL"] = env("RDAGENT_LLM_MODEL", "").strip()
     # 挂载点 = provider_uri 往上两级（由构造保证二者永远一致，改一边不会漏改）
     _qlib_mount = os.path.dirname(os.path.dirname(_qlib_provider))
     # factor 循环子进程最长运行时长（秒）；超时即回收并记录
@@ -479,5 +519,12 @@ def build(line_root, env_prefix="ETF_", freq_default="daily", market="etf"):
     d["LLM_REASONING_EFFORT"] = env("LLM_REASONING_EFFORT", "").strip()
     # 墙钟上限（秒），0=不注入（沿用 SDK 默认）。防的是"一次调用挂住整批日更"
     d["LLM_TIMEOUT"] = float(env("LLM_TIMEOUT", "0") or 0)
+    # 多角色前置假设闸（hypothesis_roles）：假设生成→批判→修正→定稿。
+    # 默认关 ⇒ LLMFactorAgent 走原 _generate，产出逐字节不变；开启后每轮
+    # 多 4~5 次 LLM 调用（16G 纯 CPU 的 9b 上就是多 1.5~2 分钟/轮）。
+    # 之所以放在底座而不是各线 config：两条线暴露同名配置是这里的规矩，
+    # 差异只落在 ETF_HYPOTHESIS_ROLES / STOCK_HYPOTHESIS_ROLES 的取值上。
+    d["HYPOTHESIS_ROLES"] = env("HYPOTHESIS_ROLES", "").strip().lower() in (
+        "1", "true", "on", "yes")
 
     return d

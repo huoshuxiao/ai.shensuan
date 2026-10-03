@@ -53,9 +53,9 @@ def mine_factors(pool):
     return agent.run()
 
 
-def mine_factors_multi_source(pool):
+def mine_factors_multi_source(pool, fold=None):
     from config import MULTI_SOURCE
     if MULTI_SOURCE.get("enabled", False):
         from multi_source_mining import multi_source_mine
-        return multi_source_mine(pool)
+        return multi_source_mine(pool, fold=fold)
     return mine_factors(pool)

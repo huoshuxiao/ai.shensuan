@@ -32,14 +32,82 @@ def test_dsl_operators_match_pandas(df, expr, manual):
                                    check_names=False)
 
 
-def test_price_window_operators_take_the_dataframe(df):
-    """ma/std/max/min 是 df 类算子，第一参数必须是 df 本身：
-    ma(close, 5) 会在 Series 上做 ["close"] 而下标异常。"""
+def test_price_window_operators_accept_dataframe_and_series(df):
+    """`ma/std/max/min` 第一参数两种写法都要成立，且语义各归各位（10-01 乙）。
+
+    - 传 DataFrame（历史写法：两条线的生产链、`rdagent_driver` 的 SMA/STD/MAX/MIN
+      翻译、8 条内置模板全这么写）→ 取 close，行为与改动前逐位相同；
+    - 传 Series（模型自然写出的 `ma(volume, 60)`、`std(df['volume'], 60)`、
+      `min(low, 20)`）→ 滚该列，**与对应的 ts_* 算子逐位相等**，不是"算得出个数"就算通。
+
+    改之前只有第一种能求值，第二种当场 `KeyError: 'close'`：10-01 实测 9 条 LLM
+    假设里 3 条语义合法却死在写法上（`etf/v1/temp/tmp_roles_smoke_1001/ab_prompt_1001.log`）。
+    """
+    # --- 放行格：DataFrame 分支仍是 close ---
     pd.testing.assert_series_equal(
         safe_eval("ma(df, 5)", df).rename(None),
         df["close"].rolling(5).mean().rename(None), check_names=False)
+    for expr, want in [
+        ("std(df, 20)", df["close"].rolling(20).std()),
+        ("max(df, 20)", df["close"].rolling(20).max()),
+        ("min(df, 20)", df["close"].rolling(20).min()),
+        # --- 判红格（旧版会抛）：Series 分支 = 滚这一列 ---
+        ("ma(close, 5)", df["close"].rolling(5).mean()),
+        ("std(returns, 20)", df["close"].pct_change(fill_method=None).rolling(20).std()),
+        ("max(high, 20)", df["high"].rolling(20).max()),
+        ("min(low, 20)", df["low"].rolling(20).min()),
+        ("std(df['volume'], 60)", df["volume"].rolling(60).std()),
+    ]:
+        pd.testing.assert_series_equal(safe_eval(expr, df).rename(None),
+                                       want.rename(None), check_names=False)
+
+
+@pytest.mark.parametrize("series_expr,ts_expr", [
+    ("ma(close, 20)", "ts_mean(close, 20)"),
+    ("std(returns, 20)", "ts_std(returns, 20)"),
+    ("max(high, 20)", "ts_max(high, 20)"),
+    ("min(low, 20)", "ts_min(low, 20)"),
+    ("ma(volume, 60)", "ts_mean(volume, 60)"),
+])
+def test_series_form_equals_the_ts_operator(df, series_expr, ts_expr):
+    """打通传列写法不能顺手改语义：与既有 ts_* 必须逐位相同。"""
+    pd.testing.assert_series_equal(safe_eval(series_expr, df).rename(None),
+                                   safe_eval(ts_expr, df).rename(None),
+                                   check_names=False)
+
+
+def test_mixed_df_and_series_in_one_expression(df):
+    """`ma(df, 20) + std(volume, 20)`：旧版后半截抛，新版整条求得出。"""
+    want = df["close"].rolling(20).mean() + df["volume"].rolling(20).std()
+    pd.testing.assert_series_equal(
+        safe_eval("ma(df, 20) + std(volume, 20)", df).rename(None),
+        want.rename(None), check_names=False)
+
+
+def test_old_df_only_behaviour_would_have_rejected_series(df, monkeypatch):
+    """负对照（牙）：把第一参数归一化偷偷换回「一律取 close」的旧实现，
+    传列写法必须当场判红。此格若恒过 ⇒ 上面那批 Series 断言是空的。"""
+    import factor_dsl as FD
+    monkeypatch.setattr(FD, "_price_series", lambda x: x["close"])
+    for expr in ("ma(close, 5)", "std(returns, 20)", "min(low, 20)"):
+        with pytest.raises(ValueError):
+            safe_eval(expr, df)
+    # DataFrame 写法在旧实现下照常 ⇒ 证明这枚牙咬的只是 Series 那一支
+    pd.testing.assert_series_equal(
+        safe_eval("ma(df, 5)", df).rename(None),
+        df["close"].rolling(5).mean().rename(None), check_names=False)
+
+
+@pytest.mark.parametrize("expr", [
+    "ma(df, 'x')",      # 窗口不是数
+    "std(5, 20)",       # 第一参数是标量
+    "max(close, high)",  # 窗口位传了序列
+    "ma(3, 20)",
+])
+def test_widened_operators_still_raise_on_bad_args(df, expr):
+    """放宽的是「第一参数收不收 Series」，不是收任意垃圾：写错必须仍然抛。"""
     with pytest.raises(ValueError):
-        safe_eval("ma(close, 5)", df)
+        safe_eval(expr, df)
 
 
 def test_bare_column_names_bind_to_series_not_lambdas(df):

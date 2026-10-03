@@ -17,9 +17,21 @@ rdagent/scenarios/qlib/developer/factor_runner.py:56 `deduplicate_new_factors` �
 失败（一点信息都没产生）。所以候选名单在写进 prompts.yaml 的 CANDIDATE LIST 之前
 先跑这里，>= 0.99 的直接不提名下。
 
-口径与判据逐字对齐 rdagent：它用的是**原始值 Pearson**（`Series.corr`，不做秩变换），
-所以主判据列 `pearson_max` 也是原始值 Pearson，才能与 0.99 那条线直接比。秩相关
-（`spearman_max`）一并输出，因为价格/成交量水平型因子的 Pearson 会被极端值抬高，
+**09-30 用户裁定：与循环「统一为 `< 0.99`」＝硬闸改看带符号值。** 依据是读 conda 环境
+`rdagent`（0.8.0）的源码：`rdagent/scenarios/qlib/developer/factor_runner.py:71` 那句
+`IC_max[IC_max < 0.99]` 是**源码字面量**（`scenarios/qlib/` 全仓只有这一处 0.99、没有
+env/conf 可喂），而 `IC_max` 全程**不带绝对值**。所以本线的 0.99 那一道现在用
+`signed_max`（`summarize()` 里的 `P.loc[name].max()`）——一根跟在库相关 −0.995 的**镜像**
+因子，循环会留它、本线也不再报"会被判重复"（那道闸唯一的用途是预测机时白烧）。
+|corr| 那把尺**没有删**：它降级成读数列 `pearson_max`，并且继续喂本线**自己**的政策闸
+`NEAR_DUP`（同簇即无新信息，反号也算同簇）⇒ 镜像因子仍进不了 CANDIDATE LIST，只是
+罪名从"循环会丢"换成"本线政策不认"。三处与循环**仍然**不等价，别再当成一字对齐：
+① 求值环境——本线有 `ASHARE_MIN_CS` 截面数闸、且当日任一列是常量就整日丢弃
+（`daily_corr()` 循环开头那两条 `continue`），循环没有数闸、常量列由 pandas 给 NaN 再被
+`.mean()` 跳过 ⇒ 分母不同，临界读数上判词可翻；② 对象集——本线对 `factors.json` 在库，
+循环对它自己那叠 SOTA 实验；③ 本线另有一道循环没有的政策闸（上面那句）。
+原始值 Pearson（`Series.corr`，不做秩变换）与 0.99 那条线直接可比。秩相关（`spearman_max`）一并输出，
+因为价格/成交量水平型因子的 Pearson 会被极端值抬高，
 两个口径的差本身就是「这条因子有多被少数尾部样本主导」的读数。
 
 面板起点取 ASHARE_RED_START（默认 2015）而不是截面评估的 2010：判重要的是
@@ -181,12 +193,55 @@ def daily_corr(wide_lib, wide_cand, min_cs):
             pd.DataFrame(s_sum / n_day, index=index, columns=cols))
 
 
-def verdict(pear_max):
-    if pear_max >= ASHARE_RED_BAR:
+def verdict(signed_max, abs_max):
+    """两道闸各答一个问题，09-30 起**分开**判（用户裁「统一为 `< 0.99`」）。
+
+      硬闸 `signed_max >= ASHARE_RED_BAR` —— **逐字复刻循环会丢谁**：rdagent 在
+      `factor_runner.py:71` 保留 `IC_max < 0.99` 的列，`IC_max` 是**带符号**值
+      （对在库伙伴取最大）。一根跟在库相关 −0.995 的镜像因子，循环**留**，
+      所以这里也不许说"会被判重复"——那一格判词的唯一用途是预测白烧的机时。
+      政策闸 `abs_max >= NEAR_DUP` —— **这条值不值得提名**：反号的两条是同一条
+      信息的两个符号，对本线库仍是同簇 ⇒ 仍挡在 CANDIDATE LIST 之外，只是罪名
+      从"循环会丢它"改成"同簇"。
+    """
+    if signed_max >= ASHARE_RED_BAR:
         return "会被判重复"
-    if pear_max >= NEAR_DUP:
+    if abs_max >= NEAR_DUP:
         return "危险区(同簇)"
     return "可提名"
+
+
+def summarize(P, S, expr_of=lambda name: ""):
+    """候选×在库 两张均值矩阵 → 判重表（判据单点，夹具直接喂合成矩阵复跑这里）。
+
+    `pearson_signed_max` 是**硬闸**吃的量（`P.loc[name].max()`，带符号，= rdagent 的
+    `IC_max`）；`pearson_max` 是 |corr| 读数、喂**政策闸**。拆成函数而不是埋在 `main()`
+    里，是为了让"镜像因子该翻判词"这件事能用合成夹具真跑一遍（见
+    `stock/v1/temp/check_signed_bar_0930.py`），而不是只靠读代码。
+    """
+    rows = []
+    for name in P.index:
+        row_p = P.loc[name]
+        ap = row_p.abs()
+        asn = S.loc[name].abs()
+        worst = ap.idxmax()                # |corr| 口径的最近邻——政策闸认的是它
+        second = float(ap.sort_values(ascending=False).iloc[1])
+        rows.append({
+            "name": name,
+            "expr": expr_of(name),
+            # ★ 硬闸判据：带符号、对在库伙伴取最大＝rdagent `IC_max` 同一个量
+            "pearson_signed_max": float(row_p.max()),
+            "signed_nearest_lib": row_p.idxmax(),
+            # |corr| 那把尺降级为读数（同簇识别与政策闸仍用它），没有删
+            "pearson_max": float(ap.max()),
+            "nearest_lib": worst,
+            "pearson_signed": float(P.loc[name, worst]),
+            "pearson_second": second,
+            "spearman_max": float(asn.max()),
+            "bar": ASHARE_RED_BAR,
+            "verdict": verdict(float(row_p.max()), float(ap.max())),
+        })
+    return pd.DataFrame(rows).sort_values("pearson_signed_max", ascending=False)
 
 
 def main():
@@ -199,24 +254,8 @@ def main():
 
     P, S = daily_corr(wide_lib, wide_cand, ASHARE_MIN_CS)
 
-    rows = []
-    for name in P.index:
-        ap = P.loc[name].abs()
-        asn = S.loc[name].abs()
-        worst = ap.idxmax()
-        second = float(ap.sort_values(ascending=False).iloc[1])
-        rows.append({
-            "name": name,
-            "expr": next((c["expr"] for c in cands if c["name"] == name), ""),
-            "pearson_max": float(ap.max()),
-            "nearest_lib": worst,
-            "pearson_signed": float(P.loc[name, worst]),
-            "pearson_second": second,
-            "spearman_max": float(asn.max()),
-            "bar": ASHARE_RED_BAR,
-            "verdict": verdict(float(ap.max())),
-        })
-    res = pd.DataFrame(rows).sort_values("pearson_max", ascending=False)
+    by_name = {c["name"]: c["expr"] for c in cands}
+    res = summarize(P, S, expr_of=lambda name: by_name.get(name, ""))
 
     detail = P.stack().rename("pearson").to_frame()
     detail["spearman"] = S.stack()
@@ -227,8 +266,14 @@ def main():
 
     pd.set_option("display.width", 220)
     pd.set_option("display.max_colwidth", 60)
-    print("\n===== 判重预检（主判据 = 逐日截面原始值 Pearson 均值，对齐 rdagent 的 0.99） =====")
+    print("\n===== 判重预检（硬闸 = 逐日截面原始值 Pearson 均值的**带符号**最大值，"
+          "与 rdagent `IC_max < 0.99` 同量；政策闸仍看 |corr| ≥ 0.90） =====")
     print(res.drop(columns=["expr", "bar"]).to_string(index=False))
+    # 这一场两道尺子差几条：>0 就是说「旧口径会把循环其实会留的因子报成重复」
+    flip = int(((res["pearson_max"] >= ASHARE_RED_BAR)
+                & (res["pearson_signed_max"] < ASHARE_RED_BAR)).sum())
+    print(f"\n[两道尺子之差·只报不判] |corr|≥{ASHARE_RED_BAR} 而带符号<{ASHARE_RED_BAR} 的候选 "
+          f"{flip}/{len(res)} 条（这些是**镜像同簇**：循环会留、本线政策不提名）")
     print(f"\n[输出] {ASHARE_RED_OUT}")
     print(f"[输出] {ASHARE_RED_DETAIL}（候选×在库 全矩阵）")
     print(f"[耗时] {time.time() - t0:.0f}s")

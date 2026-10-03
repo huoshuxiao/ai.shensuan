@@ -1,0 +1,22 @@
+candidate,in_library,pearson,spearman
+[待买入轴] 20-day STD of Volume,5-day VWAP of Price,-0.08366007326684612,-0.31123688654276577
+[待买入轴] 20-day STD of Volume,20-day MAX of Price,-0.08291438529109689,-0.29577433505506023
+[待买入轴] 20-day STD of Volume,5-day MAX of Price,-0.08312093338575874,-0.3054868726062991
+[待买入轴] 20-day STD of Volume,20-day Momentum of Price,0.14407037605935036,0.1566559315896835
+[待买入轴] 20-day STD of Volume,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,0.05504742157212781,-0.03559586111926411
+[待买入轴] 20-day STD of Volume,5-day MOM of Volume,0.03900330243126464,-0.04303820337594288
+[待买入轴] 20-day STD of Volume,20-day MIN of Price,-0.0869978527480507,-0.33937954832886724
+[待买入轴] 20-day STD of Volume,5-day MOM of Price,0.04115122724736357,0.007169803228099403
+[待买入轴] 20-day STD of Volume,20-day MOM of Volume,0.10172914394517027,0.10293783700245465
+[待买入轴] 20-day STD of Volume,5-day SMA of Price,-0.08377776181912246,-0.312946230146492
+[待买入轴] 20-day STD of Volume,10-day SMA of Volume,0.9265970413140342,0.9288394069079924
+[待买入轴] 20-day STD of Volume,10-day SMA of Price,-0.08424603694034495,-0.3150349177141299
+[待买入轴] 20-day STD of Volume,20-day SMA of Price,-0.08538837722511329,-0.32060784464919406
+[待买入轴] 20-day STD of Volume,5-day STD of Price,-0.04652935294564923,-0.0771656335859343
+[待买入轴] 20-day STD of Volume,10-day STD of Price,-0.04433088851383444,-0.0643849189229079
+[待买入轴] 20-day STD of Volume,20-day STD of Price,-0.04251429832534187,-0.05805514198640017
+[待买入轴] 20-day STD of Volume,5-day SMA of Volume,0.9087797881263961,0.9059866473788825
+[待买入轴] 20-day STD of Volume,20-day SMA of Volume,0.9261538279011076,0.9434180874520615
+[待买入轴] 20-day STD of Volume,5-day STD of Volume,0.8180281719022158,0.826847593019876
+[待买入轴] 20-day STD of Volume,10-day STD of Volume,0.9137386542706906,0.9132512059402823
+[待买入轴] 20-day STD of Volume,20-day STD of Volume,1.0,1.0

@@ -224,14 +224,11 @@ etf/v1/log/*.*
 etf/v1/report/*.*
 
 # qlib 行情 bin：两条线各一份（GB 级、数万小文件），只能从上游 release /
-# dump_bin 重建，一旦 git add 会把整棵树吞进版本库
-*/v1/data/qlib/
+# dump_bin 重建，一旦 git add 会把整棵树吞进版本库。09-29 起它在
+# common/data/<线>/qlib/，本条连同下面两条线内规则一起被 common/data 那块接管。
 
 # 人工成交录入与持仓账本：个人财务数据，不入库。研究产物照旧走 data/results/
 */v1/data/live/
-
-# qlib bin 日更的收盘快照与逐场记账表（每天一份、可重算的行情中间产物）
-stock/v1/data/daily_snapshot/
 
 # shell/ 只挡逐场产物（日志、临时 csv/json、图），一次性脚本本身要能交接：
 # 「临时脚本进仓库而不是 /tmp」那条约定的后半句就是"必要时能一起提交"，
@@ -242,6 +239,14 @@ shell/**
 !shell/**/
 !shell/**/*.py
 !shell/**/*.sh
+
+# 09-29：shell/{stock,etf,live2etf} 搬进各线 temp/ 后，上面那四条只覆盖留在 shell/ 根级的
+# 跨线文件（docker.sh / ollama.sh / 文档拆分器）。各线 temp/ 用同一把尺子：整目录挡掉，
+# 只放行 .py/.sh，目录行必须先放行否则扩展名行永远走不进去。
+*/v1/temp/**
+!*/v1/temp/**/
+!*/v1/temp/**/*.py
+!*/v1/temp/**/*.sh
 
 # 两条线的 data/：整棵默认不入库，但**判据产物**要能在 git 里被看见/交接（同 shell/ 那条理由）。
 # 为什么不给 `results/` 整体开口子：`results/rdagent_output/` 就挂在 results/ 底下，
@@ -256,5 +261,14 @@ shell/**
 !*/v1/data/results/*.md
 !*/v1/data/results/daily_signal/*.csv
 !*/v1/data/library/*
-# 风险面板（份额/净值长表）：交易所源的窗口会往前滚，取不到第二次，属不可再生资产
-!*/v1/data/risk/*.csv
+
+# 09-29 数据层进 common：抓来的基础行情数据（qlib bin / 全市场日线镜像 / 当日
+# 快照 / 份额净值长表 / 行业映射）统一落 common/data/<线>/，分析产物仍留在各线
+# data/ 下。整棵默认不入库（GB 级、几万个可重拉的小文件）；只有风险长表按
+# 「不可再生」放行：交易所的份额窗口往前滚就取不到第二次，是资产不是缓存。
+# common/data/<线>/cache 里那 4 个已在版本库里的历史文件不受这条影响——
+# gitignore 只管未跟踪文件，已跟踪的照样逐行显示 diff；但要**新**收一份缓存，
+# 得自己 `git add -f` 明确表态。
+common/data/**
+!common/data/**/
+!common/data/*/risk/*.csv

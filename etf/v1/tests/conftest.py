@@ -3,7 +3,7 @@
 
 必须在导入任何项目模块之前改环境变量：config.py 在 import 期就解析
 ETF_DATA_DIR 并 makedirs，事后再改无效。所有测试因此只写临时目录，
-不会污染 data/cache、data/library、data/results。
+不会污染 common/data/etf/cache、data/library、data/results。
 """
 
 import os
@@ -17,6 +17,9 @@ SRC = os.path.join(V1_ROOT, "src")
 
 _TMP_ROOT = tempfile.mkdtemp(prefix="etf-v1-test-")
 os.environ["ETF_DATA_DIR"] = os.path.join(_TMP_ROOT, "data")
+# 09-29 起基础行情数据在 common/data/etf（CACHE_DIR 由它派生），只改 ETF_DATA_DIR
+# 拦不住测试往真镜像目录里写 ⇒ 这根必须一起指到临时目录
+os.environ["ETF_BASE_DATA_DIR"] = os.path.join(_TMP_ROOT, "base_data")
 os.environ["ETF_REPORT_DIR"] = os.path.join(_TMP_ROOT, "report")
 os.environ["ETF_LOG_DIR"] = os.path.join(_TMP_ROOT, "log")
 os.environ["ETF_FREQ"] = "daily"

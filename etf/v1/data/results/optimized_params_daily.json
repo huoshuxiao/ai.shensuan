@@ -1,11 +1,12 @@
 {
   "freq": "daily",
-  "n_factors": 4,
+  "n_factors": 5,
   "factor_weights": {
-    "reversal_5": 0.25,
-    "volatility_20": 0.25,
-    "momentum_20": 0.25,
-    "volume_ratio_20": 0.25
+    "return_accelerated_rank": 0.2,
+    "5-day SMA of Price": 0.2,
+    "reversal_5": 0.2,
+    "1-day SMA of Price over 60-day SMA of Price": 0.2,
+    "volume_ratio_20": 0.2
   },
   "risk_params": {
     "daily_stop_loss": -0.03,
@@ -15,6 +16,6 @@
     "min_bars_between_trades": 1,
     "max_trades_per_day": 10
   },
-  "n_trials": 191,
+  "n_trials": 402,
   "bars_per_year": 252
 }

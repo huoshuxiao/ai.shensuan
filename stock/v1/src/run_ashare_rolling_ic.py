@@ -28,7 +28,7 @@ evaluate() 多了一个可选的 series_sink：传一个空 dict 进去，它就
      及其值（**只说高低不说好坏**：这批因子 IC 为负，hi 那年是反转最不打用的年份）。
      （注：t 日的 IC 配的是 t+1 日的收益，跨年那一天的收益算进后一年，边界误差 1 天。）
 3) 等分折 IC       把整段按时间顺序等分 F 段，各算一次 mean(IC)
-   → fold_same_pct / fold_min / fold_last：fold_last 是最新那一段，最接近「将来」。
+   → fold_same_pct / fold_min / fold_last / fold_n：fold_last 是最新那一段，最接近「将来」；fold_n 是**归档那一次真的切出了几段**（另两根腿早有 roll_n / n_years，折腿 10-01 才补上）⇒ 拿它对当前配置，不同版当场看出来。
 4) 衰减            对滚动一年曲线做最小二乘（斜率手写 Σ(x-x̄)(y-ȳ)/Σ(x-x̄)²，不用 polyfit）
    → slope_per_yr：每年 IC 水平挪动多少；drift_ratio = (斜率 × 样本年数) / 全样本 IC，
      读法是「整段里走过的漂移相当于自身水平的几倍」：|比值| > 1 ⇒ 末期符号已由趋势决定，
@@ -172,10 +172,10 @@ def stability_stats(name, rank_ic, pearson_ic):
         # 而逐年 IC **最高**那一年恰恰是反转方向最不打用的年份（实测集中在 2020）。
         "lo_ic_year": int(lo_y), "lo_ic": float(yearly.min()),
         "hi_ic_year": int(hi_y), "hi_ic": float(yearly.max()),
-        # —— 读数 3：等分折 ——
+        # —— 读数 3：等分折 ——  ⚠️ `fold_n` 记的是**归档那一次实际用的**折数，不是当前配置值：这三列是
+        #     跑出来的、折数却是配置项 ⇒ 表里不留这个戳就判断不出 `fold_*` 与配置同不同版（09-30 拨 5→25 后差了一版三天）
         "fold_same_pct": float(np.mean([_sign(v) == sg for v in fold_means])),
-        "fold_min": float(np.min(fold_means)),
-        "fold_last": float(fold_means[-1]),
+        "fold_min": float(np.min(fold_means)), "fold_last": float(fold_means[-1]), "fold_n": int(len(fold_means)),
         # —— 读数 4：衰减 / 近期 ——
         "slope_per_yr": slope,
         "drift_ratio": drift_ratio,

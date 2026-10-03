@@ -52,17 +52,17 @@ def test_batch_upsert_maps_pipeline_candidate_fields(lib):
 def test_extra_metrics_can_be_persisted(lib):
     """GP 算出的 turnover/stability 默认不落盘（batch_upsert 不传 extra），
     upsert 显式传 extra 时才保留 —— 这条锁住"想留就能留"的口子。"""
-    lib.batch_upsert([{"name": "a", "expr": "x", "mean_ic": 0.01}],
+    lib.batch_upsert([{"name": "a", "expr": "ts_mean(close, 5)", "mean_ic": 0.01}],
                      source="genetic")
     assert "turnover" not in lib.factors["a"]
-    lib.upsert("b", "x", 0.01, 0.5, "genetic",
+    lib.upsert("b", "ma(volume, 10)", 0.01, 0.5, "genetic",
                extra={"turnover": 0.3, "stability": 0.8})
     assert lib.factors["b"]["turnover"] == 0.3
 
 
 def test_mark_status_and_get_active(lib):
-    lib.upsert("keep", "x", 0.01, 0.5, "pipeline")
-    lib.upsert("rot", "y", -0.01, -0.2, "pipeline")
+    lib.upsert("keep", "close", 0.01, 0.5, "pipeline")
+    lib.upsert("rot", "delta(close, 5)", -0.01, -0.2, "pipeline")
     lib.mark_status("rot", "retired", "IC 连续为负")
     assert lib.get_active() == ["keep"]
     assert lib.factors["rot"]["status_reason"] == "IC 连续为负"

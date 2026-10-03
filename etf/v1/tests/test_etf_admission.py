@@ -535,6 +535,111 @@ def test_candidate_run_never_touches_canonical_artifacts(monkeypatch):
         assert m == "/d/results/etf_redundancy_matrix_cand.cand.csv"
 
 
+def test_redundancy_twin_is_chosen_by_abs_value_and_skips_itself():
+    """环 3 挑近亲的两条规矩（09-28 修）：判决看 **|corr|**，且对侧按**名字**剔掉自己。
+
+    为什么必须看绝对值：两条因子逐日截面排序完全相反 = 同一个信息乘了 -1，那还是重复；
+    生产侧真会执行的那道判重（`common/src/core/multi_source_mining.py:112`）认的就是
+    `abs(spearman)`。旧实现取**带符号最大值**：09-24 那份归档把 `波动·STD20` 的近亲读成
+    `gp_0` / +0.7134 ⇒"危险区"，而它与库内 `volatility_20` 恰好 -1.0000；`价量·Amihud20`
+    对 `量能·成交额MA20` = -0.9622，旧读数的**候选内部**判决是"可提名（<0.70）"
+    ⇒ 放进来一条只是换了个方向的重复因子。
+
+    为什么按名字剔自己：带 `ETF_SPEC_JSON` 跑时候选常常就是从库里挑出来的几条，
+    不剔的话"自己和自己的截面相关"恰好 1.0000，那一行读数不含信息还挤掉真近亲。
+    ⚠️ 只按名字剔 —— 表达式相同、名字不同的对侧照算（那正是"以为挖到新的、其实库里有"）。
+    """
+    import run_etf_redundancy_check as R3
+
+    row = pd.Series({"自己": 1.0, "远亲": 0.20, "反号近亲": -0.98, "全NaN": np.nan})
+    nm, signed, abs_v = R3.abs_worst(row, exclude=["自己"])
+    assert (nm, signed, abs_v) == ("反号近亲", -0.98, 0.98)
+    # 负对照：旧规则（带号 idxmax）在同一行上挑出来的是"远亲"，两条规矩确实不等价
+    assert row.drop(index=["自己"]).dropna().idxmax() == "远亲"
+    # 带符号原值必须留得住（"和谁反号"是信息），判决按绝对值落档
+    assert signed < 0 and abs_v == abs(signed)
+    assert R3.verdict(abs_v).startswith("会被判重复")              # 0.85 <= 0.98 < 0.99
+    assert R3.verdict(R3.abs_worst(pd.Series({"x": -0.995}))[2]).startswith("必被丢")
+    # 剔除只按传入的名字：没点名的列（哪怕值很小）仍然参与比较
+    assert R3.abs_worst(row, exclude=["自己", "全NaN"])[0] == "反号近亲"
+    # 整行无可对侧 ⇒ (None, nan, nan)，判决说"无法判定"而不是"可提名"
+    only_self = R3.abs_worst(row, exclude=["反号近亲", "远亲", "全NaN", "自己"])
+    assert only_self[0] is None and np.isnan(only_self[2])
+    assert R3.verdict(only_self[2]).startswith("无法判定")
+
+
+def test_library_internal_reports_same_expression_pairs_and_cluster_count():
+    """在库×在库那道对角线（09-28 丁方案）：只加读数，但读数本身要能被反证。
+
+    夹具是四张手摆的相关表：A-B 反号 **-1.0000**（同一个信息乘了 -1，就是库里
+    `volatility_20` vs `vol_20` 那种）、A-C=0.78（危险区，本线从没说它算同一条）、
+    B-D=0.30（干净）、对角 A-A=1.0（自己，不许出现在上三角里）。
+    三条硬要求：
+    1. 反号那对必须列出来 —— 负对照：带符号口径挑近亲时 A 行最大值是 A-A=1.0 或
+       A-C=0.78，`A-B` 会被读成"最不像的那个"，这对就永远看不见。
+    2. `建议留` 用库自带 |ic|（那批条目没有环 1 的截面 RankICIR）：A(|ic|=0.016) 对
+       B(|ic|=0.033) ⇒ 留 B。
+    3. 唯一簇数只并 `|corr| >= RED_BAR(0.85)` 的对 ⇒ 0.78 那对列出来但**不并簇**，
+       四节点变三簇。并早了就是把"人工复核"偷偷升成判据。
+    """
+    import run_etf_redundancy_check as R3
+
+    names = ["A", "B", "C", "D"]
+    LS = pd.DataFrame({"A": [1.0, -1.0, 0.78, 0.10],
+                       "B": [-1.0, 1.0, 0.20, 0.30],
+                       "C": [0.78, 0.20, 1.0, 0.05],
+                       "D": [0.10, 0.30, 0.05, 1.0]}, index=names)
+    LP = LS * 0.9                                        # Pearson 只是陪列
+    det, n_unique = R3.library_internal(LS, LP, names, {"A": 0.016, "B": 0.033,
+                                                        "C": 0.01, "D": 0.01})
+    assert list(det["侧1"]) == ["A", "A"]                # 按 |corr| 降序：1.0 再 0.78
+    assert (det["侧2"].iloc[0], det["rank_corr"].iloc[0], det["abs_rank_corr"].iloc[0]) \
+        == ("B", -1.0, 1.0)                              # 带符号原值留得住
+    assert det["建议留"].iloc[0] == "B" and det["剔的|ic|"].iloc[0] == 0.016
+    assert det["判决"].iloc[0].startswith("必被丢")
+    assert det["判决"].iloc[1].startswith("危险区")
+    assert "A" not in list(det["侧2"])                   # 对角（自己=1.0）不许成对
+    assert n_unique == 3                                 # 只并了 A-B，A-C 那对没并
+    # 反证这条线确实在管：并簇用的是 RED_BAR(0.85) 而不是 NEAR_DUP(0.70)，
+    # 0.78 那对若被并进去簇数会变 2 ⇒ "人工复核"被偷偷升成判据
+    assert EA.NEAR_DUP < EA.RED_BAR and EA.NEAR_DUP <= 0.78 < EA.RED_BAR
+    # 空表（库里只有一条可译因子时不该抛异常，也不该丢判决表结构）
+    one, n1 = R3.library_internal(LS.loc[["A"], ["A"]], LP.loc[["A"], ["A"]], ["A"],
+                                  {"A": 0.016})
+    assert n1 == 1 and list(one.columns) == list(det.columns)
+
+
+def test_library_counts_separates_blank_expr_from_eval_failure(tmp_path, monkeypatch):
+    """「库里到底几条」必须分三口径数，不能拿 load_active_library 的长度当库大小。
+
+    夹具是一份 4 行的库导出：A/B 是 active 且可译、C 是 active 但 `expr` 空（真实身份
+    = 内置注册表因子 `ma_ratio_10_30`）、D 是 inactive。load_active_library 会**在内部**
+    把 C 和 D 都滤掉，只返回 2 条 —— 早先那行汇总用 `len(lib) - len(facs_l)` 当"无 expr
+    的条数"，于是 C 被读成不存在，盲区读成 0 条。反证就在这：C 存在时该数必须是 1，
+    而那个旧算式给的是 0。
+    """
+    import run_etf_redundancy_check as R3
+
+    csv = tmp_path / "factor_library.csv"
+    pd.DataFrame([
+        {"name": "A", "expr": "close / delay(close, 5.0) - 1", "status": "active"},
+        {"name": "B", "expr": "ts_std(ret, 20.0)", "status": "active"},
+        {"name": "C", "expr": "", "status": "active"},          # 内置因子，判重看不见
+        {"name": "D", "expr": "ts_mean(volume, 20.0)", "status": "inactive"},
+    ]).to_csv(csv, index=False, encoding="utf-8-sig")
+    monkeypatch.setattr(EA, "FACTOR_LIBRARY_CSV", str(csv))
+
+    # A/B/C 三条 active；只有 A/B 进得了判重，本场 A 求值失败 ⇒ facs_l 只剩 B
+    assert R3.library_counts(1) == (3, 1, 1)
+    # 负对照：旧算式（可译数 - 已成表数）会把「无 expr」读成 1 条、又漏掉真盲区那条
+    n_active, n_blank, n_broken = R3.library_counts(2)
+    assert (n_active, n_blank, n_broken) == (3, 1, 0)
+    assert n_blank != n_broken                     # 两件事不是一件事，不许混报
+    # 表不存在时不许抛异常：按「全部可译」口径回落
+    monkeypatch.setattr(EA, "FACTOR_LIBRARY_CSV", str(tmp_path / "nope.csv"))
+    assert R3.library_counts(5) == (5, 0, 0)
+
+
 # ---------- 11. 成交额分档滑点 与 连续低量闸门（#14 落地的两道代理判据） ----------
 
 def test_slippage_of_is_a_tier_table_not_a_fit():
@@ -672,3 +777,124 @@ def test_risk_readout_reads_each_name_own_last_readable_day(monkeypatch):
 
 
 
+
+# ---------- 14. 调仓时序：调仓日那根「开盘到开盘」记给谁（09-29 实测的钉子）----------
+#
+# 这一节的存在理由：上面三条 topk_rebalance 测试全用平值池（价格恒 10 元、毛收益
+# 恒 0），把权重往后挪一天在平值池上差是 0 —— 时间口径**一条钉子都没有**。
+# 09-29 实测（`temp/timing_shift_0929.py` 逐行复刻 + `temp/timing_shift_xcheck_0929.py`
+# 零复刻构造，两条独立路径给出同一个量级）：现行 `lo = i + 1` 让**新**篮子拿到
+# 区间 O_s→O_d1，而信号要到 s 收盘才算得出、要到 d1 开盘才买得进，这段拿不到。
+# 族间合成 k=10 上这笔账值 **27.8~29.9pp 净年化/年**：
+#   全窗口 2019+   43.38% → 15.57%（复刻 lag=2）/ 13.45%（零复刻 shift=1），回撤 −16.5% → −32.3%/−48.3%
+#   样本外 2020-26 36.48% →  8.00% /  6.71%，超等权可投域 +27.54pp → −0.94pp/−2.23pp，回撤 −16.9% → −37.9%/−47.4%
+# 八族各自付多少（全窗口 lag1−lag2）：反转 +39.7pp、日内隔夜 +37.7pp、价量交互 +27.5、
+# 趋势位置 +27.3、动量 +7.5、价格水平 +0.3，而**波动 −1.0、量能 −0.6**（倒收）⇒ 这笔偏差
+# 是快价格信号的属性，不是全池通胀。
+#
+# 所以这里用**变价池**把它钉住，两条钉子各管一件事、互不混淆：
+#   ① 归属（`test_..._to_new_basket`）：边界那一格记给**新**篮子还是旧篮子
+#      —— 分数每 2 行换一次点名对象，两列收益串不同，所以"记给谁"能分辨；
+#   ② 时点（`test_..._needs_the_signal_a_day_early`）：这一格要不要送
+#      —— 分数恒定只点同一只，两臂持有的标的完全相同，差的就是那一格。
+# 注意 `topk_rebalance` 的 docstring 里"调仓日 d1 的收益仍归旧篮子"那句与代码
+# 不符（代码是 `w[lo:hi]` 整段覆盖成新篮子）；本节的读数是**代码**的读数。
+
+
+_ROT = pd.bdate_range("2020-01-06", periods=8)
+# 收益串全取 2 的幂次分数：float64 下 `O_d = O_{d-1}·(1+r)` 的累乘与回除都逐位
+# 精确，钉子能钉在 1e-15；且单笔最大 +6.25%，涨停闸（±10%）咬不到想测的那只。
+_R500 = [0.0, 1 / 16, 1 / 32, -1 / 16, 0.0, 1 / 32, 0.0, 0.0]      # 510300 = A
+_R510 = [0.0, 1 / 32, 1 / 16, 1 / 32, 1 / 16, 0.0, -1 / 32, 0.0]    # 510310 = B
+_CODES = ["510300", "510310"]
+
+
+def _rotating_pool():
+    """两只标的 × 8 个交易日，开盘价按上面两串收益累乘，close=open。"""
+    pool = {}
+    for c, r in zip(_CODES, (_R500, _R510)):
+        o = [100.0]
+        for x in r[1:]:
+            o.append(o[-1] * (1.0 + x))
+        pool[c] = pd.DataFrame({"open": o, "high": o, "low": o, "close": o,
+                                "volume": 1e6, "amount": 1e8}, index=_ROT)
+    return pool
+
+
+def _rotating_score(days, favor):
+    """`favor[i]` 是第 i 行被点名的那一列（None = 整行 NaN）。"""
+    sc = pd.DataFrame(1.0, index=days, columns=_CODES)
+    for i, c in enumerate(favor):
+        if c is None:
+            sc.iloc[i, :] = np.nan
+        else:
+            sc.iloc[i, _CODES.index(c)] = 2.0
+    return sc
+
+
+def _gross_on_score(favor, mod=EA):
+    """hold=2、k=1、cost=0 ⇒ 毛收益逐格就是"哪一天记给了哪一篮"，不含任何费率混入。
+
+    闸门留法：`min_listed=0`（第 0 天就上市满 0 天）、`min_amount=1e6`（日成交额
+    1e8 过容量与连续低量两道）、规模闸由 `tests/conftest.py` 的 `ETF_MIN_SCALE=0`
+    关掉；涨停那道要看 O_d1/O_s−1，串里最大 +6.25% < ±10%，咬不上。
+    """
+    m = mod.build_matrices(_rotating_pool())
+    days = m["close"].index
+    sc = _rotating_score(days, favor)
+    _net, gross, s = mod.topk_rebalance(sc, m, days, k=1, hold=2, cost=0.0,
+                                        min_listed=0, min_amount=1e6)
+    return gross, s
+
+
+# 每 2 行换一次点名 ⇒ 三个调仓块（栅格 i=0/2/4，hold=2）各换一次人
+FAVOR_SWITCH = ["510300", "510300", "510310", "510310",
+                "510300", "510300", "510310", "510310"]
+# 恒定只点 A ⇒ 三块持有同一只，两臂之差只剩时点
+FAVOR_A = ["510300"] * 8
+
+
+def test_rebalance_credits_boundary_interval_to_new_basket():
+    """① 归属钉子（**现状钉子，不是验收**）：调仓日 d1 那格记给**新**篮子。
+
+    hold=2、k=1 ⇒ 栅格落在 i=0/2/4，权重写在行 [1,2] / [3,4] / [5,6]：
+        行 1,2 ← 信号日 0 选的 A   行 3,4 ← 信号日 2 选的 B   行 5,6 ← 信号日 4 选的 A
+    行 1/3/5 是 O_s→O_d1：新篮子要到 d1 **开盘**才存在，这段它没持有。
+    把行 3 单独念出来即可分辨"记给谁"：+1/32 是 **B** 的隔日跳空（记给新篮子），
+    若代码把 d1 归旧篮子，这里会是 −1/16（A 的那格）。
+    哪天把 `lo` 改成 `i + 2`，这条会立刻红 ⇒ 那一改是有意的、要连着重建环 2
+    归档基线，不是顺手改掉。
+    """
+    gross, s = _gross_on_score(FAVOR_SWITCH)
+    assert s["n_rebal"] == 3                       # 三块都在（六道闸门没把夹具吃掉）
+    exp = [0.0, 1 / 16, 1 / 32, 1 / 32, 1 / 16, 1 / 32, 0.0, 0.0]
+    assert gross.to_numpy() == pytest.approx(exp, abs=1e-15)
+    assert gross.iloc[1] == pytest.approx(1 / 16, abs=1e-15)     # A：还没建仓就给了 +1/16
+    assert gross.iloc[3] == pytest.approx(1 / 32, abs=1e-15)     # B：归新篮子（归旧篮子这里是 −1/16）
+    assert gross.abs().sum() == pytest.approx(7 / 32, abs=1e-15)
+
+
+def test_rebalance_boundary_interval_needs_the_signal_a_day_early():
+    """② 时点钉子：分数恒定只点 A，把分数整体后移一天 ⇒ 那一格才"合法"。
+
+    两臂持有的标的逐行相同（全程 A），唯一区别是行 1/2 归谁：
+      现口径 `lo=i+1`：行 1,2 = A 的 +1/16、+1/32，共 3/32 —— 可 A 的分数要到
+        行 0 收盘才算得出、行 1 开盘才买得进，这两格是白送的；
+      后移一天：行 0 变 NaN ⇒ 首块被跳，行 1,2 归谁都不是（0），从行 3 起两臂
+        逐格相同 ⇒ **差的就是那 3/32**，而且拿掉的正是"买不进去的那段"。
+    这就是 09-29 零复刻复核（`score.shift(1)` 喂官方函数）在同一把小尺子上的读数。
+    若 `lo` 被挪到 `i + 2`，这条同样会红（行 3 会变成 0）⇒ 与上一条一前一后，
+    改哪儿都躲不掉。
+    """
+    cur, s_cur = _gross_on_score(FAVOR_A)
+    shf, s_shf = _gross_on_score([None] + FAVOR_A[:-1])
+    assert s_cur["n_rebal"] == 3 and s_shf["n_rebal"] == 2       # 首块因整行 NaN 被跳
+    assert cur.to_numpy() == pytest.approx(
+        [0.0, 1 / 16, 1 / 32, -1 / 16, 0.0, 1 / 32, 0.0, 0.0], abs=1e-15)
+    assert shf.to_numpy() == pytest.approx(
+        [0.0, 0.0, 0.0, -1 / 16, 0.0, 1 / 32, 0.0, 0.0], abs=1e-15)
+    assert cur.iloc[1] == pytest.approx(1 / 16, abs=1e-15)       # 白送的那格
+    assert shf.iloc[1] == pytest.approx(0.0, abs=1e-15)          # 拿不到的那段没人拿
+    assert (cur - shf).abs().to_numpy()[3:] == pytest.approx(0.0, abs=1e-15)  # 行 3 起两臂相同
+    assert cur.abs().sum() - shf.abs().sum() == pytest.approx(3 / 32, abs=1e-15)
+    assert cur.abs().sum() > 1e-9                  # 不许是"两臂全 0 所以都过"的恒真

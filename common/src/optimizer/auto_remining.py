@@ -13,7 +13,7 @@ class ReminingTrigger:
 
     轮数/冷却基准落在 ReminingState 里跨运行保留：否则 max_remining_rounds
     与 cooldown_bars 每轮归零，形同没有上限。要手工解锁就删掉
-    data/cache/remining_state.json 里对应频率的段落。
+    common/data/<线>/cache/remining_state.json 里对应频率的段落。
     """
 
     def __init__(self, params=None, state=None):

@@ -1,8 +1,8 @@
-name,expr,pearson_max,nearest_lib,pearson_signed,pearson_second,spearman_max,bar,verdict
-[对照] 20-day SMA of Volume（在库 #18，逐字重提）,"ts_mean(volume,20)",1.0,20-day SMA of Volume,1.0,0.9737622927685248,1.0,0.99,会被判重复
-[对照] 20-day MIN of Volume,volume.rolling(20).min(),0.9464121164446627,20-day SMA of Volume,0.9464121164446627,0.9028807784342461,0.9418906832054292,0.99,危险区(同簇)
-[对照] 60-day SMA of Volume,"ts_mean(volume,60)",0.9408664098584714,20-day SMA of Volume,0.9408664098584714,0.9025570690467765,0.9459714294668474,0.99,危险区(同簇)
-10-day MOM of Volume,"volume/delay(volume,10)-1",0.6089448783224546,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,0.6089448783224546,0.608468296002236,0.653969432629639,0.99,可提名
-5-day STD of Volume over 20-day STD of Volume,"ts_std(volume,5)/ts_std(volume,20)",0.6043391480333722,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,0.6043391480333722,0.37297744360007445,0.7009892287855563,0.99,可提名
-20-day STD of Volume over 20-day SMA of Volume,"ts_std(volume,20)/ts_mean(volume,20)",0.4265497069538454,20-day MOM of Volume,0.4265497069538454,0.31030305858583135,0.38368690391044386,0.99,可提名
-20-day STD of Price over 20-day SMA of Price,"std(df,20)/ma(df,20)",0.3276571433844764,20-day Momentum of Price,0.3276571433844764,0.27422745567580914,0.5262777015810025,0.99,可提名
+name,expr,pearson_signed_max,signed_nearest_lib,pearson_max,nearest_lib,pearson_signed,pearson_second,spearman_max,bar,verdict
+[对照] 20-day SMA of Volume（在库 #18，逐字重提）,"ts_mean(volume,20)",1.0,20-day SMA of Volume,1.0,20-day SMA of Volume,1.0,0.9737573579177413,1.0,0.99,会被判重复
+[对照] 20-day MIN of Volume,volume.rolling(20).min(),0.9464123945927032,20-day SMA of Volume,0.9464123945927032,20-day SMA of Volume,0.9464123945927032,0.9028813417266124,0.9419054651155669,0.99,危险区(同簇)
+[对照] 60-day SMA of Volume,"ts_mean(volume,60)",0.9408484834797509,20-day SMA of Volume,0.9408484834797509,20-day SMA of Volume,0.9408484834797509,0.9025521695777319,0.9459806493010308,0.99,危险区(同簇)
+10-day MOM of Volume,"volume/delay(volume,10)-1",0.6090373189704282,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,0.6090373189704282,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,0.6090373189704282,0.6085341013000087,0.6540174326252335,0.99,可提名
+5-day STD of Volume over 20-day STD of Volume,"ts_std(volume,5)/ts_std(volume,20)",0.6043609947771392,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,0.6043609947771392,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,0.6043609947771392,0.37296983915909687,0.7010386356134308,0.99,可提名
+20-day STD of Volume over 20-day SMA of Volume,"ts_std(volume,20)/ts_mean(volume,20)",0.42658727974389454,20-day MOM of Volume,0.42658727974389454,20-day MOM of Volume,0.42658727974389454,0.3103442744954778,0.3837612694404946,0.99,可提名
+20-day STD of Price over 20-day SMA of Price,"std(df,20)/ma(df,20)",0.327787321059782,20-day Momentum of Price,0.327787321059782,20-day Momentum of Price,0.327787321059782,0.2743000399935903,0.5262558280779097,0.99,可提名

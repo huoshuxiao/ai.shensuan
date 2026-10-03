@@ -12,6 +12,7 @@ from config import (
 )
 from factor_dsl import safe_eval, compute_ic
 from factor_naming import cn_name
+from hypothesis_roles import HypothesisGate, fill
 from llm_client import (make_openai_client, endpoint_enabled,
                         describe_endpoint)
 
@@ -20,7 +21,7 @@ SYSTEM_PROMPT = """你是量化因子研究员。生成分钟线 ETF 因子表�
 
 可用算子：
 - 数据列: close, open, high, low, volume, returns
-- 滚动: ma(df, n), std(df, n), max(df, n), min(df, n), rank(s, n)
+- 滚动: ma(x, n), std(x, n), max(x, n), min(x, n), rank(s, n) —— **ma/std/max/min 的 x 可以直接传列**（ma(volume, 20)、std(low, 60)、max(high, 240) 都合法），传 df 时按 close 算
 - 序列: delay(s, n), delta(s, n), ts_sum(s, n), ts_mean(s, n), ts_std(s, n)
 - 数学: abs(s), log(s), sign(s)
 - n 为整数，建议 5~240
@@ -32,7 +33,7 @@ SYSTEM_PROMPT = """你是量化因子研究员。生成分钟线 ETF 因子表�
 1. 表达式一行 Python，用 df 作输入
 2. 例如: "delta(close, 5) / (ma(df, 20) + 1e-9)"
 3. 绝不能用未来数据（shift(-1) / future / lookahead）
-4. 生成 {n} 个因子，避免与历史重复
+4. 生成 <<N>> 个因子，避免与历史重复
 """
 
 
@@ -57,6 +58,7 @@ class LLMFactorAgent:
     def __init__(self, pool):
         self.pool = pool
         self.llm = LLMClient()
+        self.gate = HypothesisGate(pool, self.llm)
         self.history = []
         self.knowledge_base = []
 
@@ -76,6 +78,17 @@ class LLMFactorAgent:
     def _generate(self, feedback=""):
         if not self.llm.enabled:
             return self._fallback(HYPOTHESIS_PER_LOOP)
+        # 多角色前置假设闸（默认关）：闸的产出形态与下面原路完全同形，
+        # 过闸之后照样进 _evaluate 的 IC 判据，判据一行未动
+        if self.gate.enabled:
+            try:
+                return self.gate.generate(
+                    feedback, [h.get("expr", "") for h in self.history])
+            except Exception as e:
+                # 闸本身炸了才回退原路；闸**判空**（全被拒收）是结论不是故障，
+                # 不会走到这里，也不会被当成故障
+                print(f"  ⚠️ 多角色假设闸异常({type(e).__name__}: {e})，"
+                      f"本轮回退单角色生成")
         history_str = json.dumps(self.history[-10:], ensure_ascii=False)
         user = (f"历史因子IC：{history_str}\n"
                 f"上轮反馈：{feedback or '无'}\n"
@@ -83,7 +96,7 @@ class LLMFactorAgent:
         try:
             content = self.llm.chat([
                 {"role": "system",
-                 "content": SYSTEM_PROMPT.format(n=HYPOTHESIS_PER_LOOP)},
+                 "content": fill(SYSTEM_PROMPT, HYPOTHESIS_PER_LOOP)},
                 {"role": "user", "content": user}])
             return json.loads(content).get("factors", [])
         except Exception as e:
@@ -126,12 +139,17 @@ class LLMFactorAgent:
             # 无 LLM 时只跑一轮
             print("  ℹ️ 未配置 LLM，使用内置模板（确定性，单次循环）")
             loops = 1
+        last_results = []
         for loop in range(loops):
             print(f"\n--- Loop {loop + 1}/{loops} ---")
             feedback = ""
-            if self.history:
+            if self.gate.enabled and last_results:
+                # 反思者的产出替换掉那行「上轮平均 IC=」：跨轮记忆不再只有一个数
+                feedback = self.gate.reflect(last_results)
+            elif self.history:
                 avg = np.mean([h["ic"] for h in self.history])
                 feedback = f"上轮平均 IC={avg:+.4f}"
+            this_round = []
             for fd in self._generate(feedback):
                 r = self._evaluate(fd)
                 flag = "✅" if r["pass"] else "❌"
@@ -143,6 +161,10 @@ class LLMFactorAgent:
                 if r["pass"] and not any(
                         k["name"] == r["name"] for k in self.knowledge_base):
                     self.knowledge_base.append(r)
+                this_round.append(r)
+            last_results = this_round
+        if self.gate.enabled:
+            print(f"  🧾 假设闸账单: {self.gate.bill()}")
         self.knowledge_base.sort(key=lambda x: abs(x["mean_ic"]),
                                   reverse=True)
         return self.knowledge_base

@@ -1,5 +1,6 @@
 ﻿factor,method,top_lag,top_lag_importance,root_cause
+return_accelerated_rank,shap,lag_10,0.0,衰减原因不明确
+5-day SMA of Price,shap,lag_10,0.0,衰减原因不明确
 reversal_5,shap,lag_10,0.0,衰减原因不明确
-volatility_20,shap,lag_10,0.0,衰减原因不明确
-momentum_20,shap,lag_10,0.0,衰减原因不明确
+1-day SMA of Price over 60-day SMA of Price,shap,lag_10,0.0,衰减原因不明确
 volume_ratio_20,shap,lag_10,0.0,衰减原因不明确

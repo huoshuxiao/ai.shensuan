@@ -1,0 +1,274 @@
+candidate,in_library,pearson,spearman
+[现轴对照] 20-day SMA of Volume,5-day VWAP of Price,-0.0798471235947945,-0.3249574399183323
+[现轴对照] 20-day SMA of Volume,20-day MAX of Price,-0.0794602476800154,-0.3121860659096333
+[现轴对照] 20-day SMA of Volume,5-day MAX of Price,-0.07940419997561254,-0.32016298411619015
+[现轴对照] 20-day SMA of Volume,20-day Momentum of Price,0.1088453980356341,0.10830466475828139
+[现轴对照] 20-day SMA of Volume,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,-0.009378447606635672,-0.04506150396244912
+[现轴对照] 20-day SMA of Volume,5-day MOM of Volume,-0.014712534110415018,-0.05507060871686389
+[现轴对照] 20-day SMA of Volume,20-day MIN of Price,-0.08239763240550246,-0.34689322524656274
+[现轴对照] 20-day SMA of Volume,5-day MOM of Price,0.008920506188523475,-0.017116086791285467
+[现轴对照] 20-day SMA of Volume,20-day MOM of Volume,0.04634594262804225,0.034483281824510374
+[现轴对照] 20-day SMA of Volume,5-day SMA of Price,-0.07987161017400346,-0.32588281329662705
+[现轴对照] 20-day SMA of Volume,10-day SMA of Volume,0.9737622927685248,0.9772655373412883
+[现轴对照] 20-day SMA of Volume,10-day SMA of Price,-0.08016314752500164,-0.3268879016049877
+[现轴对照] 20-day SMA of Volume,20-day SMA of Price,-0.0810880327797808,-0.33106705855925694
+[现轴对照] 20-day SMA of Volume,5-day STD of Price,-0.04946793020335103,-0.11629397654095124
+[现轴对照] 20-day SMA of Volume,10-day STD of Price,-0.04919875758998352,-0.11028539676206014
+[现轴对照] 20-day SMA of Volume,20-day STD of Price,-0.04802533143148308,-0.10454190294657581
+[现轴对照] 20-day SMA of Volume,5-day SMA of Volume,0.9389549438443762,0.9500907813531262
+[现轴对照] 20-day SMA of Volume,20-day SMA of Volume,1.0,1.0
+[现轴对照] 20-day SMA of Volume,5-day STD of Volume,0.7771513566984051,0.8183731656763973
+[现轴对照] 20-day SMA of Volume,10-day STD of Volume,0.8531102642766503,0.8839990998901562
+[现轴对照] 20-day SMA of Volume,20-day STD of Volume,0.9264688370420393,0.9434163455574699
+[0.90新挡] 20-day MIN of Volume,5-day VWAP of Price,-0.07334462465787911,-0.31887861604422213
+[0.90新挡] 20-day MIN of Volume,20-day MAX of Price,-0.07324035480079176,-0.30992834789801954
+[0.90新挡] 20-day MIN of Volume,5-day MAX of Price,-0.07304631306091568,-0.31566592867629156
+[0.90新挡] 20-day MIN of Volume,20-day Momentum of Price,0.04338625754754555,0.03146816259910889
+[0.90新挡] 20-day MIN of Volume,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,-0.035389520479106464,-0.05618731211765654
+[0.90新挡] 20-day MIN of Volume,5-day MOM of Volume,-0.028624480350640982,-0.03757497494902222
+[0.90新挡] 20-day MIN of Volume,20-day MIN of Price,-0.07478231075677629,-0.33006602432848836
+[0.90新挡] 20-day MIN of Volume,5-day MOM of Price,-0.004819006273697906,-0.026161735440364365
+[0.90新挡] 20-day MIN of Volume,20-day MOM of Volume,-0.025611139837842908,-0.04271891549058122
+[0.90新挡] 20-day MIN of Volume,5-day SMA of Price,-0.07332328549846695,-0.31920371410228204
+[0.90新挡] 20-day MIN of Volume,10-day SMA of Volume,0.9028807784342461,0.9133306114574026
+[0.90新挡] 20-day MIN of Volume,10-day SMA of Price,-0.0734846627895406,-0.31913751634120463
+[0.90新挡] 20-day MIN of Volume,20-day SMA of Price,-0.07404321821725304,-0.3204182286252723
+[0.90新挡] 20-day MIN of Volume,5-day STD of Price,-0.05027387624378012,-0.15222802582151582
+[0.90新挡] 20-day MIN of Volume,10-day STD of Price,-0.05205561548125644,-0.15782764389400808
+[0.90新挡] 20-day MIN of Volume,20-day STD of Price,-0.05242617083334906,-0.1582750324438166
+[0.90新挡] 20-day MIN of Volume,5-day SMA of Volume,0.8694874377960546,0.8909162397823848
+[0.90新挡] 20-day MIN of Volume,20-day SMA of Volume,0.9464121164446627,0.9418906832054292
+[0.90新挡] 20-day MIN of Volume,5-day STD of Volume,0.6960830211756391,0.7369148836060638
+[0.90新挡] 20-day MIN of Volume,10-day STD of Volume,0.7469115064271256,0.7809197240101644
+[0.90新挡] 20-day MIN of Volume,20-day STD of Volume,0.7963009594708038,0.8195874349981825
+[换窗] 60-day SMA of Volume,5-day VWAP of Price,-0.0843324825016694,-0.3494784745506888
+[换窗] 60-day SMA of Volume,20-day MAX of Price,-0.08406401983050156,-0.3372523589771985
+[换窗] 60-day SMA of Volume,5-day MAX of Price,-0.08408865378993974,-0.345847863497428
+[换窗] 60-day SMA of Volume,20-day Momentum of Price,0.02020296786091864,-0.007504415027789208
+[换窗] 60-day SMA of Volume,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,-0.03001190333431466,-0.06337086777887224
+[换窗] 60-day SMA of Volume,5-day MOM of Volume,-0.018691895735733488,-0.03618242349362116
+[换窗] 60-day SMA of Volume,20-day MIN of Price,-0.08539293423745391,-0.3621995788982599
+[换窗] 60-day SMA of Volume,5-day MOM of Price,-0.004443631392049733,-0.03182508557745666
+[换窗] 60-day SMA of Volume,20-day MOM of Volume,-0.015979025666422095,-0.06075369503886067
+[换窗] 60-day SMA of Volume,5-day SMA of Price,-0.0843161112871719,-0.34997981488131735
+[换窗] 60-day SMA of Volume,10-day SMA of Volume,0.9025570690467765,0.9149719103346524
+[换窗] 60-day SMA of Volume,10-day SMA of Price,-0.08445423060535268,-0.34991487876801053
+[换窗] 60-day SMA of Volume,20-day SMA of Price,-0.08483802126882516,-0.35067015383993533
+[换窗] 60-day SMA of Volume,5-day STD of Price,-0.06159893655392509,-0.17084230464648556
+[换窗] 60-day SMA of Volume,10-day STD of Price,-0.06284518409101587,-0.17208667643068037
+[换窗] 60-day SMA of Volume,20-day STD of Price,-0.0627756876860636,-0.16677484645633758
+[换窗] 60-day SMA of Volume,5-day SMA of Volume,0.8723474562394584,0.8922531290187747
+[换窗] 60-day SMA of Volume,20-day SMA of Volume,0.9408664098584714,0.9459714294668474
+[换窗] 60-day SMA of Volume,5-day STD of Volume,0.7207871474715392,0.7564147739346816
+[换窗] 60-day SMA of Volume,10-day STD of Volume,0.77494543756893,0.8039116650199317
+[换窗] 60-day SMA of Volume,20-day STD of Volume,0.8294593738418033,0.8519345932687008
+[新窗口MOM] 10-day MOM of Volume,5-day VWAP of Price,-0.010102129258757421,0.004493575603455318
+[新窗口MOM] 10-day MOM of Volume,20-day MAX of Price,-0.01176301292761594,-0.00901969612625776
+[新窗口MOM] 10-day MOM of Volume,5-day MAX of Price,-0.008439951002816604,0.008769186631983849
+[新窗口MOM] 10-day MOM of Volume,20-day Momentum of Price,0.24022696456153192,0.18052357224556087
+[新窗口MOM] 10-day MOM of Volume,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,0.6089448783224546,0.653969432629639
+[新窗口MOM] 10-day MOM of Volume,5-day MOM of Volume,0.5804915002533573,0.5116901940221333
+[新窗口MOM] 10-day MOM of Volume,20-day MIN of Price,-0.015937862671354313,-0.010588635393454867
+[新窗口MOM] 10-day MOM of Volume,5-day MOM of Price,0.3669399052861124,0.33584763480354396
+[新窗口MOM] 10-day MOM of Volume,20-day MOM of Volume,0.608468296002236,0.5141415216403712
+[新窗口MOM] 10-day MOM of Volume,5-day SMA of Price,-0.0110795310598578,0.0021068965005023024
+[新窗口MOM] 10-day MOM of Volume,10-day SMA of Volume,0.052812524190480284,0.04053755924708983
+[新窗口MOM] 10-day MOM of Volume,10-day SMA of Price,-0.0137839791413358,-0.007553030873303828
+[新窗口MOM] 10-day MOM of Volume,20-day SMA of Price,-0.015337677390800867,-0.01300794690359008
+[新窗口MOM] 10-day MOM of Volume,5-day STD of Price,0.0771209346945556,0.14861948405764844
+[新窗口MOM] 10-day MOM of Volume,10-day STD of Price,0.05375798977932263,0.0840554109147832
+[新窗口MOM] 10-day MOM of Volume,20-day STD of Price,0.012358571259736831,-0.021484563170313668
+[新窗口MOM] 10-day MOM of Volume,5-day SMA of Volume,0.11214999902555911,0.13785001123096935
+[新窗口MOM] 10-day MOM of Volume,20-day SMA of Volume,-0.0020757419622389355,-0.05264057238620362
+[新窗口MOM] 10-day MOM of Volume,5-day STD of Volume,0.20813956347302087,0.2239051240666366
+[新窗口MOM] 10-day MOM of Volume,10-day STD of Volume,0.16519184582515437,0.1208169904764749
+[新窗口MOM] 10-day MOM of Volume,20-day STD of Volume,0.08281963277510103,-0.01961284664138413
+[E路·CV20] 20-day STD of Volume over 20-day SMA of Volume,5-day VWAP of Price,-0.05429564377022317,-0.06657795810985612
+[E路·CV20] 20-day STD of Volume over 20-day SMA of Volume,20-day MAX of Price,-0.05300113926516437,-0.058044864456828875
+[E路·CV20] 20-day STD of Volume over 20-day SMA of Volume,5-day MAX of Price,-0.05345194101136901,-0.06341999102819441
+[E路·CV20] 20-day STD of Volume over 20-day SMA of Volume,20-day Momentum of Price,0.20002156370429297,0.1838250084852384
+[E路·CV20] 20-day STD of Volume over 20-day SMA of Volume,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,0.307719269825388,0.004048445755223841
+[E路·CV20] 20-day STD of Volume over 20-day SMA of Volume,5-day MOM of Volume,0.31030305858583135,0.012903329524902807
+[E路·CV20] 20-day STD of Volume over 20-day SMA of Volume,20-day MIN of Price,-0.05954128617550604,-0.08529008553716415
+[E路·CV20] 20-day STD of Volume over 20-day SMA of Volume,5-day MOM of Price,0.1672794250404318,0.062362601375285945
+[E路·CV20] 20-day STD of Volume over 20-day SMA of Volume,20-day MOM of Volume,0.4265497069538454,0.2169348303725441
+[E路·CV20] 20-day STD of Volume over 20-day SMA of Volume,5-day SMA of Price,-0.05500063847298837,-0.06883350140995367
+[E路·CV20] 20-day STD of Volume over 20-day SMA of Volume,10-day SMA of Volume,0.05584740902305603,0.09784120630090912
+[E路·CV20] 20-day STD of Volume over 20-day SMA of Volume,10-day SMA of Price,-0.0563835088108812,-0.07208847030834789
+[E路·CV20] 20-day STD of Volume over 20-day SMA of Volume,20-day SMA of Price,-0.05800269014519611,-0.07705113201612854
+[E路·CV20] 20-day STD of Volume over 20-day SMA of Volume,5-day STD of Price,0.003590424413241716,0.05006643548834286
+[E路·CV20] 20-day STD of Volume over 20-day SMA of Volume,10-day STD of Price,0.007227998627889565,0.07457905950310414
+[E路·CV20] 20-day STD of Volume over 20-day SMA of Volume,20-day STD of Price,-0.006238708529115556,0.07998306334364334
+[E路·CV20] 20-day STD of Volume over 20-day SMA of Volume,5-day SMA of Volume,0.07975687183360068,0.0965175655856052
+[E路·CV20] 20-day STD of Volume over 20-day SMA of Volume,20-day SMA of Volume,0.024656663776560752,0.08980958741495894
+[E路·CV20] 20-day STD of Volume over 20-day SMA of Volume,5-day STD of Volume,0.1825973783103379,0.20765910723761824
+[E路·CV20] 20-day STD of Volume over 20-day SMA of Volume,10-day STD of Volume,0.20531226316264478,0.28554515063248254
+[E路·CV20] 20-day STD of Volume over 20-day SMA of Volume,20-day STD of Volume,0.21305178891234947,0.38368690391044386
+[E路·CV10] 10-day STD of Volume over 10-day SMA of Volume,5-day VWAP of Price,-0.03337712367515938,-0.03336683184113042
+[E路·CV10] 10-day STD of Volume over 10-day SMA of Volume,20-day MAX of Price,-0.03486353154324571,-0.03646199936724545
+[E路·CV10] 10-day STD of Volume over 10-day SMA of Volume,5-day MAX of Price,-0.03227015398615773,-0.029724348709075716
+[E路·CV10] 10-day STD of Volume over 10-day SMA of Volume,20-day Momentum of Price,0.1648459815062419,0.18188834488343653
+[E路·CV10] 10-day STD of Volume over 10-day SMA of Volume,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,0.47026505202329666,0.27018202731873725
+[E路·CV10] 10-day STD of Volume over 10-day SMA of Volume,5-day MOM of Volume,0.4304339246308289,0.06307731610323014
+[E路·CV10] 10-day STD of Volume over 10-day SMA of Volume,20-day MIN of Price,-0.03727683187716177,-0.048713557645986845
+[E路·CV10] 10-day STD of Volume over 10-day SMA of Volume,5-day MOM of Price,0.22547105977259235,0.11284515052484365
+[E路·CV10] 10-day STD of Volume over 10-day SMA of Volume,20-day MOM of Volume,0.3827773178642014,0.2596703286356327
+[E路·CV10] 10-day STD of Volume over 10-day SMA of Volume,5-day SMA of Price,-0.03436423885032903,-0.03619365642880509
+[E路·CV10] 10-day STD of Volume over 10-day SMA of Volume,10-day SMA of Volume,0.034837982316329855,0.09316432744596388
+[E路·CV10] 10-day STD of Volume over 10-day SMA of Volume,10-day SMA of Price,-0.03589465386429262,-0.04023304123084718
+[E路·CV10] 10-day STD of Volume over 10-day SMA of Volume,20-day SMA of Price,-0.03729815609607208,-0.04613651756219415
+[E路·CV10] 10-day STD of Volume over 10-day SMA of Volume,5-day STD of Price,0.037775724560545156,0.10318509479659266
+[E路·CV10] 10-day STD of Volume over 10-day SMA of Volume,10-day STD of Price,0.03365261310250486,0.13251394438847441
+[E路·CV10] 10-day STD of Volume over 10-day SMA of Volume,20-day STD of Price,-0.0190335614646791,0.031653403086838144
+[E路·CV10] 10-day STD of Volume over 10-day SMA of Volume,5-day SMA of Volume,0.06648644604197741,0.10228691579788396
+[E路·CV10] 10-day STD of Volume over 10-day SMA of Volume,20-day SMA of Volume,-0.010163484264146873,0.01665931851411217
+[E路·CV10] 10-day STD of Volume over 10-day SMA of Volume,5-day STD of Volume,0.2248761579739546,0.306600794191242
+[E路·CV10] 10-day STD of Volume over 10-day SMA of Volume,10-day STD of Volume,0.23540057674168333,0.4097412605428362
+[E路·CV10] 10-day STD of Volume over 10-day SMA of Volume,20-day STD of Volume,0.10835390265725699,0.19809318975606227
+[E路·倒CV] 20-day SMA of Volume over 20-day STD of Volume,5-day VWAP of Price,0.05406816992550987,0.06657795666294337
+[E路·倒CV] 20-day SMA of Volume over 20-day STD of Volume,20-day MAX of Price,0.052834371378553145,0.058044862509475624
+[E路·倒CV] 20-day SMA of Volume over 20-day STD of Volume,5-day MAX of Price,0.0535149045852602,0.06341998950855042
+[E路·倒CV] 20-day SMA of Volume over 20-day STD of Volume,20-day Momentum of Price,-0.15713608950099484,-0.18382500695743795
+[E路·倒CV] 20-day SMA of Volume over 20-day STD of Volume,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,-0.17557445731386992,-0.004048448375830601
+[E路·倒CV] 20-day SMA of Volume over 20-day STD of Volume,5-day MOM of Volume,-0.1810222670628805,-0.012903329906271212
+[E路·倒CV] 20-day SMA of Volume over 20-day STD of Volume,20-day MIN of Price,0.05774600488790488,0.0852900840268445
+[E路·倒CV] 20-day SMA of Volume over 20-day STD of Volume,5-day MOM of Price,-0.1104720834673722,-0.0623625993172734
+[E路·倒CV] 20-day SMA of Volume over 20-day STD of Volume,20-day MOM of Volume,-0.2820482275796151,-0.2169348329512502
+[E路·倒CV] 20-day SMA of Volume over 20-day STD of Volume,5-day SMA of Price,0.05462401494566165,0.06883349997824081
+[E路·倒CV] 20-day SMA of Volume over 20-day STD of Volume,10-day SMA of Volume,-0.046195132057834015,-0.09784120796008111
+[E路·倒CV] 20-day SMA of Volume over 20-day STD of Volume,10-day SMA of Price,0.055579971842546545,0.07208846873089265
+[E路·倒CV] 20-day SMA of Volume over 20-day STD of Volume,20-day SMA of Price,0.056783937262103755,0.07705113028386885
+[E路·倒CV] 20-day SMA of Volume over 20-day STD of Volume,5-day STD of Price,0.010029393794310164,-0.05006644042052659
+[E路·倒CV] 20-day SMA of Volume over 20-day STD of Volume,10-day STD of Price,0.0054571741157860764,-0.07457906457880537
+[E路·倒CV] 20-day SMA of Volume over 20-day STD of Volume,20-day STD of Price,0.012339906879083078,-0.07998306751119127
+[E路·倒CV] 20-day SMA of Volume over 20-day STD of Volume,5-day SMA of Volume,-0.057405841941137375,-0.09651756785010218
+[E路·倒CV] 20-day SMA of Volume over 20-day STD of Volume,20-day SMA of Volume,-0.02834315151185988,-0.08980958875575779
+[E路·倒CV] 20-day SMA of Volume over 20-day STD of Volume,5-day STD of Volume,-0.13955147957655395,-0.20765911120155697
+[E路·倒CV] 20-day SMA of Volume over 20-day STD of Volume,10-day STD of Volume,-0.167389402930898,-0.2855451534916233
+[E路·倒CV] 20-day SMA of Volume over 20-day STD of Volume,20-day STD of Volume,-0.19168512332258286,-0.38368690513629017
+[E路·真手数CV] 20-day STD of realVolume over 20-day SMA of realVolume,5-day VWAP of Price,-0.05388800182317674,-0.06550906115488327
+[E路·真手数CV] 20-day STD of realVolume over 20-day SMA of realVolume,20-day MAX of Price,-0.05256957360491167,-0.05698128588494707
+[E路·真手数CV] 20-day STD of realVolume over 20-day SMA of realVolume,5-day MAX of Price,-0.053009770451412315,-0.062303814143124865
+[E路·真手数CV] 20-day STD of realVolume over 20-day SMA of realVolume,20-day Momentum of Price,0.20204330837800913,0.18528093769198056
+[E路·真手数CV] 20-day STD of realVolume over 20-day SMA of realVolume,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,0.3105995623860857,0.007091579865183679
+[E路·真手数CV] 20-day STD of realVolume over 20-day SMA of realVolume,5-day MOM of Volume,0.31056297238005115,0.01320378072033566
+[E路·真手数CV] 20-day STD of realVolume over 20-day SMA of realVolume,20-day MIN of Price,-0.059181516941058,-0.08443564201837711
+[E路·真手数CV] 20-day STD of realVolume over 20-day SMA of realVolume,5-day MOM of Price,0.1677298387838347,0.0625917971900039
+[E路·真手数CV] 20-day STD of realVolume over 20-day SMA of realVolume,20-day MOM of Volume,0.427818500454601,0.21910842686201812
+[E路·真手数CV] 20-day STD of realVolume over 20-day SMA of realVolume,5-day SMA of Price,-0.05460566114552008,-0.06777075455555165
+[E路·真手数CV] 20-day STD of realVolume over 20-day SMA of realVolume,10-day SMA of Volume,0.05619202696736908,0.09922173019512028
+[E路·真手数CV] 20-day STD of realVolume over 20-day SMA of realVolume,10-day SMA of Price,-0.055991407741968556,-0.07103620967726273
+[E路·真手数CV] 20-day STD of realVolume over 20-day SMA of realVolume,20-day SMA of Price,-0.057646025252971085,-0.07606374347767536
+[E路·真手数CV] 20-day STD of realVolume over 20-day SMA of realVolume,5-day STD of Price,0.005457329979984478,0.05217940996102036
+[E路·真手数CV] 20-day STD of realVolume over 20-day SMA of realVolume,10-day STD of Price,0.009077945431972094,0.07668236004021865
+[E路·真手数CV] 20-day STD of realVolume over 20-day SMA of realVolume,20-day STD of Price,-0.004711014108601744,0.0816464475573836
+[E路·真手数CV] 20-day STD of realVolume over 20-day SMA of realVolume,5-day SMA of Volume,0.08020509620470959,0.09805791074012113
+[E路·真手数CV] 20-day STD of realVolume over 20-day SMA of realVolume,20-day SMA of Volume,0.024669540553553786,0.09060007225059662
+[E路·真手数CV] 20-day STD of realVolume over 20-day SMA of realVolume,5-day STD of Volume,0.18287325932248305,0.20903267177887588
+[E路·真手数CV] 20-day STD of realVolume over 20-day SMA of realVolume,10-day STD of Volume,0.2053940838953919,0.28666111122889004
+[E路·真手数CV] 20-day STD of realVolume over 20-day SMA of realVolume,20-day STD of Volume,0.21239176551376152,0.3835468599023715
+[比值·跨窗] 5-day STD of Volume over 20-day SMA of Volume,5-day VWAP of Price,-0.015730671660352614,0.0034538831093188574
+[比值·跨窗] 5-day STD of Volume over 20-day SMA of Volume,20-day MAX of Price,-0.018981949689588967,-0.011349478228312091
+[比值·跨窗] 5-day STD of Volume over 20-day SMA of Volume,5-day MAX of Price,-0.013879538174585017,0.008951680512909326
+[比值·跨窗] 5-day STD of Volume over 20-day SMA of Volume,20-day Momentum of Price,0.21287408409764882,0.2260239217648673
+[比值·跨窗] 5-day STD of Volume over 20-day SMA of Volume,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,0.7394271101142416,0.7100951274544378
+[比值·跨窗] 5-day STD of Volume over 20-day SMA of Volume,5-day MOM of Volume,0.5859936217271392,0.3217136449784754
+[比值·跨窗] 5-day STD of Volume over 20-day SMA of Volume,20-day MIN of Price,-0.020992321707350443,-0.017012696708714997
+[比值·跨窗] 5-day STD of Volume over 20-day SMA of Volume,5-day MOM of Price,0.3551639236782599,0.28848594857027926
+[比值·跨窗] 5-day STD of Volume over 20-day SMA of Volume,20-day MOM of Volume,0.5068460811656947,0.4254124775702295
+[比值·跨窗] 5-day STD of Volume over 20-day SMA of Volume,5-day SMA of Price,-0.0171126881740626,-5.793731833346085e-05
+[比值·跨窗] 5-day STD of Volume over 20-day SMA of Volume,10-day SMA of Volume,0.03160925751218587,0.06569893509046144
+[比值·跨窗] 5-day STD of Volume over 20-day SMA of Volume,10-day SMA of Price,-0.019798434408036015,-0.009039954390903758
+[比值·跨窗] 5-day STD of Volume over 20-day SMA of Volume,20-day SMA of Price,-0.021290119768800193,-0.016781139709319593
+[比值·跨窗] 5-day STD of Volume over 20-day SMA of Volume,5-day STD of Price,0.0903472561913425,0.20475221897542206
+[比值·跨窗] 5-day STD of Volume over 20-day SMA of Volume,10-day STD of Price,0.04657281264140367,0.1241277136396589
+[比值·跨窗] 5-day STD of Volume over 20-day SMA of Volume,20-day STD of Price,-0.009295155510897695,0.00545176100087995
+[比值·跨窗] 5-day STD of Volume over 20-day SMA of Volume,5-day SMA of Volume,0.10096717384704704,0.17099356656547304
+[比值·跨窗] 5-day STD of Volume over 20-day SMA of Volume,20-day SMA of Volume,-0.02139111193938798,-0.03702804224727843
+[比值·跨窗] 5-day STD of Volume over 20-day SMA of Volume,5-day STD of Volume,0.31197379292051325,0.4969094468115887
+[比值·跨窗] 5-day STD of Volume over 20-day SMA of Volume,10-day STD of Volume,0.1819873164987802,0.24390164955534208
+[比值·跨窗] 5-day STD of Volume over 20-day SMA of Volume,20-day STD of Volume,0.06499536227837946,0.041763833827718345
+[比值·量比] 10-day SMA of Volume over 20-day SMA of Volume,5-day VWAP of Price,0.0032623853942150903,0.017097880400890216
+[比值·量比] 10-day SMA of Volume over 20-day SMA of Volume,20-day MAX of Price,-0.002193803616542713,-0.002555293942708766
+[比值·量比] 10-day SMA of Volume over 20-day SMA of Volume,5-day MAX of Price,0.004651971628463706,0.02114243516265119
+[比值·量比] 10-day SMA of Volume over 20-day SMA of Volume,20-day Momentum of Price,0.3451190526601054,0.33203036926075946
+[比值·量比] 10-day SMA of Volume over 20-day SMA of Volume,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,0.7746502046235899,0.7714554832874883
+[比值·量比] 10-day SMA of Volume over 20-day SMA of Volume,5-day MOM of Volume,0.16481583664680133,0.03928318998076354
+[比值·量比] 10-day SMA of Volume over 20-day SMA of Volume,20-day MIN of Price,-0.006817964236745249,-0.013220341204472344
+[比值·量比] 10-day SMA of Volume over 20-day SMA of Volume,5-day MOM of Price,0.20106267777328482,0.16996706413725446
+[比值·量比] 10-day SMA of Volume over 20-day SMA of Volume,20-day MOM of Volume,0.46228370514662753,0.5485121894067604
+[比值·量比] 10-day SMA of Volume over 20-day SMA of Volume,5-day SMA of Price,0.0026353778669563057,0.015065248365061536
+[比值·量比] 10-day SMA of Volume over 20-day SMA of Volume,10-day SMA of Volume,0.12402643191625749,0.1785618688711817
+[比值·量比] 10-day SMA of Volume over 20-day SMA of Volume,10-day SMA of Price,-0.00042130564535779234,0.006526769312713695
+[比值·量比] 10-day SMA of Volume over 20-day SMA of Volume,20-day SMA of Price,-0.005696005255928209,-0.010148706869996225
+[比值·量比] 10-day SMA of Volume over 20-day SMA of Volume,5-day STD of Price,0.07334123819428841,0.14889937137111325
+[比值·量比] 10-day SMA of Volume over 20-day SMA of Volume,10-day STD of Price,0.08500117097855885,0.16318980521822016
+[比值·量比] 10-day SMA of Volume over 20-day SMA of Volume,20-day STD of Price,0.036667115689582676,0.03868617290373807
+[比值·量比] 10-day SMA of Volume over 20-day SMA of Volume,5-day SMA of Volume,0.15287010158967468,0.21275153462632
+[比值·量比] 10-day SMA of Volume over 20-day SMA of Volume,20-day SMA of Volume,0.005498853263331159,-0.008900349504892298
+[比值·量比] 10-day SMA of Volume over 20-day SMA of Volume,5-day STD of Volume,0.1936611280447795,0.2758397721513999
+[比值·量比] 10-day SMA of Volume over 20-day SMA of Volume,10-day STD of Volume,0.21766220522055735,0.29990898368475005
+[比值·量比] 10-day SMA of Volume over 20-day SMA of Volume,20-day STD of Volume,0.06895191904169369,0.03122182223096706
+[复现针] 5-day STD of Volume over 20-day STD of Volume,5-day VWAP of Price,0.01603027298570498,0.0268615336828695
+[复现针] 5-day STD of Volume over 20-day STD of Volume,20-day MAX of Price,0.011647591711202365,0.009035973170963144
+[复现针] 5-day STD of Volume over 20-day STD of Volume,5-day MAX of Price,0.017633972027788918,0.031022621316663494
+[复现针] 5-day STD of Volume over 20-day STD of Volume,20-day Momentum of Price,0.10339660945670191,0.128835567478887
+[复现针] 5-day STD of Volume over 20-day STD of Volume,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,0.6043391480333722,0.7009892287855563
+[复现针] 5-day STD of Volume over 20-day STD of Volume,5-day MOM of Volume,0.37297744360007445,0.3567086356573395
+[复现针] 5-day STD of Volume over 20-day STD of Volume,20-day MIN of Price,0.013587411249190724,0.016811855310836836
+[复现针] 5-day STD of Volume over 20-day STD of Volume,5-day MOM of Price,0.2707242881181502,0.2782918483270198
+[复现针] 5-day STD of Volume over 20-day STD of Volume,20-day MOM of Volume,0.24492197746652525,0.31931846251783674
+[复现针] 5-day STD of Volume over 20-day STD of Volume,5-day SMA of Price,0.015031904155094459,0.02388963844266781
+[复现针] 5-day STD of Volume over 20-day STD of Volume,10-day SMA of Volume,-0.0010330802280993387,0.008718932469584169
+[复现针] 5-day STD of Volume over 20-day STD of Volume,10-day SMA of Price,0.012923942127143538,0.016517295321351516
+[复现针] 5-day STD of Volume over 20-day STD of Volume,20-day SMA of Price,0.012306629446871453,0.012411918531453027
+[复现针] 5-day STD of Volume over 20-day STD of Volume,5-day STD of Price,0.09702774501488579,0.18162811751120422
+[复现针] 5-day STD of Volume over 20-day STD of Volume,10-day STD of Price,0.04486731325571338,0.08059641475778995
+[复现针] 5-day STD of Volume over 20-day STD of Volume,20-day STD of Price,-0.008694493277683067,-0.042658696431730814
+[复现针] 5-day STD of Volume over 20-day STD of Volume,5-day SMA of Volume,0.0591365671140106,0.11954698700607325
+[复现针] 5-day STD of Volume over 20-day STD of Volume,20-day SMA of Volume,-0.041422683338543174,-0.08329956831940079
+[复现针] 5-day STD of Volume over 20-day STD of Volume,5-day STD of Volume,0.2235181039542278,0.3945822376032987
+[复现针] 5-day STD of Volume over 20-day STD of Volume,10-day STD of Volume,0.06630709177221021,0.10837051844273259
+[复现针] 5-day STD of Volume over 20-day STD of Volume,20-day STD of Volume,-0.05913083210251469,-0.13408839836529593
+[复现针] 5-day SMA of Price over 20-day SMA of Price,5-day VWAP of Price,0.03230599537487494,0.05650784109754016
+[复现针] 5-day SMA of Price over 20-day SMA of Price,20-day MAX of Price,0.01696601091738612,0.012123229398397111
+[复现针] 5-day SMA of Price over 20-day SMA of Price,5-day MAX of Price,0.034302258192391764,0.058529514183390675
+[复现针] 5-day SMA of Price over 20-day SMA of Price,20-day Momentum of Price,0.8365049552440578,0.8133596971646259
+[复现针] 5-day SMA of Price over 20-day SMA of Price,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,0.48290136494260744,0.4596030477385389
+[复现针] 5-day SMA of Price over 20-day SMA of Price,5-day MOM of Volume,0.1455154267834904,0.07725022143142872
+[复现针] 5-day SMA of Price over 20-day SMA of Price,20-day MIN of Price,0.006671070893097594,0.002559358047319819
+[复现针] 5-day SMA of Price over 20-day SMA of Price,5-day MOM of Price,0.5048840606383935,0.4434291769770752
+[复现针] 5-day SMA of Price over 20-day SMA of Price,20-day MOM of Volume,0.3686282416916386,0.3861132647519102
+[复现针] 5-day SMA of Price over 20-day SMA of Price,5-day SMA of Price,0.03186037938572336,0.05408842493275723
+[复现针] 5-day SMA of Price over 20-day SMA of Price,10-day SMA of Volume,0.1410333862682438,0.14828074002896052
+[复现针] 5-day SMA of Price over 20-day SMA of Price,10-day SMA of Price,0.02307186482382577,0.034843969548059746
+[复现针] 5-day SMA of Price over 20-day SMA of Price,20-day SMA of Price,0.009854473294839754,0.0046078947492847
+[复现针] 5-day SMA of Price over 20-day SMA of Price,5-day STD of Price,0.11103449012994224,0.14314113006617582
+[复现针] 5-day SMA of Price over 20-day SMA of Price,10-day STD of Price,0.11008069412710934,0.11161575916916093
+[复现针] 5-day SMA of Price over 20-day SMA of Price,20-day STD of Price,0.074288493777598,0.03492380598492655
+[复现针] 5-day SMA of Price over 20-day SMA of Price,5-day SMA of Volume,0.18258618632213044,0.19001869400464327
+[复现针] 5-day SMA of Price over 20-day SMA of Price,20-day SMA of Volume,0.0651792272150998,0.055686607140335076
+[复现针] 5-day SMA of Price over 20-day SMA of Price,5-day STD of Volume,0.18819892079307618,0.22461626936935244
+[复现针] 5-day SMA of Price over 20-day SMA of Price,10-day STD of Volume,0.18327216729878465,0.2051773249122696
+[复现针] 5-day SMA of Price over 20-day SMA of Price,20-day STD of Volume,0.11529644168278169,0.09730120629051135
+[复现针] 20-day STD of Price over 20-day SMA of Price,5-day VWAP of Price,-0.003164517948038519,0.052812489527242004
+[复现针] 20-day STD of Price over 20-day SMA of Price,20-day MAX of Price,0.012065618810880651,0.09237278099913038
+[复现针] 20-day STD of Price over 20-day SMA of Price,5-day MAX of Price,0.0015651276048791554,0.06250197424896344
+[复现针] 20-day STD of Price over 20-day SMA of Price,20-day Momentum of Price,0.3276571433844764,0.08572431442807227
+[复现针] 20-day STD of Price over 20-day SMA of Price,5-day Simple Moving Average of Volume over 20-day Simple Moving Average of Volume,0.1335536893116298,0.002897501938302977
+[复现针] 20-day STD of Price over 20-day SMA of Price,5-day MOM of Volume,0.061556677793689625,-0.060291752317598556
+[复现针] 20-day STD of Price over 20-day SMA of Price,20-day MIN of Price,-0.026657952927554247,0.005625180473938512
+[复现针] 20-day STD of Price over 20-day SMA of Price,5-day MOM of Price,0.12595375447876603,-0.007227579693850862
+[复现针] 20-day STD of Price over 20-day SMA of Price,20-day MOM of Volume,0.27422745567580914,0.11468482639495095
+[复现针] 20-day STD of Price over 20-day SMA of Price,5-day SMA of Price,-0.0031792545620377122,0.05152312025929974
+[复现针] 20-day STD of Price over 20-day SMA of Price,10-day SMA of Volume,0.1976675061046406,0.3386063619146582
+[复现针] 20-day STD of Price over 20-day SMA of Price,10-day SMA of Price,-0.004971337375960787,0.05036779803951793
+[复现针] 20-day STD of Price over 20-day SMA of Price,20-day SMA of Price,-0.008311794004066007,0.047637872048260206
+[复现针] 20-day STD of Price over 20-day SMA of Price,5-day STD of Price,0.14271353568218714,0.31617540885151446
+[复现针] 20-day STD of Price over 20-day SMA of Price,10-day STD of Price,0.19121553172285274,0.4046302026164737
+[复现针] 20-day STD of Price over 20-day SMA of Price,20-day STD of Price,0.2473435514819092,0.5262777015810025
+[复现针] 20-day STD of Price over 20-day SMA of Price,5-day SMA of Volume,0.19918517735561242,0.3245208904742127
+[复现针] 20-day STD of Price over 20-day SMA of Price,20-day SMA of Volume,0.16823926384186513,0.3337006564940354
+[复现针] 20-day STD of Price over 20-day SMA of Price,5-day STD of Volume,0.1748105440117603,0.2986929099379946
+[复现针] 20-day STD of Price over 20-day SMA of Price,10-day STD of Volume,0.21257572762682483,0.34971241903002326
+[复现针] 20-day STD of Price over 20-day SMA of Price,20-day STD of Volume,0.23330005036631557,0.3928852259475366

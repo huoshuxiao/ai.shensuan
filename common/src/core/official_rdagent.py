@@ -14,8 +14,8 @@ import shutil
 import subprocess
 from config import (RDAGENT_OUTPUT_DIR, RDAGENT_CONDA_ENV, DATA_DIR,
                     RDAGENT_TIMEOUT_SEC, RDAGENT_SOURCE_DIR,
-                    RDAGENT_COSTEER_MAX_LOOP, RDAGENT_QLIB_DOCKER_ENV,
-                    RDAGENT_QLIB_PROVIDER)
+                    RDAGENT_COSTEER_MAX_LOOP, RDAGENT_LLM_MODEL,
+                    RDAGENT_QLIB_DOCKER_ENV, RDAGENT_QLIB_PROVIDER)
 
 # conda 未进 PATH 时的常见安装位
 _CONDA_CANDIDATES = [
@@ -32,19 +32,46 @@ _CONDA_CANDIDATES = [
 _ENV_ISOLATED = {**os.environ, "PYTHONNOUSERSITE": "1"}
 
 def _driver_env():
-    """驱动子进程环境：沙箱容器参数 + 可选的 coding 演化轮数。
+    """驱动子进程环境：沙箱容器参数 + 可选的演化轮数 + 可选的模型注入。
 
     容器参数只影响 factor 循环本体（rdagent 侧 QlibDockerConf 用 QLIB_DOCKER_
-    前缀读环境变量）。CoSTEER_MAX_LOOP 同批发出去：rdagent_driver 用
-    load_dotenv(".env") 且默认不覆盖已有环境变量，所以在父进程这里给值就
-    压过工作区 .env 那份手改值（ETF 线用它把轮数从 4 提到 8）；配置留空则
-    不注入，沿用 .env，避免凭空盖住本地设置。
+    前缀读环境变量）。CoSTEER_MAX_LOOP 与 LITELLM_CHAT_MODEL 走同一批发出去：
+    rdagent_driver 用 load_dotenv(".env") 且默认不覆盖已有环境变量，所以在父进程
+    这里给值就压过工作区 .env 那份手改值（ETF 线用它把轮数从 4 提到 8）；配置留空
+    则不注入，沿用 .env，避免凭空盖住本地设置。
     """
     env = {**_ENV_ISOLATED, **RDAGENT_QLIB_DOCKER_ENV}
     loops = str(RDAGENT_COSTEER_MAX_LOOP).strip()
     if loops.isdigit():
         env["CoSTEER_MAX_LOOP"] = loops
+    model = str(RDAGENT_LLM_MODEL).strip()
+    if model:
+        env["LITELLM_CHAT_MODEL"] = model
     return env
+
+
+def official_chat_model(env_file):
+    """official 支线这一场用哪个聊天模型，连同来源一起返回（只加读数，不设闸）。
+
+    「跑一次会起几个本地模型」原先在本机没有一处能看见：主线侧的模型在 config 的
+    LLM_MODEL（由 `llm_client.describe_endpoint` 打印），official 侧的模型写在各线
+    `rdagent_output/.env` 的 LITELLM_CHAT_MODEL，两份配置各说各话——而多源挖掘里
+    这两支是**并发**跑的（`multi_source_mining` 的 ThreadPoolExecutor），所以同一台
+    机上会同时驻留两个聊天模型（外带那份 .env 里的嵌入模型）。旋钮
+    `RDAGENT_LLM_MODEL` 留空时行为一字未变（仍以那份 .env 为准），它只是让体检表
+    能把两边并排念出来。
+    """
+    injected = str(RDAGENT_LLM_MODEL).strip()
+    if injected:
+        return injected, "注入 RDAGENT_LLM_MODEL"
+    try:
+        with open(env_file, encoding="utf-8") as fh:
+            for ln in fh:
+                if ln.strip().startswith("LITELLM_CHAT_MODEL="):
+                    return ln.strip().split("=", 1)[1], f"工作区 {env_file}"
+    except OSError:
+        pass
+    return "（两份都没设，走 rdagent 默认）", env_file
 
 
 _ENV_DRIVER = _driver_env()
@@ -76,19 +103,42 @@ def _env_probe(conda, env, code, timeout=90):
         return False, f"探针超时（>{timeout}s，多为 conda 冷启动卡顿）"
 
 
-def _docker_info(argv):
-    try:
-        r = subprocess.run(list(argv), capture_output=True, text=True,
-                           timeout=20)
-        out = (r.stdout or "").strip()
-        if r.returncode == 0 and out:
-            return True, f"daemon 可达 (server {out})"
-        err = (r.stderr or "").strip().splitlines()
-        return False, (err[-1][:120] if err else f"daemon 无响应 (rc={r.returncode})")
-    except subprocess.TimeoutExpired:
-        return False, "docker info 超时（daemon 未启动？）"
-    except FileNotFoundError:
-        return False, "docker 命令不可执行"
+# 探测预算：2 次 × 45s ⇒ 最坏 90s。整个进程只体检一次（`_PREFLIGHT` 缓存），
+# 而这一腿本来就是"小时级容器循环"的入口，90 秒换掉一次谎报是划算的。
+_DOCKER_PROBE_ATTEMPTS = 2
+_DOCKER_PROBE_TIMEOUT = 45
+
+
+def _docker_info(argv, attempts=None, timeout=None):
+    """探一次 docker daemon；**只有"超时"这一种失败才重试**。
+
+    为什么要第二次：原来单次 20s 一超时就直接念「daemon 未启动？」，而 10-01 15:5x
+    那场实测是——这条判红 ⇒ official 支**静默产出 0 个因子**、全场退出码仍是 0；
+    16:3x 手工敲同一条命令**秒回**（server 26.1.3、7 个容器、当前用户在 docker 组）。
+    ⇒ "daemon 真没起"和"这次探测没抢到 CPU"是两件事，单次超时不足以分辨。
+    权限被拒 / daemon 无响应（rc≠0）那两类是确定性错误，再敲一遍只会更慢，不重试。
+    """
+    attempts = _DOCKER_PROBE_ATTEMPTS if attempts is None else attempts
+    timeout = _DOCKER_PROBE_TIMEOUT if timeout is None else timeout
+    for i in range(max(1, attempts)):
+        try:
+            r = subprocess.run(list(argv), capture_output=True, text=True,
+                               timeout=timeout)
+            out = (r.stdout or "").strip()
+            if r.returncode == 0 and out:
+                return True, (f"daemon 可达 (server {out})" if i == 0 else
+                              f"daemon 可达 (server {out}，第 {i + 1} 次探测才通 ⇒ "
+                              f"机器在抖动，不是没起)")
+            err = (r.stderr or "").strip().splitlines()
+            return False, (err[-1][:120] if err else f"daemon 无响应 (rc={r.returncode})")
+        except subprocess.TimeoutExpired:
+            if i + 1 < max(1, attempts):
+                continue
+            return False, (f"docker info 超时（daemon 未启动？"
+                           f"已试 {max(1, attempts)} 次、每次 >{timeout}s）")
+        except FileNotFoundError:
+            return False, "docker 命令不可执行"
+    return False, "docker 探测未执行"
 
 
 def _sg_docker(cmd_argv):
@@ -202,7 +252,7 @@ def _rdagent_data_checks(output_dir):
     out_dir = output_dir or RDAGENT_OUTPUT_DIR
     h5 = os.path.join(out_dir, "git_ignore_folder",
                       "factor_implementation_source_data", "daily_pv.h5")
-    dump_py = os.path.join(v1_root, "src", "data", "dump_qlib_bin.py")
+    dump_py = os.path.normpath(os.path.join(v1_root, "..", "..", "common", "src", "data", "etf", "dump_qlib_bin.py"))
     pregen_py = os.path.abspath(os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         "..", "rdagent_docker", "pregen_source_data.py"))
@@ -282,7 +332,11 @@ def rdagent_preflight(output_dir=None):
     llm_ok = llm_available() or os.path.exists(env_file)
     llm_detail = (describe_endpoint() if llm_available()
                   else f"管线端点未配置；已用 RD-Agent 自身 {env_file}")
-    checks.append(("LLM 端点", llm_ok, llm_detail))
+    # 主线侧模型在上面那一行，official 侧模型是另一个进程另读一份配置 ⇒ 同一条
+    # 读数里把两边一起念出来，免得"这场到底起了几个本地模型"要翻两个文件才知道
+    chat_model, model_src = official_chat_model(env_file)
+    checks.append(("LLM 端点", llm_ok,
+                   f"{llm_detail}｜official 支线={chat_model}（来源={model_src}）"))
     return checks
 
 

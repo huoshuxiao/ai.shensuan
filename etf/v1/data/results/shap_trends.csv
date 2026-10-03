@@ -1,3 +1,5 @@
 ﻿factor,top_feature,top_importance,n_rising,n_falling
+5-day SMA of Price,ic_mean_5,0.0,0,0
 reversal_5,ic_mean_5,0.0,0,0
+1-day SMA of Price over 60-day SMA of Price,ic_mean_5,0.0,0,0
 volume_ratio_20,ic_mean_5,0.0,0,0

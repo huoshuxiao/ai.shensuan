@@ -15,7 +15,7 @@ CROSSOVER_SYSTEM_PROMPT = """你是量化因子研究员。给定两个父代因
 1. 融合两者核心逻辑（如 A 的动量 + B 的波动率）
 2. 不简单相加，要有逻辑组合
 3. 一行 Python 表达式，用 df 输入
-4. 可用算子: close, open, high, low, volume, returns, ma, std, max, min, delay, delta, ts_sum, ts_mean, ts_std, abs, log, sign
+4. 可用算子: close, open, high, low, volume, returns, ma, std, max, min, delay, delta, ts_sum, ts_mean, ts_std, abs, log, sign；ma/std/max/min 的第一个参数**可以直接传列**（如 ma(volume, 20)），传 df 时按 close 算
 
 输出 JSON:
 {"expr": "融合表达式", "logic": "融合逻辑（1-2 句）"}

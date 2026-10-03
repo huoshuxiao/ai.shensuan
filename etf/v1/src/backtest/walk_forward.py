@@ -63,15 +63,25 @@ def _dsr_from_equity(equity, n_trials):
 
 
 def walk_forward_run(pool, universe, factor_fn, backtest_fn,
-                     trial_counter=None):
+                     trial_counter=None, checkpoint=None, wide_pool=None):
     """主循环。factor_fn(train_pool, train_ts, fold=i) 只喂训练段数据挖因子，
     引擎集合由调用方决定（应与主链同构，否则验的不是同一批因子）；
     信号生成/回测用 pool 全量（策略内部 .loc[:ts] 天然不越界，
     测试区间由 test_ts 边界控制）。每折挖出的因子数计入 TrialCounter，
     使后续折的 DSR 门槛随累计试验次数收紧。
     两道 DSR 读数并列：逐折（各段自己的 T）与合并样本外（各段 T 之和），
-    后者是现状几何下唯一可判定的那条。"""
+    后者是现状几何下唯一可判定的那条。
+    checkpoint（可选，run_checkpoint.RunCheckpoint）：段级断点缓存。传了就在
+    每折开挖前先问一次"上一场这一折挖过没有"，命中则整个容器循环不起。
+    **只缓存因子**：信号/回测/DSR 每折照原样重算，续传不改判据。
+    wide_pool（可选，WP-2）：全市场镜像的宽面板。配 `WALK_FORWARD["pit_pool"]`
+    打开时，每折的**候选池改在本折训练段内点时挑**（挖与交易用同一批），
+    挡掉"按今日成交额挑 100 只再喂给 2010 年那一折"的幸存者+前视泄漏。"""
     print("\n========== Walk-forward + 逐折 DSR ==========")
+    pit_cfg = WALK_FORWARD.get("pit_pool") or {}
+    use_pit = bool(pit_cfg.get("enabled")) and wide_pool is not None
+    if pit_cfg.get("enabled") and wide_pool is None:
+        print("  ⚠️ pit_pool 已开但没传宽面板 ⇒ 本轮仍按今日池跑（泄漏入口未关）")
     # 与主流程一致：时间轴取最长历史标的，短历史首位标的会截断分折窗口
     ref_code = max(pool, key=lambda c: len(pool[c]))
     all_ts = pool[ref_code].index
@@ -85,32 +95,68 @@ def walk_forward_run(pool, universe, factor_fn, backtest_fn,
         print(f"\n--- 折 {i + 1}/{len(splits)} ---")
         print(f"  训练段 {tr_s:%Y-%m-%d} ~ {tr_e:%Y-%m-%d} | "
               f"测试段 {te_s:%Y-%m-%d} ~ {te_e:%Y-%m-%d}")
-        train_pool = {c: df.loc[tr_s:tr_e] for c, df in pool.items()}
+        # 本折用哪一批标的：点时池（只用训练段内的信息挑）或现状池（今日成交额挑的 100 只）
+        fold_pool, fold_universe, pit_read = pool, universe, None
+        if use_pit:
+            from fold_pool import FoldUniverse, select_pit_pool
+            sel, pit_read = select_pit_pool(
+                wide_pool, tr_s, tr_e,
+                min_share=pit_cfg.get("min_share", 0.5),
+                max_codes=pit_cfg.get("max_codes", 100))
+            if not sel:
+                print("  ⏭️ 本折跳过：点时池在该训练段挑不出任何标的"
+                      f"（min_share={pit_cfg.get('min_share')}）")
+                continue
+            fold_pool = {c: wide_pool[c] for c in sel}
+            fold_universe = FoldUniverse(wide_pool, sel)
+            print(f"  🕰️ 点时池：截断前 {pit_read['点时池_截断前']} 只 → 入选 "
+                  f"{pit_read['点时池_入选']} 只｜日均厚 {pit_read['日均厚']} 只｜"
+                  f"截面尺子有牙（≥30 只）的天数 {pit_read['≥30只天%']}%"
+                  f"｜过闸天数占比中位 {pit_read['过闸天数占比中位']}"
+                  f"｜其中不在今日池的新面孔 {len(set(sel) - set(pool))} 只")
+        train_pool = {c: df.loc[tr_s:tr_e] for c, df in fold_pool.items()}
         train_pool = {c: df for c, df in train_pool.items()
                       if len(df) > 240}  # 训练样本不足一年的标的剔除
-        print(f"  训练段可用标的: {len(train_pool)}/{len(pool)}"
+        print(f"  训练段可用标的: {len(train_pool)}/{len(fold_pool)}"
               f"（需 >240 根 bar）")
         if not train_pool:
             print("  ⏭️ 本折跳过：训练段无标的满足长度门槛，无法挖因子")
             continue
-        factors = factor_fn(train_pool,
-                            train_pool[next(iter(train_pool))].index,
-                            fold=i + 1)
+        train_idx = train_pool[next(iter(train_pool))].index
+        fold_key = f"折 {i + 1} 因子"
+        if checkpoint:
+            factors = checkpoint.resolve(
+                fold_key,
+                lambda: factor_fn(train_pool, train_idx, fold=i + 1),
+                label=f"折 {i + 1} 训练段挖因子")
+        else:
+            factors = factor_fn(train_pool, train_idx, fold=i + 1)
         if not factors:
             print("  ⏭️ 本折跳过：训练段未挖出通过 IC 门槛的因子")
             continue
         print(f"  训练段挖出因子 {len(factors)} 个: "
               f"{[f.get('name', '?') for f in factors]}")
-        tc.add(len(factors))
+        # 续传命中的折不许再加第二遍：它那一笔在上一场就已经落进 trial_counter.json
+        # （不变式「缓存条目存在 ⇔ 试验数已入账」靠下面 record 紧跟 add 守住）
+        if not (checkpoint and checkpoint.replayed):
+            tc.add(len(factors))
+            if checkpoint:
+                checkpoint.record(fold_key, factors, tc=tc,
+                                  label=f"折 {i + 1} 训练段挖因子")
 
         from strategy import IntradayRotationStrategy
         test_ts = all_ts[(all_ts >= te_s) & (all_ts <= te_e)]
-        strategy = IntradayRotationStrategy(factors, pool, universe)
+        strategy = IntradayRotationStrategy(factors, fold_pool, fold_universe)
         signals = strategy.generate_signals(test_ts)
-        result = backtest_fn(pool, signals, universe, None)
+        result = backtest_fn(fold_pool, signals, fold_universe, None)
         stats = result["stats"]
         equity = result["equity"]["equity"]
-        n_trials_now = DSR.get("n_trials") or tc.get()
+        # 续传命中的折要用**上一场这一折当时的**累计 N 做门槛，不能读现在的账本：
+        # 现在的账本已走到整场末尾，拿它算折 1 会把跨场对不上的读数写进折表
+        n_trials_now = DSR.get("n_trials") or (
+            checkpoint.replay_n_trials
+            if (checkpoint and checkpoint.replayed
+                and checkpoint.replay_n_trials) else tc.get())
         dsr_result = _dsr_from_equity(equity, n_trials_now)
         leg = equity.pct_change().dropna()
         if len(leg):
@@ -132,6 +178,14 @@ def walk_forward_run(pool, universe, factor_fn, backtest_fn,
         stats["折内因子数"] = len(factors)
         stats["折内因子来源"] = "/".join(sorted(
             {str(f.get("source", "?")) for f in factors}))
+        # 池口径与宽度一起进折表：不记这两列就看不出"这一折的判决是拿哪批标的跑的"
+        # （点时池与今日池的折表数字不可比，混在一张表里读会读成漂移）
+        stats["池口径"] = "点时" if use_pit else "今日"
+        stats["挖掘层宽度"] = len(train_pool)
+        if pit_read:
+            stats["日均厚"] = pit_read["日均厚"]
+            stats["截面有牙天%"] = pit_read["≥30只天%"]
+            stats["点时新面孔"] = len(set(sel) - set(pool))
         all_stats.append(stats)
         all_dsr.append(dsr_result.get("dsr", 0))
 

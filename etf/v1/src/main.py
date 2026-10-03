@@ -31,6 +31,7 @@ from strategy import IntradayRotationStrategy
 from backtest import get_backtester, backtest_with_params  # noqa: F401
 from dsr import deflated_sharpe_ratio, annualize_sharpe, TrialCounter
 from frequency_adapter import get_adapter
+from run_checkpoint import RunCheckpoint, make_fingerprint
 
 
 def mine_factors(pool):
@@ -145,13 +146,16 @@ def recount_foreign_ic(factors, pool):
     return out
 
 
-def mine_with_engines(pool, engines, tag="", path_prefix=None):
+def mine_with_engines(pool, engines, tag="", path_prefix=None, fold=None):
     """按指定引擎集合挖因子，供 walk-forward 折内与自动重挖共用。
 
     与主链 stage_mining 同构：折内如果只跑注册表基线，样本外验证就
     完全覆盖不到实际入库的 GP/DSL/RD-Agent 因子，等于验了一批没人用的东西。
     engines 取值：registry / genetic / multi_source / mogp / hybrid。
-    path_prefix：折内产物（如 GP 演化史）的落盘路径前缀，避免互相覆写。"""
+    path_prefix：折内产物（如 GP 演化史）的落盘路径前缀，避免互相覆写。
+    fold：**只有折内才传**（walk-forward 传 i+1）。非 None 时 multi_source 那一支
+    停用 official 源（丙-2 ⇒ 折内回收的全历史 `factors.json` 不是点时的）；
+    主线与自动重挖不传 ⇒ 照旧吃 official。"""
     engines = engines or ["registry"]
     got = []
 
@@ -171,7 +175,7 @@ def mine_with_engines(pool, engines, tag="", path_prefix=None):
     if "multi_source" in engines:
         def _ms():
             from rdagent_facade import mine_factors_multi_source
-            return recount_foreign_ic(mine_factors_multi_source(pool), pool)
+            return recount_foreign_ic(mine_factors_multi_source(pool, fold=fold), pool)
         got.extend(safe_stage(f"多源挖掘 {tag}".strip(), _ms) or [])
 
     if "mogp" in engines:
@@ -234,18 +238,34 @@ def safe_stage(name, fn):
         return None
 
 
-def stage_mining(pool, raw_factors, tc):
-    """多源挖掘 / GP / 多目标 GP / LLM-GP 混合，追加进 raw_factors"""
+def stage_mining(pool, raw_factors, tc, checkpoint=None):
+    """多源挖掘 / GP / 多目标 GP / LLM-GP 混合，追加进 raw_factors
+
+    checkpoint：只把"挖"那一段（一小时量级的容器循环）纳入断点缓存，
+    落账与追加两条路径共用同一段尾巴 ⇒ 续传命中时 tc 不再加第二遍。
+    主线这一段不读折几何、也不读折内 official 开关 ⇒ 标 `scope="main"`，
+    拨那几颗键只作废各折条目、不再拖着这条主线重挖一小时四十分钟。"""
     if MULTI_SOURCE["enabled"]:
-        def _ms():
+        ck_key = "主线多源因子"
+
+        def _mine():
             from rdagent_facade import mine_factors_multi_source
-            got = recount_foreign_ic(
+            return recount_foreign_ic(
                 mine_factors_multi_source(pool) or [], pool)
-            if got:
+
+        got = (checkpoint.resolve(ck_key, lambda: safe_stage("多源因子挖掘", _mine),
+                                  label="主线多源挖掘", scope="main")
+               if checkpoint else safe_stage("多源因子挖掘", _mine))
+        if got:
+            if not (checkpoint and checkpoint.replayed):
                 tc.add(len(got))
-                raw_factors.extend(got)
-                print(f"  多源挖掘追加: {len(got)}")
-        safe_stage("多源因子挖掘", _ms)
+                # record 紧跟 tc.add：条目存在 ⇔ 试验数已入账
+                if checkpoint:
+                    checkpoint.record(ck_key, got, tc=tc, label="主线多源挖掘",
+                                      scope="main")
+            raw_factors.extend(got)
+            print(f"  多源挖掘追加: {len(got)}"
+                  f"{'（续传：本段未重挖）' if checkpoint and checkpoint.replayed else ''}")
 
     if GENETIC["enabled"]:
         def _gp():
@@ -305,16 +325,21 @@ def stage_library_and_clustering(raw_factors, pool):
             # （:52-53），顶层 source 参数仅在新增那一次写进字典（:57）——
             # 存量那 24 条要靠这里逐轮改回来。
             srcs = set()
+            written = 0
             for f in raw_factors:
                 src = f.get("source") or "pipeline"
                 srcs.add(src)
-                lib.upsert(f.get("name", "unknown"), f.get("expr", ""),
+                # upsert 返回 False＝被写库前的静态体检（未来函数/非法写法）挡住，
+                # 一个字段都没写；只改这里的计数，判据本身在 factor_library
+                written += bool(lib.upsert(f.get("name", "unknown"), f.get("expr", ""),
                            f.get("mean_ic", f.get("ic", 0.0)),
                            f.get("icir", 0.0), src,
-                           extra={"source": src})
+                           extra={"source": src}))
             lib.save_markdown()
-            print(f"  📚 因子库更新: +{len(raw_factors)} "
-                  f"(来源={'/'.join(sorted(srcs))})")
+            rej = len(raw_factors) - written
+            print(f"  📚 因子库更新: +{written} "
+                  f"(来源={'/'.join(sorted(srcs))})"
+                  + (f" / 🚫 静态体检挡下 {rej} 条" if rej else ""))
             print(f"  因子库: {len(lib.factors)} 条")
         safe_stage("因子库入库", _lib)
 
@@ -369,8 +394,27 @@ def stage_orthogonalize(raw_factors, pool, universe, all_ts):
     return (orthogonalize_factors(raw_factors) or raw_factors), RISK_CONTROL
 
 
+def _fold_wide_pool(pool):
+    """WP-2 的前置：给样本外验证备一份"镜像全量"宽面板（点时候选池的取材范围）。
+
+    关掉 `WALK_FORWARD["pit_pool"]` 或这里加载失败 ⇒ 返回 None ⇒ walk_forward 逐字节
+    退回现状池（泄漏入口照旧开着，但绝不静默）。走的是生产 `DataLoader`：复权口径、
+    列名、区间裁剪与主线逐字一致，折内挖的因子和主链吃的必须是同一种面板。"""
+    pit = WALK_FORWARD.get("pit_pool") or {}
+    if not pit.get("enabled"):
+        return None
+    try:
+        from fold_pool import load_wide_panel
+        return load_wide_panel(DataLoader(freq=FREQ), pool)
+    except Exception as e:
+        print(f"  ⚠️ 点时宽面板加载失败（{type(e).__name__}: {e}）"
+              f"⇒ 本折仍按今日池跑，幸存者泄漏入口这一场**没关掉**")
+        return None
+
+
 def stage_validation(raw_factors, pool, universe, all_ts, eq, tc,
-                     factors=None, weights=None, risk_params=None):
+                     factors=None, weights=None, risk_params=None,
+                     checkpoint=None):
     # walk-forward 的合并样本外 DSR：重挖触发器优先吃这条（见 stage_lifecycle）
     dsr_oos = None
 
@@ -382,7 +426,8 @@ def stage_validation(raw_factors, pool, universe, all_ts, eq, tc,
         def factor_fn(p, idx, fold=None):
             return mine_with_engines(
                 p, WALK_FORWARD.get("fold_engines"),
-                tag=f"折 {fold}", path_prefix=f"walk_forward_fold{fold}")
+                tag=f"折 {fold}", path_prefix=f"walk_forward_fold{fold}",
+                fold=fold)
 
         def backtest_fn(p, signals, uni, risk):
             bt = get_backtester(p, uni, risk or RISK_CONTROL)
@@ -390,7 +435,8 @@ def stage_validation(raw_factors, pool, universe, all_ts, eq, tc,
 
         # 试验次数由 walk_forward 逐折累加进 tc，折内不再重复计数
         wf = walk_forward_run(pool, universe, factor_fn, backtest_fn,
-                              trial_counter=tc)
+                              trial_counter=tc, checkpoint=checkpoint,
+                              wide_pool=_fold_wide_pool(pool))
         pd.DataFrame(wf["folds"]).to_csv(
             f"{RESULTS_DIR}/walk_forward_{FREQ}.csv",
             index=False, encoding="utf-8-sig")
@@ -656,11 +702,14 @@ def main():
     print(f"  时间轴参考 {ref_code}: {all_ts[0]:%Y-%m-%d} ~ "
           f"{all_ts[-1]:%Y-%m-%d} ({len(all_ts)} bars)")
 
+    # 断点续传：默认关（env ETF_RUN_RESUME 未设 ⇒ 一个字节不写，行为与本改动前一致）
+    ckpt = RunCheckpoint().arm(make_fingerprint(list(pool), all_ts))
+
     # 3. 因子挖掘（注册表基线 + 多源/GP/多目标/混合）
     print("\n[3/9] 因子挖掘...")
     raw_factors = mine_factors(pool)
     tc.add(len(raw_factors))
-    raw_factors = stage_mining(pool, raw_factors, tc)
+    raw_factors = stage_mining(pool, raw_factors, tc, checkpoint=ckpt)
     if not raw_factors:
         print("❌ 无因子")
         return
@@ -696,7 +745,8 @@ def main():
     print("\n[8/9] 稳健性验证...")
     pbo_now, pbo_trend, pbo_for_trigger, dsr_oos = stage_validation(
         raw_factors, pool, universe, all_ts, eq, tc,
-        factors=factors, weights=weights, risk_params=risk_params)
+        factors=factors, weights=weights, risk_params=risk_params,
+        checkpoint=ckpt)
 
     # 全样本 DSR 必须排在验证之后：折内挖因子是往同一个 tc 上累加试验次数
     # （walk_forward 的 tc.add），先算的话门槛用的是"本折之前"的计数，
@@ -763,6 +813,8 @@ def main():
     for k, v in result["stats"].items():
         print(f"  {k:10s}: {v}")
     print(f"\n  DSR: {dsr_res.get('dsr', 0):.4f}")
+    if ckpt.summary():
+        print(f"  断点: {ckpt.summary()}")
     print("\n🎉 完成！")
 
 

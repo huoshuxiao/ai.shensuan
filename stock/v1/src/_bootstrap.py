@@ -20,7 +20,9 @@ _COMMON = os.path.join(_REPO, "common", "src")
 # 与 etf 线同一套约定；策略/回测/实盘的其余部分仍复用 ETF 线
 _OWN = ("config", "strategy")
 # 共享内核：整个 common/src 也挂上，log_kit / config_base 等根级模块在此解析
-_SHARED = ("", "core", "optimizer", "feedback", "report", "view")
+# data/stock 是 09-29 从本线 src/data/ 搬进去的数据层（日更 bin、行业映射），
+# 只挂本线那一格——两格同时挂会让 etf 与 stock 的同名模块互相遮挡。
+_SHARED = ("", "core", "optimizer", "feedback", "report", "view", "data/stock")
 
 for _d in _OWN:
     _p = os.path.join(_SRC, _d)

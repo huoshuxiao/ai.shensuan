@@ -35,8 +35,9 @@ from plotly.subplots import make_subplots
 from config import (CACHE_DIR, DSR, FACTOR_LIBRARY, FREQ, LIVE_DATA_DIR, LOG_DIR,
                     PORTFOLIO, REPORT_DIR, RESULTS_DIR, RISK_DIR, STRATEGY_PBO,
                     TRIAL_COUNTER_FILE, TRIGGER_LOGIC, UNIVERSE_ALL_DIR,
-                    WALK_FORWARD, RDAGENT_OUTPUT_DIR)
+                    UNIVERSE_CACHE, WALK_FORWARD, RDAGENT_OUTPUT_DIR)
 from factor_naming import cn_name, METRIC_GLOSSARY
+from etf_theme import direction_of
 from llm_selfreport import (decision_tally, harvest_vs_library,
                             self_report_mtime)
 # 反馈闭环 / 影子盘监控两块各自仍可单独 `streamlit run`；这里只 import 它们的
@@ -73,7 +74,7 @@ def _file_stamp(path):
 def _dir_stamp(path, pattern="*"):
     """整个目录折成一个短哈希（文件增删改名、任何一个被重写都会变）。
 
-    `ttl=5` 是"最多迟到 5 秒"的折衷：`data/universe_all/` 有 871 个文件，整页每次
+    `ttl=5` 是"最多迟到 5 秒"的折衷：`common/data/etf/universe_all/` 有 871 个文件，整页每次
     心跳都 stat 一遍不值当。它喂的是新鲜度表和风险面板这两把重读数，不是净值曲线。
     """
     try:
@@ -278,12 +279,67 @@ wf_oos_df = load_csv(f"{RESULTS_DIR}/walk_forward_oos_{FREQ}.csv")
 pbo_res = load_json(f"{RESULTS_DIR}/pbo_result.json")
 params = load_json(f"{RESULTS_DIR}/optimized_params_{FREQ}.json")
 trial_counter = load_json(TRIAL_COUNTER_FILE)
+# 候选池缓存：`etf_universe.build()` 的产物，每只指数一条代表（最早上市且过闸）
+pool_df = load_csv(UNIVERSE_CACHE)
+if pool_df is not None and "code" in pool_df.columns:
+    pool_df["code"] = pool_df["code"].astype(str).str.zfill(6)
+
+
+def _decorate_codes(df, code_col="code"):
+    """给回测长表里的六位代码补上名称与所属指数组（池缓存里没有就留空）。"""
+    if pool_df is None or code_col not in df.columns:
+        return df
+    names = pool_df[[code_col, "name"] + [c for c in ("index_group", "list_date")
+                                          if c in pool_df.columns]].copy()
+    out = df.copy()
+    out[code_col] = out[code_col].astype(str).str.extract(r"(\d{6})")[0]
+    return out.merge(names, on=code_col, how="left")
+
+
+def _theme_view(sig_df):
+    """篮子按「方向」层的集中度读数 —— **只读观察项，不进任何判据**。
+
+    为什么另起一层分类：候选池本来就是每个指数组留一条代表，100 只 ↔ 100 个
+    `index_group` ⇒ 按组算"同一组最多 N 席"恒等于每组 1 席，是空判据。往下合并
+    成 10 个方向（`etf_theme.direction_of`，名字正则）才读得出"这一篮押在几类
+    资产上"。分类错了只会让这格读数难看，选股与权重仍由 `select_weights` 决定。
+
+    读数口径（与 09-28 那次档位实测 `etf/v1/temp/conc_tiers_dir_etf_0927.py` 同一把
+    尺子，可互相核对）：每次调仓把该篮各方向的权重（占净值，含现金所以和 <1）
+    相加，取其中最大的那个方向 ⇒ 平均最大方向权重 / 最坏最大方向权重 /
+    平均在场方向数。返回 (末场方向表, 读数 dict)；signals 缺 weight 列返回 None。
+    """
+    if sig_df is None or sig_df.empty or "weight" not in sig_df.columns:
+        return None, {}
+    h = _decorate_codes(_holdings(sig_df).copy(), "code")
+    ts_col = h.columns[0]
+    h["weight"] = pd.to_numeric(h["weight"], errors="coerce")
+    names = h["name"] if "name" in h.columns else pd.Series([""] * len(h))
+    groups = h["index_group"] if "index_group" in h.columns \
+        else pd.Series([""] * len(h))
+    h["direction"] = [direction_of(n, g) for n, g in zip(names, groups)]
+    agg = h.groupby([ts_col, "direction"])["weight"].sum()
+    per_bar_max = agg.groupby(level=0).max()
+    per_bar_n = agg.groupby(level=0).size()
+    last_day = h[ts_col].max()
+    tbl = (agg.loc[last_day].sort_values(ascending=False)
+           .to_frame("权重（占净值）").reset_index())
+    tbl["权重（占净值）"] = tbl["权重（占净值）"].astype(float)
+    kpi = {"last_day": str(last_day)[:10],
+           "bars": int(len(per_bar_max)),
+           "avg_max": float(per_bar_max.mean()),
+           "worst_max": float(per_bar_max.max()),
+           "avg_directions": float(per_bar_n.mean()),
+           "last_top_direction": str(tbl.iloc[0]["direction"]),
+           "last_top_weight": float(tbl.iloc[0]["权重（占净值）"])}
+    return tbl, kpi
+
 
 last_data_day = str(eq_df[eq_df.columns[0]].iloc[-1])[:10] if eq_df is not None else "—"
 lag_cols = [c for c in ("落后交易日",) if c in fresh.columns]
 worst_lag = int(pd.to_numeric(fresh["落后交易日"], errors="coerce").fillna(0).max()) \
     if len(fresh) and lag_cols else 0
-f1, f2, f3, f4 = st.columns([2.2, 1.4, 1.4, 1.6])
+f1, f2, f3, f4, f5, f6 = st.columns([2.0, 1.3, 1.1, 1.2, 1.2, 1.3])
 f1.metric("日线净值止于", last_data_day,
           delta=None, help="净值/信号/交易三张表的最后一格，即本页所有读数的时间截面")
 f2.metric("数据面最大落后", f"{worst_lag} 个交易日",
@@ -291,11 +347,23 @@ f2.metric("数据面最大落后", f"{worst_lag} 个交易日",
           delta_color="off" if worst_lag == 0 else "inverse")
 f3.metric("试验账本 N",
           (trial_counter or {}).get("count", "—"),
-          help="data/cache/trial_counter.json：这条研究线累计试过多少个变体，"
+          help="common/data/etf/cache/trial_counter.json：这条研究线累计试过多少个变体，"
                "DSR 的运气门槛随它收紧（#15 之前每轮被 reset 成 3）")
-f4.metric("标的池 / 全市场镜像",
-          f"{PORTFOLIO.get('top_k')} / "
-          f"{len(glob.glob(os.path.join(UNIVERSE_ALL_DIR, '*_daily.csv')))} 只")
+f4.metric("候选池", f"{len(pool_df) if pool_df is not None else 0} 只",
+          delta=None,
+          help="**每期能从哪些标的里挑**：`common/data/etf/cache/etf_universe_cache.csv`，"
+               "按指数组分桶、每只指数只留一条最早上市且过规模闸的代表 ⇒ "
+               "「100 只」读作「100 个指数组各一只」，不是 100 只随便挑。"
+               "由 `etf_universe.build()` 生成，不每天重算")
+f5.metric("同期持仓上限", f"{PORTFOLIO.get('top_k')} 只",
+          delta=None,
+          help="**同时持有几只**（`PORTFOLIO['top_k']`）。旧版把这格误标成「标的池」，"
+               "看着像只有 10 只可选；凑不满是分数门槛与可投域闸门共同作用的结果")
+f6.metric("全市场镜像",
+          f"{len(glob.glob(os.path.join(UNIVERSE_ALL_DIR, '*_daily.csv')))} 只",
+          delta=None,
+          help="`common/data/etf/universe_all/`：RD-Agent 侧与 `etf_admission` 的底座，"
+               "候选池就是从它里面按闸门挑出来的")
 if worst_lag:
     st.error("日线数据没有推到最新交易日。先跑："
              "`cd etf/v1/src && python data/update_etf_daily.py`"
@@ -307,45 +375,109 @@ if len(fresh):
                    "「主线池缓存」是 `DataLoader` 的第一优先级；风险长表决定规模闸与"
                    "折溢价能算到哪一天。三个面各按自己的节奏披露，所以分开看。")
 
+# ---------- 两个池：能挑什么 / 正在持有什么 ----------
+with st.expander("🅿 候选池与最新持仓（只读）", expanded=False):
+    st.caption("两件事分开看：**候选池**是每期能从哪些标的里挑（按指数组分桶，"
+               "每组一条代表），**持仓**是这一期实际挑中的那几只。两者都来自"
+               "已落盘产物，本页不改任何一个。")
+    if pool_df is None or pool_df.empty:
+        st.info("没有候选池缓存：跑 `cd etf/v1/src && python data/etf_universe.py`"
+                "（或任意一次 `main.py`，它会顺带建池）")
+    else:
+        cols = [c for c in ("code", "name", "index_group", "list_date",
+                            "median_amount", "avg_amount", "ann_vol")
+                if c in pool_df.columns]
+        show = pool_df[cols].copy()
+        for c in ("median_amount", "avg_amount"):
+            if c in show.columns:
+                show[c] = pd.to_numeric(show[c], errors="coerce") / 1e8
+                show = show.rename(columns={c: f"{c}(亿元)"})
+        st.markdown(f"**候选池 {len(show)} 只**（每个指数组一条代表）")
+        st.dataframe(show, hide_index=True, height=420)
+        st.caption("`median_amount` 是池缓存里那条指数的**中位日成交额**（换成亿元），"
+                   "规模闸看的就是它；`ann_vol` 是年化波动。")
+    if signals_df is not None and "code" in signals_df.columns:
+        held_last = _holdings(signals_df)
+        ts_col = signals_df.columns[0]
+        held_last = held_last[held_last[ts_col] == held_last[ts_col].max()]
+        held_last = _decorate_codes(held_last, "code").drop(columns=[ts_col])
+        st.markdown(f"**持仓（标的池）**：最新一次调仓 "
+                    f"`{str(_holdings(signals_df)[ts_col].max())[:10]}` 实际持有的 "
+                    f"{len(held_last)} 只")
+        st.dataframe(held_last.sort_values("weight", ascending=False)
+                     if "weight" in held_last.columns else held_last,
+                     hide_index=True)
+        grp = (_decorate_codes(_holdings(signals_df), "code")
+               ["index_group"].value_counts().head(10))
+        st.caption("入选次数最多的 10 个指数组（整段回测累计，用来看篮子是不是"
+                   "押在同一类资产上）：")
+        st.dataframe(grp.to_frame("入选次数"), hide_index=False)
+
+        theme_tbl, theme_kpi = _theme_view(signals_df)
+        if theme_tbl is not None and theme_kpi:
+            st.markdown(
+                f"**篮子押在几类资产上（方向层，只读）**：末场 "
+                f"`{theme_kpi['last_day']}` 最大的一格是 "
+                f"`{theme_kpi['last_top_direction']}` 占净值 "
+                f"{theme_kpi['last_top_weight']:.1%}；整段 "
+                f"{theme_kpi['bars']:,} 次调仓平均最大方向权重 "
+                f"{theme_kpi['avg_max']:.1%}、最坏 "
+                f"{theme_kpi['worst_max']:.1%}、平均同时押 "
+                f"{theme_kpi['avg_directions']:.2f} 个方向")
+            st.dataframe(theme_tbl, hide_index=True)
+            st.caption("方向由 `etf_theme.direction_of` 从 ETF 名字抠出（10 个方向"
+                       "：**成长系把半导体/芯片/AI软件通信/军工航天/新能源高端制造/"
+                       "科技综合/科创创业成长风格/平台互联网合成一格，因为它们在"
+                       "同一个市场因子上同涨同跌**）。这一格是**观察项**：09-28 两族"
+                       "档位实测（每类最多 N 席 / 每方向最多 N 席 / 每方向权重封顶）"
+                       "**没有一档在性价比上打得过现状**，所以没接任何集中度判据；"
+                       "读数在 `etf/v1/temp/tmp_conc_0927/`。权重之和 <100% 的那部分是"
+                       "现金（单标的上限 30% 压不住的空档）。")
+
 st.divider()
 
-# ---------- 业绩概要 ----------
-m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
-if eq_df is not None and not eq_df.empty:
-    eq = eq_df.set_index(eq_df.columns[0])["equity"]
-    total = eq.iloc[-1] / eq.iloc[0] - 1
-    span_days = max((pd.to_datetime(eq.index[-1]) -
-                     pd.to_datetime(eq.index[0])).days, 1)
-    ann = (1 + total) ** (365 / span_days) - 1
-    rets = eq.pct_change().dropna()
-    sharpe = float(rets.mean() / (rets.std() + 1e-9) * np.sqrt(252))
-    max_dd = float(((eq - eq.cummax()) / eq.cummax()).min())
-    m1.metric("区间", f"{str(eq.index[0])[:7]} ~ {str(eq.index[-1])[:10]}")
-    m2.metric("总收益率", _pct(total, signed=False))
-    m3.metric("年化收益率", _pct(ann, signed=False))
-    m4.metric("最大回撤", _pct(max_dd))
-    m5.metric("夏普（年化）", f"{sharpe:.2f}")
-    m6.metric("最终资金", f"{eq.iloc[-1]:,.0f}")
-if dsr_df is not None and not dsr_df.empty:
-    row = dsr_df.iloc[0]
-    d = float(row.get("dsr", 0))
-    m7.metric("全样本 DSR", f"{d:.4f}",
-              delta="过线" if d > 0.95 else f"门槛年化 {row.get('sr0_annual')}",
-              delta_color="normal" if d > 0.95 else "off",
-              help="Bailey & López de Prado (2014)。运气门槛 SR* 用 Lo(2002) 的"
-                   "夏普抽样方差 (1+0.5·SR̂²)/T 折算，与 SR̂ 同为逐 bar 量纲")
-
 # ---------- tabs ----------
-tabs = st.tabs(["📈 净值", "💼 持仓与交易", "🎯 统计验证", "🧪 ETF 风险",
+# 回测的三块（业绩概要 / 净值 / 持仓与交易）合进同一个 tab 并标"纸面"：它们全部是
+# `main.py` 拿真实历史日线重放出来的假账户，不是任何真实成交。以前"净值""持仓与交易"
+# 各占一 tab，紧挨着 ETF 风险那些真实读数，容易被读成"实盘赚了多少"。
+tabs = st.tabs(["📉 回测（纸面重放）", "🎯 统计验证", "🧪 ETF 风险",
                 "🧬 因子", "⚙️ 配置与生命周期", "📖 口径",
                 "🗂 日志与报告", "🔄 反馈闭环", "📡 影子盘监控"])
 
 with tabs[0]:
+    st.caption("这一页全是**回测**：用真实历史日线 + 当前因子 + 当前仓位规则重放一遍，"
+               "资金账户是纸面的（初始 1 万）。真实成交一律由人在券商端手工下单、"
+               "手工录回，本页不产生也不显示任何委托。")
     if eq_df is None or eq_df.empty:
         st.info("还没有净值产物：跑 `python main.py`（或 "
                 "`python run_daily_backtest.py`）")
     else:
         eq = eq_df.set_index(eq_df.columns[0])["equity"]
+        p1, p2, p3, p4, p5, p6, p7 = st.columns(7)
+        total = eq.iloc[-1] / eq.iloc[0] - 1
+        span_days = max((pd.to_datetime(eq.index[-1]) -
+                         pd.to_datetime(eq.index[0])).days, 1)
+        ann = (1 + total) ** (365 / span_days) - 1
+        rets = eq.pct_change().dropna()
+        sharpe = float(rets.mean() / (rets.std() + 1e-9) * np.sqrt(252))
+        max_dd = float(((eq - eq.cummax()) / eq.cummax()).min())
+        p1.metric("区间", f"{str(eq.index[0])[:7]} ~ {str(eq.index[-1])[:10]}")
+        p2.metric("总收益率", _pct(total, signed=False))
+        p3.metric("年化收益率", _pct(ann, signed=False))
+        p4.metric("最大回撤", _pct(max_dd))
+        p5.metric("夏普（年化）", f"{sharpe:.2f}")
+        p6.metric("最终资金", f"{eq.iloc[-1]:,.0f}")
+        if dsr_df is not None and not dsr_df.empty:
+            row = dsr_df.iloc[0]
+            d = float(row.get("dsr", 0))
+            p7.metric("全样本 DSR", f"{d:.4f}",
+                      delta="过线" if d > 0.95 else
+                      f"门槛年化 {row.get('sr0_annual')}",
+                      delta_color="normal" if d > 0.95 else "off",
+                      help="Bailey & López de Prado (2014)。运气门槛 SR* 用 "
+                           "Lo(2002) 的夏普抽样方差 (1+0.5·SR̂²)/T 折算，"
+                           "与 SR̂ 同为逐 bar 量纲")
+        st.divider()
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
                             row_heights=[0.72, 0.28],
                             subplot_titles=("净值", "回撤"))
@@ -368,7 +500,8 @@ with tabs[0]:
         if comp is not None and not comp.empty:
             st.dataframe(comp)
 
-with tabs[1]:
+# 持仓与交易接在同一张回测 tab 的下面（净值 → 持仓 → 流水，按"怎么赚的"顺序读）
+with tabs[0]:
     if signals_df is None or "code" not in signals_df.columns:
         st.info("signals.csv 不是截面组合长表（缺 code 列）——重跑 `python main.py`")
     else:
@@ -384,7 +517,7 @@ with tabs[1]:
         c4.metric("空仓调仓次数", int(n_rebal - held[ts_col].nunique()))
         last_day = held[ts_col].max()
         st.subheader(f"最新一次调仓（{str(last_day)[:10]}）")
-        latest = held[held[ts_col] == last_day]
+        latest = _decorate_codes(held[held[ts_col] == last_day], "code")
         cols = [c for c in latest.columns if c != ts_col]
         st.dataframe(latest[cols].sort_values(
             "weight", ascending=False) if "weight" in cols else latest)
@@ -404,7 +537,7 @@ with tabs[1]:
         else:
             st.info("无成交")
 
-with tabs[2]:
+with tabs[1]:
     st.caption("三条判决各自独立：全样本 DSR 看「这条净值曲线是不是运气」，"
                "walk-forward 看「换段时间还成不成立」，策略级 PBO 看「挑参数这件事"
                "本身有多大概率过拟合」。#15 之前三条恒不产生信息（DSR 恒 0、"
@@ -547,7 +680,7 @@ with tabs[2]:
                 title="各配置组合的 logit ω̂ 分布（≤0 即样本外丢了冠军）",
                 height=300))
 
-with tabs[3]:
+with tabs[2]:
     @st.cache_data(ttl=3600, show_spinner="正在读份额/净值面板并算规模…")
     def risk_bundle(key):
         import etf_admission as EA
@@ -670,7 +803,7 @@ with tabs[3]:
             st.dataframe(pd.DataFrame(rows),
                          hide_index=True)
 
-with tabs[4]:
+with tabs[3]:
     st.subheader("终态因子与权重")
     if params:
         w = params.get("factor_weights") or {}
@@ -757,7 +890,7 @@ with tabs[4]:
     if not hv.empty:
         st.dataframe(hv, hide_index=True)
 
-with tabs[5]:
+with tabs[4]:
     st.subheader("策略参数与生命周期")
     if params:
         st.json(params.get("risk_params") or {}, expanded=True)
@@ -792,7 +925,7 @@ with tabs[5]:
               datetime.fromtimestamp(newest).strftime("%Y-%m-%d %H:%M")
               if newest else "—")
 
-with tabs[6]:
+with tabs[5]:
     st.subheader("指标口径")
     st.markdown("| 指标 | 中文名 | 含义与参考口径 |\n|---|---|---|\n"
                 + "\n".join(f"| `{k}` | {l} | {d.replace('|', chr(92) + '|')} |"
@@ -830,9 +963,9 @@ with tabs[6]:
   假 bar，进任何统计前先夹掉；台阶是永久的，所以护栏在读取侧而不是清洗侧。
 """)
     st.caption("本页不产生文件、不改判据。所有数字来自 `data/results/` 与 "
-               "`data/risk/`，口径以 `src/` 里的实现为准。")
+               "`common/data/etf/risk/`，口径以 `src/` 里的实现为准。")
 
-with tabs[7]:
+with tabs[6]:
     # 这一节的存在理由：日更和三环都在往 `log/`、`report/` 落东西，以前要看只能
     # 开终端 tail。看板既然每 1 分钟查一次盘，就把这两处也接进来——仍然**只读文件**，
     # 不在这里起进程、不重跑脚本。
@@ -905,8 +1038,8 @@ with tabs[7]:
 
 # ---------- 以下两节原样来自 app_feedback.py / app_live.py ----------
 # 页内还各自带一层子页签（反馈 12 个 / 影子盘 3 个），所以整块交给 render() 画。
-with tabs[8]:
+with tabs[7]:
     render_feedback()
 
-with tabs[9]:
+with tabs[8]:
     render_live()

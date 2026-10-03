@@ -272,5 +272,4 @@ shell/**
 common/data/**
 !common/data/**/
 !common/data/*/risk/*.csv
-
-etf/v1/temp/
+common/data/etf/cache/

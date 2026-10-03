@@ -72,7 +72,7 @@ CHECKS = [
     ("§6.3 15:00 收盘闸", "common/src/data/stock/update_qlib_bin_daily.py", 163, 164, "CLOSE_HM"),
     ("§6.3 未来场次闸（抓数之前）", "common/src/data/stock/update_qlib_bin_daily.py", 306, 307, "def guard_session"),
     ("§6.3 复用缓存前对表", "common/src/data/stock/update_qlib_bin_daily.py", 190, 191, "def align_against_bin"),
-    ("§18.8 conda 候选路径", "common/src/core/official_rdagent.py", 21, 26, "conda"),
+    ("§18.8 conda 候选路径", "common/src/core/official_rdagent.py", 25, 32, "_CONDA_CANDIDATES"),
     # 431/445 → 443/457：10-01「甲」在 FACTOR_LIBRARY 段插进 static_gate
     # 那 12 行，把这两格整体推下 12 行（同批同步，非代码语义变化）
     # 10-03「甲（模型单入口）」：config_base.py 在 RDAGENT_COSTEER_MAX_LOOP 之后插了
@@ -81,7 +81,7 @@ CHECKS = [
     # 读数（+54 行）⇒ 292/327 起 +54；这两格**动手前就已红**（并行会话同日在 ③ 前置
     # 链里加过代码），本批一并重挂，不是只跟我自己挪的那部分。
     ("§5.1 容器内 provider_uri", "common/src/config_base.py", 443, 447, "qlib_data"),
-    ("§5.1 容器资源 shm/mem", "common/src/config_base.py", 463, 481, "4"),
+    ("§5.1 容器资源 shm/mem", "common/src/config_base.py", 485, 491, "QLIB_DOCKER_SHM_SIZE"),
     ("§12.3 重挖触发阈值", "common/src/config_base.py", 344, 351, "dsr_threshold"),
     ("§12.2 风控基线", "common/src/config_base.py", 314, 315, "daily_stop_loss"),
     ("§12.3 触发判定入口", "common/src/optimizer/trigger_logic.py", 48, 50, "def check"),
@@ -146,19 +146,49 @@ CHECKS = [
      "ic_min_threshold"),
     ("§18.11 折内 >240 bar 闸（宽度只有 4/17/69 只的来源）", "etf/v1/src/backtest/walk_forward.py",
      93, 93, "240"),
-    ("§18.11 official 回收读固定目录、不分折", "common/src/core/official_rdagent.py", 346, 346,
+    # ↓ 10-03「C2/C3 收尸」在该文件顶部加 import signal + 三个新函数（净 +64 行）
+    #   ⇒ 346/381 与 48/53 四格整体下移，本批重挂（牙在 etf/v1/temp/check_reap_group_1003.py）
+    ("§18.11 official 回收读固定目录、不分折", "common/src/core/official_rdagent.py", 415, 415,
      "RDAGENT_OUTPUT_DIR"),
-    ("§18.11 超时分支直接交回既有产物", "common/src/core/official_rdagent.py", 381, 389, "harvest"),
+    ("§18.11 超时分支直接交回既有产物", "common/src/core/official_rdagent.py", 455, 463, "harvest"),
     # ↓ 10-03 §18.13「跑一次为什么起两个本地模型」：甲只统一**配置入口**并把选型变成**读数**，
     #        四根新针钉的是正文那四个 `文件:行号`（正文归正文、这把尺子只认这张表）
     ("§18.13 两源并发＝两个模型同时常驻的那一行", "common/src/core/multi_source_mining.py",
      184, 184, "ThreadPoolExecutor"),
     ("§18.13 单入口键＝默认留空不注入", "common/src/config_base.py", 470, 470,
      'd["RDAGENT_LLM_MODEL"]'),
-    ("§18.13 注入点（压过工作区 .env）", "common/src/core/official_rdagent.py", 48, 49,
+    ("§18.13 注入点（压过工作区 .env）", "common/src/core/official_rdagent.py", 53, 53,
      'env["LITELLM_CHAT_MODEL"]'),
-    ("§18.13 读数的取数点", "common/src/core/official_rdagent.py", 53, 53,
+    ("§18.13 读数的取数点", "common/src/core/official_rdagent.py", 62, 62,
      "def official_chat_model"),
+    # ↓ 10-03 夜「C2/C3 收尸」：正文那五处 `文件:行号` 同批钉住（牙=
+    #   etf/v1/temp/check_reap_group_1003.py，六臂 17 格全绿）
+    ("§18.13 C3 直调环境内解释器", "common/src/core/official_rdagent.py", 99, 99,
+     "def _find_env_python"),
+    ("§18.13 C2 整组收尸单点", "common/src/core/official_rdagent.py", 122, 122,
+     "def _reap_group"),
+    ("§18.13 驱动自成一组", "common/src/core/official_rdagent.py", 470, 470,
+     "start_new_session=True"),
+    ("§18.13 超时那一句走收尸不是 kill 外壳", "common/src/core/official_rdagent.py", 477, 477,
+     "_reap_group(proc)"),
+    ("§18.13 回收只查文件存在（B6 未裁、仍是旧档）", "common/src/core/official_rdagent.py", 498, 498,
+     "os.path.exists(path)"),
+    # ↓ 10-03 夜「乙+ kwargs 补丁」：正文那六处 `文件:行号` 同批钉住（牙=
+    #   etf/v1/temp/check_llm_kwargs_patch_1003.py，两套解释器 17/21 格全绿；破坏性自证＝
+    #   把 `litellm.completion = completion` 换成 `pass` ⇒ 恰好 F5 三格 + F7 before + F8 on
+    #   五格红、rc=1，该绿的 F6/F7 after/F8 off 原样绿）
+    ("§18.13 乙+ 配置键＝默认空串不注入", "common/src/config_base.py", 480, 480,
+     'd["RDAGENT_LLM_KWARGS"]'),
+    ("§18.13 乙+ 外壳透传（非空才进子进程 env）", "common/src/core/official_rdagent.py", 56, 56,
+     "extra = str(RDAGENT_LLM_KWARGS"),
+    ("§18.13 乙+ 驱动解析（坏值必须抛不许静默）", "common/src/core/rdagent_driver.py", 27, 27,
+     "def _parse_llm_kwargs"),
+    ("§18.13 乙+ 驱动打补丁（包 litellm.completion）", "common/src/core/rdagent_driver.py", 43, 43,
+     "def _patch_llm_kwargs"),
+    ("§18.13 乙+ 现场核绑定（核不上就抛）", "common/src/core/rdagent_driver.py", 67, 67,
+     "def _verify_llm_patch"),
+    ("§18.13 乙+ 调用点：补丁必须打在 import rdagent 之前", "common/src/core/rdagent_driver.py",
+     354, 361, "from rdagent.app.qlib_rd_loop.factor import"),
     # ↓ 10-01 §18.12「多角色前置假设闸（默认关）＋ 4 处 str.format 根除」：四套 prompt、
     #   确定性定稿、开关唯一生效点、三处接线、四处 fill 落点
     ("§18.12 假设生成角色 prompt", "common/src/core/hypothesis_roles.py", 38, 38,
@@ -180,7 +210,7 @@ CHECKS = [
     ("§18.12 未来函数硬拒（10-01 移到 factor_static_check）", "common/src/core/factor_static_check.py", 47, 47, "def check_lookahead"),
     ("§18.12 开关唯一生效点（活读不快照）", "common/src/core/hypothesis_roles.py", 150, 151,
      "bool(HYPOTHESIS_ROLES) and self._llm.enabled"),
-    ("§18.12 开关默认空＝关", "common/src/config_base.py", 527, 527, 'd["HYPOTHESIS_ROLES"]'),
+    ("§18.12 开关默认空＝关", "common/src/config_base.py", 537, 537, 'd["HYPOTHESIS_ROLES"]'),
     ("§18.12 接线：闸开走四角色", "common/src/core/llm_factor_agent.py", 83, 85,
      "self.gate.enabled"),
     ("§18.12 丙：闸关原路那处 fill", "common/src/core/llm_factor_agent.py", 99, 99,
@@ -247,7 +277,7 @@ CHECKS = [
      "import qlib"),
     ("§3.1 面板生成器走 D.features", "common/rdagent_docker/pregen_source_data.py", 165, 166,
      "D.features"),
-    ("§3.1 容器内 qlib 回测的指标落点", "common/src/core/rdagent_driver.py", 108, 108,
+    ("§3.1 容器内 qlib 回测的指标落点", "common/src/core/rdagent_driver.py", 176, 176,
      "experiment.result"),
     ("§3.1 Alpha158 特征器来自 qlib", "stock/v1/temp/alpha158_scope_0926.py", 18, 19,
      "Alpha158DL"),

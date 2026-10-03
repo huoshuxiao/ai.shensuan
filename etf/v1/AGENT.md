@@ -638,7 +638,7 @@ ETF 看板末节 09-27 起叫「影子盘监控」，只读 `data/live/` 的三�
    `_bootstrap` 引用与 50 处裸 import，回归面 = 日更链 + 3 个看板 + 两线三环（组合层 569 个
    调仓日回放）。**动它之前必须先划范围。**
 8. **硬编码路径的已知例外**（与 §5 精神冲突，逐条列清）：`run_ashare_daily_chain.py:94` 的
-   `/usr/bin/python3.10`、`official_rdagent.py:21-26` 的 conda 候选路径、
+   `/usr/bin/python3.10`、`official_rdagent.py:25-32` 的 conda 候选路径、
    `dump_qlib_bin.py:256` 的 conda python 绝对路径、容器内固定 provider_uri。
 9. **ETF 线未结项**：环2 合成因子输给最好零件；`S4_pca` 死分支要动共享层（越出单线范围，待
    授权）；ETF 特有风险闸门里只有规模闸进了判据，清盘线与折溢价仍只是读数。另有三条 09-28
@@ -767,8 +767,8 @@ ETF 看板末节 09-27 起叫「影子盘监控」，只读 `data/live/` 的三�
     ⑦ 顺带把 #26 那条非点时泄漏量成了具体形状：**三折回收的是同一份 official 文件**（09-30 10:2x
     补量报价，`temp/official_pit_probe_0930.py`，读数存 `temp/official_pit_probe_0930.log`）—— 折 1/2/3
     那三次 `⚠️ 超时 7200s 已终止` 之后打印的「`factors.json`，落盘于 2026-09-29 18:36」与主线
-    [3/9] 那一行**逐字相同**（`common/src/core/official_rdagent.py:346` 的 `output_dir` 默认就是
-    固定目录 `RDAGENT_OUTPUT_DIR`、不分折，`:381 harvest()` 在超时分支里直接读它；折内那一轮被子进程
+    [3/9] 那一行**逐字相同**（`common/src/core/official_rdagent.py:415` 的 `output_dir` 默认就是
+    固定目录 `RDAGENT_OUTPUT_DIR`、不分折，`:455 harvest()` 在超时分支里直接读它；折内那一轮被子进程
     `kill()` 打死 ⇒ 驱动 `finally` 里那次回收没来得及写），而 18:36 那一份是在**全历史面板**上挖出来的
     ⇒ 折内「本折训练段挖出来的因子」这句话对 official 这一源名不副实：
     `recount_foreign_ic` 只把 IC 数在本折重算了，**候选是全集挑出来的**这一层没人重算。
@@ -870,8 +870,8 @@ ETF 看板末节 09-27 起叫「影子盘监控」，只读 `data/live/` 的三�
     ——几何与池口径同时在动；② **official 这条腿被 `docker info` 超时挡成静默 0 产出、全场 rc 仍 0**
     （16:3x 手工敲同一命令秒回 26.1.3／7 容器 ⇒ 是并发下探测超时，不是 daemon 没起）——与 #47 同族、
     换了依赖。**10-01 夜用户裁「甲」＝两处一起修**（细节见 CHANGELOG 同日条目）：
-    ① 共享层 `common/src/core/official_rdagent.py:108` `_DOCKER_PROBE_ATTEMPTS=2`／
-    `:82 _DOCKER_PROBE_TIMEOUT=45` ⇒ **只有"超时"这一种失败才重试**（权限被拒、daemon 无响应
+    ① 共享层 `common/src/core/official_rdagent.py:177` `_DOCKER_PROBE_ATTEMPTS=2`／
+    `:178 _DOCKER_PROBE_TIMEOUT=45` ⇒ **只有"超时"这一种失败才重试**（权限被拒、daemon 无响应
     是确定性错误，再敲一遍只会更慢），第 2 次才通时把"机器在抖动，不是没起"念出来；
     ② 本线链路长出第 **G** 条验收 `etf/v1/src/run_etf_daily_chain.py:567`（判据本体）＋
     `:529` `official_leg_evidence()`（只拆日志不判）⇒ 那一腿**静默交白卷**（自陈未运行且产出 0／
@@ -901,7 +901,7 @@ ETF 看板末节 09-27 起叫「影子盘监控」，只读 `data/live/` 的三�
     `:146-148`（反思者顶掉旧的「上轮平均 IC=…」一行）、`:166-167`（收尾打印账单）；闸的返回形态
     `[{"name","expr","reason"}]` 与 `_generate` 一字不差 ⇒ `_evaluate`／IC 门槛／判重环**零行未改**。
     开关 `HYPOTHESIS_ROLES`（本线 `ETF_HYPOTHESIS_ROLES`）默认 `""`＝关
-    （`common/src/config_base.py:527`），唯一生效点
+    （`common/src/config_base.py:537`），唯一生效点
     `hypothesis_roles.py:217-218` `enabled = bool(HYPOTHESIS_ROLES) and self._llm.enabled`
     ——**必须活读不能构造时快照**：`multi_source_mining._run_simple` 是在 agent 构造**之后**才翻
     `agent.llm.enabled` 的，快照会让开关永远读成关。
@@ -939,28 +939,80 @@ ETF 看板末节 09-27 起叫「影子盘监控」，只读 `data/live/` 的三�
     **甲（已落）＝只统一入口，一行选型未改**：`RDAGENT_LLM_MODEL`（`common/src/config_base.py:470`，
     本线键 `ETF_RDAGENT_LLM_MODEL`）**代码里的默认仍是 `""`**＝不注入、以工作区 `.env` 为准；写了值
     就在父进程注入 `LITELLM_CHAT_MODEL` 压过那份 `.env`（`load_dotenv` 默认 `override=False`，与
-    `CoSTEER_MAX_LOOP` 同机制、同函数 `common/src/core/official_rdagent.py:34 _driver_env`）；股票线经
+    `CoSTEER_MAX_LOOP` 同机制、同函数 `common/src/core/official_rdagent.py:38 _driver_env`）；股票线经
     `config_base.build()` 自动继承同一根键，本批未改它一行。**⚠️ 丙（10-03 晚裁「一」）＝本线 `.env`
     已把这根键写成 `ollama_chat/qwen3.5:9b` ⇒ 这台机器上 ETF 线的默认已经是"官方支也用 9b"，
     而"留空＝不注入"只是机制、不再是本线默认**（`etf/v1/.env` 不进版本库 ⇒ 这条默认只活在本机，
     仓库里可复原的是那一行文字与下面的夹具；股票线那份 `.env` 没设这根键，行为一字未变）。
     同时「这一场官方支用哪个模型、值从哪儿来」
-    变成 ③ 前置体检那行 `LLM 端点` 尾巴上的**读数**（取数点 `official_rdagent.py:53 official_chat_model`
+    变成 ③ 前置体检那行 `LLM 端点` 尾巴上的**读数**（取数点 `official_rdagent.py:62 official_chat_model`
     返回 `(模型, 来源)`）——**只加读数、不设闸**：体检任一行判 `False` 即等于「RD-Agent(Q) 本次未运行」，
     把"模型没配"判成否决会改掉判据语义，所以只塞 detail、不动 `ok` 那一位。
     **乙（已量，10-03）＝一场真跑把「两个模型」买成一个，但 7200 秒那堵墙原样撞**：只在起场那一行注入
     `ETF_RDAGENT_LLM_MODEL=ollama_chat/qwen3.5:9b`（当时仓库默认值与两份 `.env` 一行未动 ⇒ 那一场是读数
     不是新基线；当晚用户再裁「一」，同一个值才落成 `etf/v1/.env` 的默认，见上「丙」）。
-    与 10-02 20:43 那场 7b 基线同尺对表：**两场都 `⚠️ 超时 7200s 已终止`**（卡官方支的是那道超时不是模型智力）；
-    抢救入库 **7b `+2` → 9b `+4` (来源=official)**；全场墙钟 **2:51:39 → 3:19:03**（多付 27 分钟）；
+    与 10-02 20:43 那场 7b 基线同尺对表：**两场都 `⚠️ 超时 7200s 已终止`**；全场墙钟 **2:51:39 → 3:19:03**（多付 27 分钟）；
     **常驻模型数 2 → 1**（采样器每 60s 抓一次 `ollama ps`，197 次只出现 `qwen3.5:9b`，7b 一次都没被加载）。
-    ⚠️ 引用那两个"+2/+4"必须带：两场的库版本与行情日都不同（本场前 HEAD `2edf892` 54 总、本场收在
-    `56e2da9` 60 总）⇒ 它只回答「这一支到底有没有产出」，**不是质量结论**；而 `/usr/bin/time -v` 的
-    峰值 0.58GB **只量到 python 外壳**、ollama 那 6.1GB 不在内 ⇒ "只剩一个模型"靠采样立、不靠它。
+    **⚠️ 本条原文那句「抢救入库 7b `+2` → 9b `+4` ⇒ 卡官方支的是超时不是模型智力」是错的，10-03 深夜复查两场
+    日志后推翻（自查：拿 `ls -l --time-style` 比了回收那行念的落盘时刻才发现的，不是用户指出）**。那两个数
+    **都不是这两场自己产出的**，是从**上一场遗留**的 `factors.json` 里捞的旧档：7b 场回收那行念的是
+    「9 个因子，**落盘于 2026-09-29 18:36**」（比它开场早 3 天），9b 场念的是「12 个因子，**落盘于
+    2026-10-03 10:59**」（比它开场 11:10 早 11 分钟＝10:58 那次注错裸模型名、10 连败退出那一场写的）。
+    病因在回收那一步：`official_rdagent.py:498` 只 `os.path.exists(path)` 就收，`:516` 把 mtime **当文字念出来**
+    而不作判据 ⇒ 文件是谁写的、什么时候写的，一句都不问（这条只加读数不改判据的历史行为，本批未动，
+    等裁 B6）。
+    「这场到底有没有产出」只能看驱动自己的回显，三行同尺读数（方法：先剥 ANSI 色码
+    `\x1b\[[0-9;]*m`，再按 `\[RD-Agent\]\s*Content:` 切空/非空；不剥码正则一条都抓不到——同一个坑本会话踩过两次）：
+    ① `[driver] rdagent factor 循环启动 loop_n=5`：7b 场 `queue_3_j3_default.log:826` 有这一行，**9b 场整份 0 次**
+    ⇒ 驱动没走到循环本体；
+    ② `Role:assistant` **正文为空**的次数：**7b 0 / 9b 122**（非空 90 / 108）；
+    ③ 「No previous hypothesis…first round」（＝它以为自己还在第一轮）：**7b 3 次 / 9b 55 次**，
+    `Token count` 行 **7b 230 / 9b 10**。
+    ⇒ **结论翻正：同一道 7200s 墙，7b 走完约 2 轮、9b 一轮没走完，模型确实决定走不走得完**；那句
+    「超时不是模型智力」作废。②那种"回话里正文是空串"的形状与本机记忆里 9b 带思考吃空正文是同一种**表象**，
+    机制**10-03 夜已由本批 B4 那五臂探针量完**（`etf/v1/temp/probe_rdagent_9b_channel_1003.py`，
+    五臂全表在 `etf/v1/CHANGELOG.md` 当日条目），三条读数要一起念：
+    ① **生产形态那一句（`ollama_chat/9b` 裸调、不加任何参数）单次实测 1653.7s、正文 0 字符、思考 16726 字符、
+    `finish=length`** ⇒ 4096 窗口被思考吃光、答案被最大长度截掉，这就是②那 122 次空正文的成因；
+    ② **顶层 kwargs 能关思考、环境变量不能**：加 `think=False` ⇒ 44.0s 出 517 字符正文（思考 0 字符）；
+    `/v1` 口带 `reasoning_effort="none"` ⇒ 39.2s 同样关干净。对照臂（同口不带那个键）1303.4s 空正文。
+    ⇒ 「关不掉」只对 `LITELLM_*` 那条 env 路成立（`reasoning_effort` 类型是 `Literal["low","medium","high"] | None`），
+    kwargs 这条路是活的；
+    ③ ~~**但快的那两臂正文 JSON 都不可解析**~~ ⇒ **这一条 10-03 夜由「甲」第二轮作废**（`probe_rdagent_9b_channel_r2_1003.py`，
+    换成**生产逐字节真提示词**、全文与报错原文都落盘、便宜臂各打 3 次）：真提示词下 `think=False` 那臂 **3/3 次
+    `json.loads` 通过**、`/v1`+`reasoning_effort="none"` 那臂也 **3/3 通过**，形状正是提示词尾部要求的
+    `{"hypothesis","reason"}` 两键 ⇒ 第一轮那个「非法正文」是**我造的短提示词的产物**，不是通道的病。
+    同轮 B0（生产形态）复现成功：8539 字思考、正文 0、787s 被我掐表。**稳态 46~80s/次**，但**每个臂的第一次
+    都 220~260s**（换 `num_ctx` 要重装配驻留模型，B2 第一次直接撞上重载超时）⇒ 46~80s 只能当「连着问同一形状」的数，
+    **不许拿它当每次调用的预算**。⚠️ 单次墙钟不是常数：同一形状的 `num_ctx=16384` 臂两轮差 2.9 倍
+    （838.6s vs 2449.5s）⇒ 第一轮的 `7200 ÷ 2449.5 ≈ 2.9` 按第二轮是 ~8 次，**方向不变（几十次撑不下）、量级别钉死**。
+    **另量到一条更根本的（`probe_prompt_token_fit_1003.py`，用 ollama 上报的 `prompt_eval_count`，负对照 `hi`=13）**：
+    那条真提示词实际 **5502 token**（比我先前 tiktoken 数的 5088 还多），生产默认窗口里只进了 **2050**
+    ⇒ **每发一次模型只看 37%、63% 被丢**（且没填满 4096 就停了，为何落在 2050 未测）。但 **7b 一直在同一截断下跑出过因子**
+    ⇒ 截断**不是** 9b 0 轮的原因，是两线共有的既有条件；撑回完整提示词的价＝驻留 +0.5GB、prefill 从 200.7s 涨到 593.4s。
+    另记一条工程事实：**`request_timeout` 管不住流式请求的总时长**
+    （300s 上限实跑 1653.7s），官方支真正的时间闸只有外壳那道 `RDAGENT_TIMEOUT_SEC`。
+    ⚠️ 引用这段仍要带：两场库版本与行情日不同（本场前 HEAD `2edf892` 54 总、本场收在 `56e2da9` 60 总）；
+    而 `/usr/bin/time -v` 的峰值 0.58GB **只量到 python 外壳**、ollama 那 6.1GB 不在内 ⇒ "只剩一个模型"靠采样立、不靠它。
     ⚠️ **新缺口＝超时杀外壳、conda 那层托孤**：主线 14:29 rc=0 收工后，11:10:35 起的 `rdagent_driver.py`
     到 16:53 仍在跑（5h43m，20s 内 CPU +0.77s 不是卡死），只往 `rdagent_output/log/…/token_cost/<pid>/*.pkl`
     落记账文件（约 2 分钟一枚），**决策面一样没碰**（库三文件 13:35、五张表 13:43、`factors.json` 10:59），
     代价是把 9b 钉在内存里、可用被压到 4.6GB ⇒ `official_rdagent` 的超时只管自己那一层，没人负责停 conda 层。
+    **✅ 这一条 10-03 夜按用户裁「C2/C3」已修（共享层，两线同时受益）**：拉起那行原本写死
+    `conda run -n rdagent python …`，`sg docker -c` 又在外面包一层 shell ⇒ `proc.kill()` 只杀得到最外壳，
+    驱动 python 变孤儿（上面那枚就是）。改两处：
+    **C3＝能直调环境内解释器就不走 `conda run`**（`official_rdagent.py:99 _find_env_python`，
+    找不到才退回老写法，退路是活的不是摆设）；
+    **C2＝`Popen(start_new_session=True)`（`:470`）让驱动自成一组 + 超时走整组收尸**
+    （`:122 _reap_group`＝`killpg(SIGTERM)`→宽限 30s→仍在就 `killpg(SIGKILL)`，调用点 `:477`），
+    并把**收尸读数如实打出来**：`收尸读数: {note}｜残留容器={_leftover_containers(need_sg)}`（`:149`）——
+    只观察容器、不代为清理，符合「只 kill 自己拉起的组」这条线。牙在
+    `etf/v1/temp/check_reap_group_1003.py`（六臂 17 格、10-03 实跑 **17 通过 / 0 不通过 / rc=0**）：
+    正对照是 Q5——同一棵三层树按**老写法** `proc.kill()`，两个孙进程**必须还活着**（实测残留 2 枚，
+    由夹具自己收掉），否则 Q4 的「killpg 后组内一个不剩」就只是判据松；Q3d 又补一格"不设
+    `PYTHONNOUSERSITE` 时 user-site 确实漏进 `sys.path`"，证明 Q3e 那格隔离不是恒真。
+    ⚠️ 没动的两件事：B6（拒绝回收上一场旧档）用户**未选**，所以 `:498` 那格仍只查文件存在；
+    C1（把托孤那枚读成常态指标）也未选，本批不扫别人的进程。
     ⚠️ **注入值必须带 litellm 的 provider 前缀**：10:58 我第一次写成裸名 `qwen3.5:9b` ⇒ 官方支第一次调用就
     `LLM Provider NOT provided`、10 连败退出，而外壳 `finally` 会去**回收上一场旧会话的陈表达式**（少前缀不只是
     没产出，是可能写脏）；那场账＝`trial_counter` 371→375（+4 不可回滚），生产面与快照逐字节对表证明没写坏。
@@ -978,6 +1030,36 @@ ETF 看板末节 09-27 起叫「影子盘监控」，只读 `data/live/` 的三�
     config_base 457-475→463-481、521→527，另为本节新增 4 根＝并发那行、单入口键、注入点、读数取数点；剩下 7 条红
     无一在本会话改过的文件里）。**丙落地后（`.env` 设默认＋夹具换臂）同晚复跑＝302 用例 61.18s rc=0、
     42 用例 1.96s rc=0、引证同数 171/164/7** ⇒ 一根针没被挪歪。更早那条流水里的 `167/160/7` 是加针之前的数，以本条为准。
+    **✅ 乙+（10-03 22:0x 落地）＝把上面那条 kwargs 通道接进驱动，闸门默认关**：三层各一职——
+    配置键 `common/src/config_base.py:480`（`RDAGENT_LLM_KWARGS`，**默认空串**）、外壳透传
+    `common/src/core/official_rdagent.py:56`（非空才进子进程 env，留空＝这个键根本不出现）、
+    驱动补丁 `common/src/core/rdagent_driver.py:27` 解析 / `:43` 包 `litellm.completion` / `:67` 现场核绑定，
+    调用点在 `:354`–`:361`（**补丁必须打在 import rdagent 之前**，因为它的 backend 是 `from litellm import
+    completion` 这种**早绑定**写法；核不上直接抛「不要跑这一场」＝宁可不起也不白烧三小时）。
+    牙在 `etf/v1/temp/check_llm_kwargs_patch_1003.py`：F1–F6 假件 17 格（空配置不注入 / 坏 JSON 与嵌套都必须抛 /
+    调用方显式值不被补丁盖掉 / 早绑定必须判红），F7 两臂真件（正序放行、**反序必须红**＝这一臂红才算夹具成立），
+    F8 两臂**整条 `driver.main()` 真跑**——只把循环入口换成假件、backend 用真件，于是"打在 import 之前"这个次序
+    被真绑定检验一次，全程 0 次 LLM 调用。两套解释器实跑：系统 python3.10 **17 格绿 rc=0**（真件那两臂如实打
+    「跳过」，跳过≠通过）、rdagent 环境 **21 格绿 rc=0 / 29 秒**。配置层另有一支两臂读数
+    `etf/v1/temp/check_kwargs_env_plumbing_1003.py`（设值 ⇒ 子进程 env 有该键且**逐字节等于**传入串；
+    留空 ⇒ env 里**没有**这个键）6 格绿 rc=0。
+    **破坏性自证**：把驱动里 `litellm.completion = completion` 换成 `pass`（＝补丁是个空壳）再跑 ⇒
+    **恰好 5 格红**（F5 三格 ＋ F7 before ＋ F8 on）、`失败项` 逐条点名、**rc=1**，而该绿的（F6 两格 /
+    F7 after / F8 off）原样绿；还原后 sha256 与动前逐字节相同（`cfa23090cfdfd040…`）。
+    ⚠️ 这一批**自己踩到并当场翻出**的一笔（与记忆里"报了还退 0"正好是镜像）：夹具第一版
+    **21 格全绿却 rc=1**——F8 那格的局部变量名叫 `rc`（子进程退出码，是字符串 `"0"`），把父函数末尾
+    `return 1 if FAILS else rc` 依赖的那个 `rc`（本线判定，整数 0）**覆盖掉** ⇒ `SystemExit("0")` 被解释成
+    "打印这句话并按 1 退出"。改名为 `child_rc` 后两套解释器均 rc=0。
+    ⚠️ **接线≠跑通**：这一层只证「通道接得上、开关有牙、留空＝零行为变化」，**没证**「真跑一轮要几分钟、出不出因子」
+    （甲那五臂给的是**单次调用** 46~260 秒，一场循环是几十次调用，中间隔着一整场真跑）。开启一行
+    `ETF_RDAGENT_LLM_KWARGS={"think": false, "num_ctx": 16384}`（写 `.env` 或 export 皆可），
+    代价同甲：驻留 +0.5GB、每次调用 prefill 多约 390s；真跑约 3 小时**待用户批**，本会话 `.env` 一个字没写。
+    回归面（乙+ 落地后 10-03 22:5x 全部现跑）：本线 **302 用例 rc=0**、股票线 **42 用例 rc=0**、引证
+    **182 条 / 通过 175 / 不通过 7（rc=1）**——本节为乙+ 新增 6 根、重挂被顶掉的 10 根，另**收紧 3 根
+    「碰巧还绿」的针**（针眼从 `conda`／`4` 这种整片都能命中的词换成符号名，行号按真位置挪准）并拿副本
+    实跑验过牙（改错 ⇒ 恰好新增 3 条红、rc=1）；两支旧夹具各 **17/0 rc=0**。那 7 条红**无一落在本会话
+    改过的文件**里（`requirements.txt`、`config.py` 三处、`walk_forward.py`、`run_checkpoint.py`、
+    `run_etf_daily_chain.py`，按规矩不代改）。逐笔账单在 CHANGELOG 同日「乙+」那节。
 
 ---
 

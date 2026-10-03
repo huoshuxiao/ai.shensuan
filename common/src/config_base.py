@@ -468,6 +468,16 @@ def build(line_root, env_prefix="ETF_", freq_default="daily", market="etf"):
     # provider 前缀**（本仓两份 .env 都写全名 `ollama_chat/…`）——10-03 实测少前缀＝官方
     # 支第一次调用 10 连败退出。它与 LLM_MODEL（主线侧）是两个模型，两支并发⇒同时常驻。
     d["RDAGENT_LLM_MODEL"] = env("RDAGENT_LLM_MODEL", "").strip()
+    # 官方支那一次 LLM 调用的**顶层 kwargs 补丁**（JSON 对象，留空＝一字不注入）。
+    # 为什么要这么窄的一个口子：10-03 两轮探针实测，「关思考」在 `LITELLM_*` 那套
+    # 环境变量上**表达不出来**（`LiteLLMSettings.reasoning_effort` 的类型是
+    # `Literal["low","medium","high"] | None`，`litellm` 的 ollama 转换层只在它非空时
+    # 才发 `think`、发出去还是恒 True），**只有走 `litellm.completion(...)` 的 kwargs
+    # 这条路关得掉**。本键就是那条路的开关，ETF 侧实测值：
+    #   {"think": false, "num_ctx": 16384}   → 思考 0 字符、正文 3/3 次是合法 JSON
+    # `num_ctx` 是把窗口撑到装得下真提示词（那条 hypothesis_gen 有 5502 token，
+    # 生产默认窗口只让它进 2050）；代价：驻留内存 +0.5GB、每次调用 prefill 多约 390s。
+    d["RDAGENT_LLM_KWARGS"] = env("RDAGENT_LLM_KWARGS", "").strip()
     # 挂载点 = provider_uri 往上两级（由构造保证二者永远一致，改一边不会漏改）
     _qlib_mount = os.path.dirname(os.path.dirname(_qlib_provider))
     # factor 循环子进程最长运行时长（秒）；超时即回收并记录

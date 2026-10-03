@@ -6,7 +6,11 @@ rdagent/pyqlib。跑完后从最新会话 pickle 回收因子（名字/LaTeX 原
 factor.py 代码/IC 指标），翻译为管线 DSL 后写成 output_dir 下的
 factors.json，供管线侧（official_rdagent._recover_factors）读取。
 
-用法: python rdagent_driver.py --out <dir> [--loops 5]"""
+用法: python rdagent_driver.py --out <dir> [--loops 5]
+
+环境变量 `RDAGENT_LLM_KWARGS`（JSON 对象，留空＝不注入）：官方支那一次 chat 调用的
+顶层 kwargs 补丁，见下面 `_patch_llm_kwargs` 那段为什么非得走 kwargs。
+"""
 
 import argparse
 import json
@@ -14,6 +18,70 @@ import os
 import pickle
 import re
 import traceback
+
+# 官方支一次 chat 调用能往里塞的顶层 kwargs（逗号分隔的 JSON 对象）。
+# 空＝不打补丁，行为与今天一字不差。
+LLM_KWARGS_ENV = "RDAGENT_LLM_KWARGS"
+
+
+def _parse_llm_kwargs(raw):
+    """解析 RDAGENT_LLM_KWARGS；留空给 {}，写坏就抛（坏值不能静默退回原状）"""
+    raw = (raw or "").strip()
+    if not raw:
+        return {}
+    try:
+        d = json.loads(raw)
+    except ValueError as e:
+        raise ValueError(f"{LLM_KWARGS_ENV} 不是合法 JSON（{e}）: {raw!r}")
+    if not isinstance(d, dict) or not all(
+            isinstance(k, str) and isinstance(v, (bool, int, float, str))
+            for k, v in d.items()):
+        raise ValueError(f"{LLM_KWARGS_ENV} 必须是一层扁平对象（键为字符串），实到 {d!r}")
+    return d
+
+
+def _patch_llm_kwargs(kwargs):
+    """把 kwargs 包进 litellm.completion，返回那层包装（供 _verify_llm_patch 现量）。
+
+    为什么非得在运行时包一层，而不是写进环境变量：RD-Agent 读的是 `LITELLM_*` 那套
+    pydantic 设置，它的 `reasoning_effort` 类型是 `Literal["low","medium","high"] | None`
+    ⇒ 「关思考」这个值压根表达不出来；litellm 的 ollama 转换层又只在 reasoning_effort
+    非空时才发 `think`，发出去的还是恒 True。10-03 两轮探针实测：走 completion 的顶层
+    kwargs（`think=False`）能把思考压到 0 字符、真提示词下 3/3 次出合法 JSON，单次
+    50~80 秒；而撑窗口（`num_ctx`）同理只有 kwargs 这条路能到原生口。
+    """
+    import litellm
+
+    orig = litellm.completion
+
+    def completion(*args, **call_kwargs):
+        merged = dict(kwargs)
+        merged.update(call_kwargs)          # 调用方显式给的算，补丁只填缺省
+        return orig(*args, **merged)
+
+    completion.__rdagent_llm_kwargs__ = dict(kwargs)
+    litellm.completion = completion
+    return completion
+
+
+def _verify_llm_patch(wrapper):
+    """现量补丁真挂上了没有 —— 挂了个静默失效的开关去跑 3 小时是最坏的结局。
+
+    rdagent 的 backend 是 `from litellm import completion`（**早绑定**），所以只有
+    在它被 import 之前打好补丁才有效。本函数在 import 之后核一次绑定，不成就抛。
+    """
+    from importlib import import_module
+
+    mod = import_module("rdagent.oai.backend.litellm")
+    got = getattr(mod, "completion", None)
+    if got is not wrapper:
+        raise RuntimeError(
+            f"{LLM_KWARGS_ENV} 补丁未生效：rdagent 的 backend 拿到的是 "
+            f"{getattr(got, '__name__', got)!r}，不是补丁那份。"
+            "原因几乎一定是补丁打在 rdagent 之后（早绑定），"
+            f"注入清单 {wrapper.__rdagent_llm_kwargs__} 一个都没进去 —— 不要跑这一场。")
+    print(f"[driver] LLM kwargs 补丁已生效: {wrapper.__rdagent_llm_kwargs__}")
+
 
 # factor_name -> 管线 factor_dsl 表达式。rdagent 产出的是 pandas 代码
 # 与 LaTeX 公式，管线侧 safe_eval 只认 DSL 函数集（ma/std/ts_sum...），
@@ -281,7 +349,16 @@ def main():
     from dotenv import load_dotenv
     load_dotenv(os.path.join(args.out, ".env"))
 
+    # 补丁必须打在 import rdagent **之前**：它的 backend 是 `from litellm import
+    # completion`，晚一步它就把原函数揣走了（_verify_llm_patch 专门核这件事）
+    llm_kwargs = _parse_llm_kwargs(os.environ.get(LLM_KWARGS_ENV, ""))
+    llm_patch = _patch_llm_kwargs(llm_kwargs) if llm_kwargs else None
+    if llm_patch is None:
+        print(f"[driver] {LLM_KWARGS_ENV} 未设置 ⇒ LLM 通道一字未改（沿用今天的行为）")
+
     from rdagent.app.qlib_rd_loop.factor import main as factor_main
+    if llm_patch is not None:
+        _verify_llm_patch(llm_patch)
     print(f"[driver] rdagent factor 循环启动 loop_n={args.loops}")
     rc = 0
     try:

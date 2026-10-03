@@ -3,18 +3,22 @@
 
 rdagent/pyqlib 的依赖树（pandas/numpy 版本钳制、litellm 等）与研究管线
 所在的系统 python3.10 互不兼容，混装会互相污染（user-site 冲突已实际发生）。
-因此官方循环一律经 `conda run -n <env> python rdagent_driver.py` 在独立
-环境的子进程执行；本模块只做体检、拉起与产物回收。"""
+因此官方循环一律在独立 conda 环境的子进程里执行：优先直调环境内解释器
+（`<root>/envs/<env>/bin/python rdagent_driver.py`，进程树只有一层，超时收得到
+驱动本身），找不到该解释器才退回 `conda run -n <env> python …`；本模块只做
+体检、拉起、超时收尸与产物回收。"""
 
 import os
 import json
 import shlex
+import signal
 import time
 import shutil
 import subprocess
 from config import (RDAGENT_OUTPUT_DIR, RDAGENT_CONDA_ENV, DATA_DIR,
                     RDAGENT_TIMEOUT_SEC, RDAGENT_SOURCE_DIR,
                     RDAGENT_COSTEER_MAX_LOOP, RDAGENT_LLM_MODEL,
+                    RDAGENT_LLM_KWARGS,
                     RDAGENT_QLIB_DOCKER_ENV, RDAGENT_QLIB_PROVIDER)
 
 # conda 未进 PATH 时的常见安装位
@@ -47,6 +51,11 @@ def _driver_env():
     model = str(RDAGENT_LLM_MODEL).strip()
     if model:
         env["LITELLM_CHAT_MODEL"] = model
+    # 见 config_base 那段：官方支的「关思考 / 撑窗口」只能走 completion 的顶层
+    # kwargs，透传给驱动自己打的补丁（留空＝驱动一字不改，沿用今天的行为）
+    extra = str(RDAGENT_LLM_KWARGS).strip()
+    if extra:
+        env["RDAGENT_LLM_KWARGS"] = extra
     return env
 
 
@@ -85,6 +94,66 @@ def _find_conda():
         if os.path.exists(p):
             return p
     return None
+
+
+def _find_env_python(conda):
+    """环境内解释器的绝对路径；找不到回 None（调用方退回 `conda run` 写法）。
+
+    直调它是为了**收尸**而不是省事：`conda run` 会再落一层 `/tmp/tmpXXXX` 的
+    bash 壳，超时那句 `proc.kill()` 只杀得到最外面那层，驱动 python 变成孤儿
+    继续跑（10-03 实测：主线 rc=0 之后驱动 pid 又活了 2h23m，期间一直在往
+    `rdagent_output/log/<会话>/…/token_cost/<pid>/*.pkl` 写盘）。孤儿不只是占
+    内存——它还会在将来某个时刻写 `factors.json`，于是下一场的回收读到的可能
+    是上一场孤儿的成品。拔掉这层壳后进程树只剩驱动本身，`killpg` 才打得到。
+    """
+    roots = []
+    if conda:
+        # …/miniconda3/condabin/conda 或 …/miniconda3/bin/conda ⇒ 取安装根
+        roots.append(os.path.dirname(os.path.dirname(os.path.abspath(conda))))
+    roots += [os.path.expanduser("~/miniconda3"),
+              os.path.expanduser("~/anaconda3"), "/opt/conda"]
+    for root in roots:
+        p = os.path.join(root, "envs", RDAGENT_CONDA_ENV, "bin", "python")
+        if os.path.exists(p):
+            return p
+    return None
+
+
+def _reap_group(proc, grace=30):
+    """超时/异常后把整组收干净：SIGTERM 给进程组，宽限期后再 SIGKILL。
+
+    只对自己拉起的那一组下手（`Popen(start_new_session=True)` 使 pgid＝pid，
+    组里只有本线那棵子树），绝不按名字扫进程——别的会话的驱动不在这个组里。
+    """
+    try:
+        pgid = os.getpgid(proc.pid)
+    except ProcessLookupError:
+        return "进程组已自行退出（无需收尸）"
+    note = "SIGTERM→整组"
+    try:
+        os.killpg(pgid, signal.SIGTERM)
+    except ProcessLookupError:
+        return "进程组已自行退出（无需收尸）"
+    try:
+        proc.wait(timeout=grace)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+            note = "SIGTERM 未生效→SIGKILL→整组"
+        except ProcessLookupError:
+            note = "SIGTERM 后整组自行退出"
+        proc.wait()
+    return note
+
+
+def _leftover_containers(need_sg):
+    """收尸后的残留容器只数不动（容器由驱动内部同步起，正常应随组一起退）"""
+    argv = _sg_docker(["docker", "ps", "-q"]) if need_sg else ["docker", "ps", "-q"]
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=30)
+        return len([x for x in (r.stdout or "").split() if x])
+    except Exception as e:
+        return f"读失败({type(e).__name__})"
 
 
 def _env_probe(conda, env, code, timeout=90):
@@ -360,19 +429,24 @@ def try_official_rdagent(output_dir=RDAGENT_OUTPUT_DIR):
         return None
 
     conda = _find_conda()
+    env_py = _find_env_python(conda)
     driver = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                           "rdagent_driver.py")
     os.makedirs(output_dir, exist_ok=True)
-    cmd = [conda, "run", "--no-capture-output", "-n", RDAGENT_CONDA_ENV,
-           "python", driver, "--out", output_dir]
+    if env_py:
+        cmd = [env_py, driver, "--out", output_dir]
+    else:
+        cmd = [conda, "run", "--no-capture-output", "-n", RDAGENT_CONDA_ENV,
+               "python", driver, "--out", output_dir]
     _, need_sg, _ = _docker_access()
     if need_sg:
-        # sg 切换有效组后，conda 子进程及其内部 Python docker SDK
+        # sg 切换有效组后，子进程及其内部 Python docker SDK
         # 继承该组，socket 可达
         cmd = _sg_docker(cmd)
     print(f"  ▶️ RD-Agent(Q) 子进程启动: {' '.join(cmd)}")
     print(f"     （工作目录 {output_dir}，超时上限 "
           f"{RDAGENT_TIMEOUT_SEC}s，产物实时回显如下）")
+    print(f"     解释器直调={env_py or '否，走 conda run（多一层壳）'}")
     if "CoSTEER_MAX_LOOP" in _ENV_DRIVER:
         print(f"     coding 演化轮数 CoSTEER_MAX_LOOP="
               f"{_ENV_DRIVER['CoSTEER_MAX_LOOP']}（由本仓库配置注入，"
@@ -389,20 +463,23 @@ def try_official_rdagent(output_dir=RDAGENT_OUTPUT_DIR):
         return _recover_factors(output_dir)
 
     try:
+        # start_new_session：让驱动自成一组，超时那句 _reap_group 才打得到它
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True,
-                                cwd=output_dir, env=_ENV_DRIVER)
+                                cwd=output_dir, env=_ENV_DRIVER,
+                                start_new_session=True)
     except Exception as e:
         return harvest(f"子进程拉起失败: {type(e).__name__}: {e}")
     start, timed_out = time.time(), False
     for line in proc.stdout:
         print("    [RD-Agent] " + line.rstrip())
         if time.time() - start > RDAGENT_TIMEOUT_SEC:
-            proc.kill()
+            note = _reap_group(proc)
             timed_out = True
             break
     proc.wait()
     if timed_out:
+        print(f"     收尸读数: {note}｜残留容器={_leftover_containers(need_sg)}")
         return harvest(f"超时 {RDAGENT_TIMEOUT_SEC}s 已终止")
     if proc.returncode != 0:
         return harvest(f"factor 循环退出码 {proc.returncode}")

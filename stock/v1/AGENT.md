@@ -91,7 +91,7 @@ AkShare 为准）与本仓库的实际形态**互相矛盾**，照它执行会�
 | **交易日历** `calendars/day.txt` | 「今天该补哪一场」由它定；休市与未来场次挡在抓数之前 | `run_ashare_daily_chain.py:162`（§7 的 `decide_session`） |
 | **面板生成器** | conda env 里 `qlib.init` + `D.features(D.instruments(), …)` → `daily_pv.h5`，**下游全链路都从这份取数**；落盘＝写同目录 `.part` → 回读元数据核形状 → `os.replace` 原子换名 ⇒ 中途被 OOM 砍也不留半截面板（09-29） | `common/rdagent_docker/pregen_source_data.py:96,165` |
 | **Alpha158 特征器** | 09-26 全市场 157 条候选的表达式来自 `Alpha158DL.get_feature_config()` | `stock/v1/temp/alpha158_scope_0926.py:18` |
-| **标准回测本身** | RD-Agent 容器 `local_qlib` 里每次候选评估都是 qlib 的回测；回收的 IC / ICIR / 年化挂在 `experiment.result` 上 | `common/src/core/rdagent_driver.py:108` |
+| **标准回测本身** | RD-Agent 容器 `local_qlib` 里每次候选评估都是 qlib 的回测；回收的 IC / ICIR / 年化挂在 `experiment.result` 上 | `common/src/core/rdagent_driver.py:176` |
 
 **为什么判据层自研**：这个系统的产出物是**一份带硬闸的名单**（50 只观察 + 5 只下单），不是一条净值
 曲线。qlib 的策略层只有 `TopkDropoutStrategy`（topk + 换手惩罚），表达不了这里的关键形状 —— 板块限幅
@@ -769,7 +769,7 @@ docstring 里那句「分年度现轴 9/12 为正、2021 起 4/6 为正、均值
    `_bootstrap` 引用与 50 处裸 import，回归面 = 日更链 + 3 个看板 + 两线三环（组合层 569 个
    调仓日回放）。**动它之前必须先划范围。**
 8. **硬编码路径的已知例外**（与 §5 精神冲突，逐条列清）：`run_ashare_daily_chain.py:94` 的
-   `/usr/bin/python3.10`、`official_rdagent.py:21-26` 的 conda 候选路径、
+   `/usr/bin/python3.10`、`official_rdagent.py:25-32` 的 conda 候选路径、
    `dump_qlib_bin.py:256` 的 conda python 绝对路径、容器内固定 provider_uri。
 9. **ETF 线未结项（本条正文只写在 ETF 那份）**：整段已按线归位到 `etf/v1/AGENT.md` §18 第 9 条——那条 09-29 14:4x 又补了下午的根治（`main.py` 入库对已在库条目沿用现有 `status`），本文件里这份是拆分时的旧快照，留着会念出过期读数。§7 工作流图里「见 §18 第 9 条④ / 第 9 条」两处指向仍然有效。
 10. **组合层没有与 qlib 的等价性对拍**（§3.1）：截面 IC 有（对齐沙箱 0.029），持仓回放与

@@ -1576,8 +1576,8 @@
     "source": "official",
     "status": "active",
     "first_seen": "2026-09-25 03:10:24",
-    "last_seen": "2026-10-03 23:45:45",
-    "update_count": 18,
+    "last_seen": "2026-10-05 23:22:45",
+    "update_count": 19,
     "ic_history": [
       {
         "time": "2026-09-25 03:10:24",
@@ -1666,6 +1666,11 @@
       },
       {
         "time": "2026-10-03 23:45:45",
+        "ic": -0.028771668880683804,
+        "icir": -0.7615029103205069
+      },
+      {
+        "time": "2026-10-05 23:22:45",
         "ic": -0.028771668880683804,
         "icir": -0.7615029103205069
       }
@@ -1797,8 +1802,8 @@
     "source": "official",
     "status": "active",
     "first_seen": "2026-09-25 08:08:32",
-    "last_seen": "2026-10-03 23:45:45",
-    "update_count": 15,
+    "last_seen": "2026-10-05 23:22:45",
+    "update_count": 16,
     "ic_history": [
       {
         "time": "2026-09-25 08:08:32",
@@ -1872,6 +1877,11 @@
       },
       {
         "time": "2026-10-03 23:45:45",
+        "ic": -0.013843348265685547,
+        "icir": -0.439101140355875
+      },
+      {
+        "time": "2026-10-05 23:22:45",
         "ic": -0.013843348265685547,
         "icir": -0.439101140355875
       }
@@ -2642,6 +2652,63 @@
         "time": "2026-10-04 00:06:03",
         "ic": -0.02125676063238876,
         "icir": -0.5428262085069187
+      }
+    ],
+    "market": "etf"
+  },
+  "1-day SMA of Price over 5-day MAX of Price": {
+    "name": "1-day SMA of Price over 5-day MAX of Price",
+    "expr": "(ma(df,1))/(max(df,5))",
+    "ic": -0.022312778003289947,
+    "icir": -0.7112080011834925,
+    "source": "official",
+    "status": "active",
+    "first_seen": "2026-10-05 23:22:45",
+    "last_seen": "2026-10-05 23:22:45",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-10-05 23:22:45",
+        "ic": -0.022312778003289947,
+        "icir": -0.7112080011834925
+      }
+    ],
+    "market": "etf"
+  },
+  "5-day SMA of Price over 20-day MIN of Price": {
+    "name": "5-day SMA of Price over 20-day MIN of Price",
+    "expr": "(ma(df,5))/(min(df,20))",
+    "ic": 0.021642400868512022,
+    "icir": 0.6716705806450413,
+    "source": "official",
+    "status": "active",
+    "first_seen": "2026-10-05 23:22:45",
+    "last_seen": "2026-10-05 23:22:45",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-10-05 23:22:45",
+        "ic": 0.021642400868512022,
+        "icir": 0.6716705806450413
+      }
+    ],
+    "market": "etf"
+  },
+  "vol_aware_return_acceleration": {
+    "name": "vol_aware_return_acceleration",
+    "expr": "delta(delta(close, 5), 5) / (ma(std(high, 15), 8) + 1e-9)",
+    "ic": -0.02001088241807036,
+    "icir": -0.7527027523963667,
+    "source": "llm",
+    "status": "active",
+    "first_seen": "2026-10-05 23:22:45",
+    "last_seen": "2026-10-05 23:22:45",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-10-05 23:22:45",
+        "ic": -0.02001088241807036,
+        "icir": -0.7527027523963667
       }
     ],
     "market": "etf"

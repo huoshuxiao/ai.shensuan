@@ -111,6 +111,18 @@ ETF 线此前有四个各自为政的时钟，`scheduler.py` 里那四条 job �
            ⇒ "腿没了但全场绿"这一类此前只有验收脚本在盯、链路自己没有闸。
            产出行整条不存在时判 ⚪（`--resume` 命中主线断点就不重算、不重印，不该打红）；
            确实要让这一腿缺席还往下走：`--allow-official-absent`（只把 G 降成 ⚪）。
+         H **official 交回的那批里有本场新写的**（10-05 乙-3 加）：主线念了「产出 N 个」
+           （N>0）而共享层那行「本场净增 M」念的是 M=0 ⇒ 判红 ⇒ ② 不起、全场非零退出。
+           来历：回收读的是固定路径 `factors.json`，没有新鲜度也没有名字作用域 ⇒
+           10-04 19:05 那场链路第一次全程打通（rc=0、5 个 loop、6 枚因子全对账），
+           交回的 12 条却**全是上一场的旧档**（净增 0），而日志照打 ✅。
+           10-05 那笔量账（只读，脚本在 `temp/bill_official_reharvest_1005.py`）：
+           这种重复在试验台账上留下 36 条次，摘干净后 DSR 0.004713→0.005180，
+           门槛 0.95、n_trials 退到 1 也只有 0.8565 ⇒ **判决任何一档都不翻**，实盘层这 6 条
+           旧档零席位 ⇒ 这一格拦的是"旧档念成产出"这个读数骗局，不改数据流。
+           没有可比对象（N 缺失或 N=0，那是 G 的活）、或那行「本场净增」压根没念
+           （10-04 之前的共享层 / 起场前没有基线）⇒ 判 ⚪ 只念不拦，无读数不等于坏读数；
+           确实要让"本场挖不出新的"还往下走：`--allow-official-stale`（只把 H 降成 ⚪）。
        这几条只判"这场真的写了、且写出来的东西自洽"，**不判**新旧两场数值相同：
        ③ 天然不可幂等（`trial_counter` 递增、SHAP 正文由 LLM 现生成、因子库若被
        并行会话改过则因子集会换），所以"重跑一遍数字一模一样"不是这条链的判据。
@@ -141,7 +153,7 @@ ETF 线此前有四个各自为政的时钟，`scheduler.py` 里那四条 job �
        "覆写归档 + 动辄几小时"。09-29 改口：它不能默认起（一天 30~52 分钟、天天重刷
        归档、还会打 `[factor-lib]` commit，这些都不是"贴一行日线"该顺带干的事），
        但**完全没有这一块**同样不对——它就是"单独敲脚本会丢块"的那个块。
-       ⇒ 折中：`--with-analysis` 显式起，起则带 A~F 六条字节级验收。
+       ⇒ 折中：`--with-analysis` 显式起，起则带 A~H 八条字节级验收。
     `data/etf_universe.py` 的 `build()`：候选池"不每天重算"，且它的上市日期抓取是
        420s×12 轮的并发（`etf_universe.py:168-206`），日更里等它等于天天赌十几分钟。
     三条研究评估入口 `run_etf_factor_eval` / `run_etf_portfolio_eval` /
@@ -531,6 +543,10 @@ def official_leg_evidence(log_text):
 
     只读、不判（判在 `verify_analysis` 的 G 格里）。返回 dict：
       `n`          主线那行「official   产出 N 个因子」的 N；整行不存在 ⇒ None
+      `net_new`    主线那几行「本场净增 M 个因子」里 M 的**最大值**（多处就取最大：只要
+                   有一行报出过净增 > 0，这一腿就真交过新东西）；一行都没有 ⇒ None
+      `net_no_line` 那几行压根不存在（10-04 之前的共享层不念这行）⇒ 无读数，不是坏读数
+      `net_no_baseline` 念的是「本场净增无法判定（起场前没有可比基线）」⇒ 同样无读数
       `skip`       链路自陈「本次未运行（前置依赖缺失: X）」里的 X；没有这句 ⇒ None
       `red_items`  前置检查那一屏里 ❌ 的那几条（只吃检查表那一段连着的行，防容器回显混进来）
       `segment_ran` 多源那一段在本线**有没有跑**（认另一条腿的产出行或「多源挖掘追加」）
@@ -545,6 +561,10 @@ def official_leg_evidence(log_text):
     fold_at = re.search(r"^--- 折 \d", txt, re.M)
     main = txt[: fold_at.start()] if fold_at else txt
     prod = re.search(r"official\s+产出\s*(\d+)\s*个因子", main)
+    # 共享层回收那一段念的「本场净增 M 个因子」（10-04 丁落地才有这一行）；
+    # 一次场里可能念多行（每个回收入口各一行），取**最大值**：只要有一行说过净增 > 0，
+    # 这一腿就真交过新东西。取末行/取首行都会把"有一段是新的"念成"全是旧的"。
+    nets = [int(m) for m in re.findall(r"本场净增\s*(\d+)\s*个因子", main)]
     skip = re.search(r"RD-Agent\(Q\) 本次未运行（前置依赖缺失:\s*(.+)）", main)
     at = main.find("RD-Agent(Q) 前置检查:")
     reds = []
@@ -557,6 +577,9 @@ def official_leg_evidence(log_text):
             if ln.lstrip().startswith("❌"):
                 reds.append(ln.lstrip()[1:].strip())
     return {"n": int(prod.group(1)) if prod else None,
+            "net_new": max(nets) if nets else None,
+            "net_no_line": not nets and "本场净增" not in main,
+            "net_no_baseline": "本场净增无法判定" in main,
             "skip": skip.group(1) if skip else None,
             "red_items": reds, "has_preflight": at >= 0,
             "segment_ran": ("多源挖掘追加" in main
@@ -564,13 +587,16 @@ def official_leg_evidence(log_text):
                                               main)))}
 
 
-def verify_analysis(before, after, t_start, log_text, allow_official_absent=False):
-    """③ 的字节级跨步验收 ⇒ [(判据名, 过不过, 证据)]，七条 A–G。
+def verify_analysis(before, after, t_start, log_text,
+                    allow_official_absent=False, allow_official_stale=False):
+    """③ 的字节级跨步验收 ⇒ [(判据名, 过不过, 证据)]，八条 A–H。
 
     每条都必须"没跑/跑一半"时给不出同一个读数（09-29 的教训：可失败的那一步
     最会藏恒真判据）。**不判**与上一场数值相同——③ 天然不可幂等。
 
     `allow_official_absent=True` 只把 G 从 ❌ 降成 ⚪（A–F 一条不动）：那一腿缺席时
+    仍然把字念出来，但不拦 ②。
+    `allow_official_stale=True` 只把 H 从 ❌ 降成 ⚪（A–G 一条不动）：交回的全是旧档时
     仍然把字念出来，但不拦 ②。
     """
     checks = []
@@ -645,6 +671,41 @@ def verify_analysis(before, after, t_start, log_text, allow_official_absent=Fals
         g_ev = ("--allow-official-absent 已给 ⇒ 只念不拦。" + g_ev)
         g_ok = None
     checks.append(("G official 这条腿真的交出了因子（不是静默 0）", g_ok, g_ev))
+    # H official 交回的那 N 个里**有没有本场新写的**（10-05 乙-3，只加读数、不改数据流）。
+    # 来历：10-04 19:05→22:21 那场是链路第一次全程打通（rc=0、5 个 loop 走完、6 枚因子的
+    # h5 与代码全对账），但 `factors.json` 的**名字净增 0**——共享层 `_recover_factors`
+    # 读的是固定路径（factors.json / result.json），既没有新鲜度也没有名字作用域，
+    # 所以它交回的是**累计**那批：「official 产出 12 个因子」这 12 条全是上一场留下的旧档。
+    # 10-05 量账（只读，`temp/bill_official_reharvest_1005.py`）：这种"同一批名字被反复当新产出"
+    # 在试验台账上留下了 36 条次重复试验；把这 36 条摘干净，DSR 只从 0.004713 变成 0.005180，
+    # 而门槛是 0.95 —— n_trials 从 429 一路退到 1 也只到 0.8565，**判决在任何一档都不翻**；
+    # 实盘层那 6 条旧档按 |IC| 排 15/25/29/49/56/60，一个席位都没占到。
+    # ⇒ 这一格拦的不是"数字被污染了多少"，是**"把旧档念成产出"这个读数骗局**本身；
+    #   不改返回值、不改写库、不改试验计数（那是乙-2/乙-4，还没裁）。
+    # 三态：没有可比对象（G 已在拦）⇒ ⚪；有产出行但净增那行压根没念 / 自陈无法判定 ⇒ ⚪
+    # （无读数不等于坏读数）；净增念得出且为 0 ⇒ ❌。
+    if ev["n"] is None or ev["n"] == 0:
+        h_ok, h_ev = None, (f"official 产出 {ev['n'] if ev['n'] is not None else '（无产出行）'}"
+                            " ⇒ 这一格没有可比对象（腿缺席/交白卷那一半由 G 拦，H 不重复拦）")
+    elif ev["net_new"] is None and ev["net_no_baseline"]:
+        h_ok, h_ev = None, ("共享层自陈「本场净增无法判定（起场前没有可比基线）」"
+                           "⇒ 起场前 factors.json 本来就不存在（第一场的形状）⇒ 判不出，只念不拦")
+    elif ev["net_new"] is None:
+        h_ok, h_ev = None, (f"主线念了产出 {ev['n']} 个，但日志里**一行「本场净增」都没有**"
+                           "⇒ 无读数（10-04 之前的共享层不念这行，或这一段被截断了）"
+                           "⇒ 判不出，只念不拦；这一格要从 ⚪ 变成有牙，得先有那行字")
+    elif ev["net_new"] == 0:
+        h_ok, h_ev = False, (f"official 产出 {ev['n']} 个因子，可「本场净增」念的是 **0**"
+                            "（全是起场前旧档，本场 0 写入）⇒ 这一腿交回的是**上一场的存货**，"
+                            "不是本场挖出来的；它照进 ②、照打 ✅、试验计数照加"
+                            "（10-05 量账：这类重复在台账上留了 36 条次）")
+    else:
+        h_ok, h_ev = True, (f"official 产出 {ev['n']} 个，本场净增 {ev['net_new']} 个"
+                            "⇒ 这一腿本场真的写了新名字")
+    if h_ok is False and allow_official_stale:
+        h_ev = ("--allow-official-stale 已给 ⇒ 只念不拦。" + h_ev)
+        h_ok = None
+    checks.append(("H official 交回的因子本场净增 > 0（旧档不算产出）", h_ok, h_ev))
     return checks
 
 
@@ -872,6 +933,14 @@ def main():
                          "前置检查任何一项红（docker 探测超时 / bin 或面板不新鲜 / 无 conda）"
                          "都会让它静默产出 0 而子进程退出码照 0。只在这场本来就没打算起容器"
                          "（例如明知 daemon 没起、只要 llm 那几条）时用")
+    ap.add_argument("--allow-official-stale", action="store_true",
+                    help="允许 ③ 在 official 交回的那批**全是起场前旧档**（本场净增 0）时照走 ②"
+                         "（默认这时验收 H 判红 ⇒ ② 不起、链路非零退出）。来历：回收读的是固定"
+                         "路径 factors.json，没有新鲜度与名字作用域，所以 10-04 那场链路第一次"
+                         "全程打通、也照样是「产出 12 个 / 净增 0 个」——这一腿把上一场的存货"
+                         "念成了本场产出。只在这场**明知不会挖出新东西**（例如只想刷归档、"
+                         "或已知 9b 那几个想法会被相似闸判退）时用。与 --allow-official-absent "
+                         "是两颗独立的闸：前者管腿没跑，后者管跑了但交旧档")
     ap.add_argument("--resume", action="store_true",
                     help="③ 开段级断点续传（env ETF_RUN_RESUME=1）：主线多源与样本外"
                          "各折各自把「挖出来的因子」落盘，重启/被杀后从已完成的那一段"
@@ -1016,7 +1085,8 @@ def main():
         failed = print_checks(
             "验收 ③（全部从产物反推；③ 天然不可幂等，所以不判「和上一场一样」）",
             verify_analysis(before_a, after_a, t_analysis, out3,
-                            allow_official_absent=a.allow_official_absent))
+                            allow_official_absent=a.allow_official_absent,
+                            allow_official_stale=a.allow_official_stale))
         if failed:
             # ② 吃的是 ③ 写出来的归档：分析面半口血就往 ② 走，日报会把一个坏掉的净值当今天的成绩
             raise SystemExit(f"[验收 ③ 失败] {failed} ⇒ **② 不起**：归档是三张表的唯一来源，"

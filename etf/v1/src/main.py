@@ -78,11 +78,11 @@ def select_factors(factors, min_ic=0.005):
        （official 1.2 / llm 1.0 / genetic 0.9 / simple 0.8）的加权均值
        （覆盖发生在 :155），不再是纯截面均值；单边来源保持原值
        （另附 `weighted_ic`，:146）。
-    2. 容器自报的 IC 必须在进入这里之前就被本池重算掉
-       （`recount_foreign_ic`），否则这道闸量的是别人沙箱里的数。
+    2. 容器自报的 IC 必须在进入这里之前就被本池重算掉，否则这道闸量的是别人沙箱里的
+       数。生产里覆盖发生在 `multi_source_mining._attach_impl:89`（现 `enabled=True`）。
 
     前面还有一道同值地板 `MULTI_SOURCE["min_ic_per_source"] = 0.005`
-    （逐源筛，`multi_source_mining.py:190`），调这里绕不过它。
+    （逐源筛，`multi_source_mining.py:203-205`），调这里绕不过它。
 
     用绝对值而非符号：负 IC 是可用的反向信号——打分侧按因子权重加权，实盘侧
     按 `|ic|` 排序取前 10（`run_live.py:161-162`），两头都不要求关系朝上。
@@ -707,7 +707,10 @@ def main():
 
     # 3. 因子挖掘（注册表基线 + 多源/GP/多目标/混合）
     print("\n[3/9] 因子挖掘...")
-    raw_factors = mine_factors(pool)
+    # `mine_factors` 这里指本文件 `:37` 的注册表腿：逐标的自己算 IC（`:47`），
+    # 永远不满足 `recount_foreign_ic:118` 那颗「逐标的 IC 全等」探针 ⇒ 这一罩是空跑。
+    # 会带容器戳记的是 facade 那条腿，它的两个消费点 `:178`/`:253` 早已各自罩住。
+    raw_factors = recount_foreign_ic(mine_factors(pool), pool)
     tc.add(len(raw_factors))
     raw_factors = stage_mining(pool, raw_factors, tc, checkpoint=ckpt)
     if not raw_factors:

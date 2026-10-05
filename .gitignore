@@ -273,3 +273,9 @@ common/data/**
 !common/data/**/
 !common/data/*/risk/*.csv
 common/data/etf/cache/
+
+etf/v1/data/results/
+
+*.csv
+
+etf/v1/temp/snapshot_*/results/rdagent_output/

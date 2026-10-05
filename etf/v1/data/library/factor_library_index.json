@@ -2871,5 +2871,62 @@
       }
     ],
     "market": "etf"
+  },
+  "delayed_vol_shock_rank": {
+    "name": "delayed_vol_shock_rank",
+    "expr": "rank(std(returns,20),180) - delay(rank(std(returns,20),60),5)",
+    "ic": 0.05636246626312337,
+    "icir": 1.1718886409067533,
+    "source": "llm",
+    "status": "active",
+    "first_seen": "2026-10-05 23:40:13",
+    "last_seen": "2026-10-05 23:40:13",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-10-05 23:40:13",
+        "ic": 0.05636246626312337,
+        "icir": 1.1718886409067533
+      }
+    ],
+    "market": "etf"
+  },
+  "volatility_contraction_breakout": {
+    "name": "volatility_contraction_breakout",
+    "expr": "abs(std(high,120)-std(low,120)) / (ma(close,10)+1e-9) * sign(delta(close,5))",
+    "ic": -0.04279988709498302,
+    "icir": -1.6061332321891686,
+    "source": "llm",
+    "status": "active",
+    "first_seen": "2026-10-05 23:40:13",
+    "last_seen": "2026-10-05 23:40:13",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-10-05 23:40:13",
+        "ic": -0.04279988709498302,
+        "icir": -1.6061332321891686
+      }
+    ],
+    "market": "etf"
+  },
+  "delayed_rank_spread": {
+    "name": "delayed_rank_spread",
+    "expr": "rank(std(returns,20),120) - rank(std(returns,20),30)",
+    "ic": -0.031128340613336292,
+    "icir": -0.7761163539815257,
+    "source": "llm",
+    "status": "active",
+    "first_seen": "2026-10-05 23:40:13",
+    "last_seen": "2026-10-05 23:40:13",
+    "update_count": 1,
+    "ic_history": [
+      {
+        "time": "2026-10-05 23:40:13",
+        "ic": -0.031128340613336292,
+        "icir": -0.7761163539815257
+      }
+    ],
+    "market": "etf"
   }
 }

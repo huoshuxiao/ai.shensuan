@@ -1,12 +1,12 @@
 # 因子库
 
-> 自动生成于 `2026-10-05 23:33:36` | 共 **75** 个因子
+> 自动生成于 `2026-10-05 23:40:13` | 共 **78** 个因子
 
 ## 📊 元信息
 
-- 总因子数: 75
-- 活跃: 75
-- 来源分布: {'genetic': 3, 'pipeline': 20, 'simple': 7, 'official': 8, 'llm': 37}
+- 总因子数: 78
+- 活跃: 78
+- 来源分布: {'genetic': 3, 'pipeline': 20, 'simple': 7, 'official': 8, 'llm': 40}
 - 截面口径(market): `etf` —— IC 只在同口径内可比
 
 ## 🏆 Top 20 因子
@@ -20,19 +20,19 @@
 | 5 | `momentum_10` | 10日动量 | -0.0697 | -1.235 | pipeline | active |
 | 6 | `log_volume_momentum` | 差分(对数(成交量),5) / (均线(数据,40) + 1e-9) | +0.0671 | +2.506 | llm | active |
 | 7 | `volume_gap_momentum` | 差分(成交量, 5) / (均线(成交量, 30) + 1e-6) | +0.0660 | +1.708 | llm | active |
-| 8 | `rel_vol_spike` | 差分(成交量, 5) / (均线(数据, 20) + 1e-9) | +0.0542 | +1.269 | llm | active |
-| 9 | `shadow_pressure` | -(最高价 - 收盘价) / (收盘价 + 1e-9) | -0.0532 | -2.454 | llm | active |
-| 10 | `return_accelerated_rank` | 滚动分位(差分(收益率, 3), 40) - 滚动分位(标准差(收盘价, 10) | -0.0511 | -1.276 | llm | active |
-| 11 | `delta_high_gap_norm` | (最高价 - 区间最高(最高价, 240)) / (均线(数据, 60) + 1 | -0.0506 | -1.657 | llm | active |
-| 12 | `high_low_width_norm` | (区间最高(最高价, 20) - 区间最低(最低价, 20)) / (均线(收盘 | +0.0474 | +2.174 | llm | active |
-| 13 | `volume_weighted_price_change` | (滚动求和(成交量, 60) * 差分(收盘价, 5)) / (均线(数据, 2 | -0.0428 | -1.867 | llm | active |
-| 14 | `gap_reversal_signal` | 符号((收盘价 - 开盘价) / (最高价 - 最低价 + 1e-9)) * 绝 | -0.0395 | -2.223 | llm | active |
-| 15 | `vol_breakout_momentum` | (差分(收盘价, 5) - 差分(收盘价, 1)) / (均线(数据, 60)  | -0.0394 | -1.644 | llm | active |
-| 16 | `1-day SMA of Price over 60-day MAX of Price` | (均线(数据,1))/(区间最高(数据,60)) | -0.0393 | -1.080 | official | active |
-| 17 | `high_low_spread_momentum` | 差分(收盘价, 5) * ((最高价 - 最低价) / 均线(数据, 60)) | -0.0388 | -1.602 | llm | active |
-| 18 | `vol_momentum_ratio` | 差分(收盘价, 5) / (标准差(最高价, 240) + 1e-9) | -0.0387 | -1.045 | llm | active |
-| 19 | `volatility_breakout_momentum` | 滞后(区间最高(最高价, 5), -1) / 均线(数据, 90) - 滞后(区 | +0.0383 | +1.340 | llm | active |
-| 20 | `price_vol_divergence` | 滚动分位(绝对值(差分(收盘价, 5)) - 差分(成交量, 20), 60) | -0.0383 | -1.361 | llm | active |
+| 8 | `delayed_vol_shock_rank` | 滚动分位(标准差(收益率,20),180) - 滞后(滚动分位(标准差(收益率, | +0.0564 | +1.172 | llm | active |
+| 9 | `rel_vol_spike` | 差分(成交量, 5) / (均线(数据, 20) + 1e-9) | +0.0542 | +1.269 | llm | active |
+| 10 | `shadow_pressure` | -(最高价 - 收盘价) / (收盘价 + 1e-9) | -0.0532 | -2.454 | llm | active |
+| 11 | `return_accelerated_rank` | 滚动分位(差分(收益率, 3), 40) - 滚动分位(标准差(收盘价, 10) | -0.0511 | -1.276 | llm | active |
+| 12 | `delta_high_gap_norm` | (最高价 - 区间最高(最高价, 240)) / (均线(数据, 60) + 1 | -0.0506 | -1.657 | llm | active |
+| 13 | `high_low_width_norm` | (区间最高(最高价, 20) - 区间最低(最低价, 20)) / (均线(收盘 | +0.0474 | +2.174 | llm | active |
+| 14 | `volume_weighted_price_change` | (滚动求和(成交量, 60) * 差分(收盘价, 5)) / (均线(数据, 2 | -0.0428 | -1.867 | llm | active |
+| 15 | `volatility_contraction_breakout` | 绝对值(标准差(最高价,120)-标准差(最低价,120)) / (均线(收盘价 | -0.0428 | -1.606 | llm | active |
+| 16 | `gap_reversal_signal` | 符号((收盘价 - 开盘价) / (最高价 - 最低价 + 1e-9)) * 绝 | -0.0395 | -2.223 | llm | active |
+| 17 | `vol_breakout_momentum` | (差分(收盘价, 5) - 差分(收盘价, 1)) / (均线(数据, 60)  | -0.0394 | -1.644 | llm | active |
+| 18 | `1-day SMA of Price over 60-day MAX of Price` | (均线(数据,1))/(区间最高(数据,60)) | -0.0393 | -1.080 | official | active |
+| 19 | `high_low_spread_momentum` | 差分(收盘价, 5) * ((最高价 - 最低价) / 均线(数据, 60)) | -0.0388 | -1.602 | llm | active |
+| 20 | `vol_momentum_ratio` | 差分(收盘价, 5) / (标准差(最高价, 240) + 1e-9) | -0.0387 | -1.045 | llm | active |
 
 ## 📈 指标说明
 
@@ -1389,6 +1389,60 @@ rank(abs(delta(close, 2) - delta(volume, 2)), 30)
 
 ```python
 ts_std(delta(close, 5), 15)
+```
+
+---
+
+### `delayed_vol_shock_rank` · 滚动分位(标准差(收益率,20),180) - 滞后(滚动分位(标准差(收益率,
+
+- **中文名**: 滚动分位(标准差(收益率,20),180) - 滞后(滚动分位(标准差(收益率,
+- **状态**: `active`
+- **来源**: `llm`
+- **截面口径**: `etf`
+- **IC**: +0.0564
+- **ICIR**: +1.172
+- **首次发现**: 2026-10-05 23:40:13
+
+**表达式**:
+
+```python
+rank(std(returns,20),180) - delay(rank(std(returns,20),60),5)
+```
+
+---
+
+### `volatility_contraction_breakout` · 绝对值(标准差(最高价,120)-标准差(最低价,120)) / (均线(收盘价
+
+- **中文名**: 绝对值(标准差(最高价,120)-标准差(最低价,120)) / (均线(收盘价
+- **状态**: `active`
+- **来源**: `llm`
+- **截面口径**: `etf`
+- **IC**: -0.0428
+- **ICIR**: -1.606
+- **首次发现**: 2026-10-05 23:40:13
+
+**表达式**:
+
+```python
+abs(std(high,120)-std(low,120)) / (ma(close,10)+1e-9) * sign(delta(close,5))
+```
+
+---
+
+### `delayed_rank_spread` · 滚动分位(标准差(收益率,20),120) - 滚动分位(标准差(收益率,20)
+
+- **中文名**: 滚动分位(标准差(收益率,20),120) - 滚动分位(标准差(收益率,20)
+- **状态**: `active`
+- **来源**: `llm`
+- **截面口径**: `etf`
+- **IC**: -0.0311
+- **ICIR**: -0.776
+- **首次发现**: 2026-10-05 23:40:13
+
+**表达式**:
+
+```python
+rank(std(returns,20),120) - rank(std(returns,20),30)
 ```
 
 ---

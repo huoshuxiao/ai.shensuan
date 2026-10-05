@@ -74,3 +74,6 @@ price_vol_divergence,"滚动分位(绝对值(差分(收盘价, 5)) - 差分(成�
 low_high_range_decay,"均线((最高价-最低价), 60) / (标准差(收盘价, 120) + 1e-","ma((high-low), 60) / (std(close, 120) + 1e-9)",-0.0269,-1.2745,llm,etf,active,2026-10-05 23:33:36,2026-10-05 23:33:36,1
 volume_price_divergence_rank,"滚动分位(绝对值(差分(收盘价, 2) - 差分(成交量, 2)), 30)","rank(abs(delta(close, 2) - delta(volume, 2)), 30)",0.0262,1.4801,llm,etf,active,2026-10-05 23:33:36,2026-10-05 23:33:36,1
 volatility_acceleration,"滚动标准差(差分(收盘价, 5), 15)","ts_std(delta(close, 5), 15)",0.0218,1.5578,llm,etf,active,2026-10-05 23:33:36,2026-10-05 23:33:36,1
+delayed_vol_shock_rank,"滚动分位(标准差(收益率,20),180) - 滞后(滚动分位(标准差(收益率,","rank(std(returns,20),180) - delay(rank(std(returns,20),60),5)",0.0564,1.1719,llm,etf,active,2026-10-05 23:40:13,2026-10-05 23:40:13,1
+volatility_contraction_breakout,"绝对值(标准差(最高价,120)-标准差(最低价,120)) / (均线(收盘价","abs(std(high,120)-std(low,120)) / (ma(close,10)+1e-9) * sign(delta(close,5))",-0.0428,-1.6061,llm,etf,active,2026-10-05 23:40:13,2026-10-05 23:40:13,1
+delayed_rank_spread,"滚动分位(标准差(收益率,20),120) - 滚动分位(标准差(收益率,20)","rank(std(returns,20),120) - rank(std(returns,20),30)",-0.0311,-0.7761,llm,etf,active,2026-10-05 23:40:13,2026-10-05 23:40:13,1

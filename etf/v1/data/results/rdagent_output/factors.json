@@ -2,28 +2,28 @@
   {
     "name": "1-day SMA of Price over 60-day MAX of Price",
     "expr": "(ma(df,1))/(max(df,60))",
-    "formulation": "P_t / MAX(P_{t-60}) - 1",
-    "code": "import pandas as pd\n\ndef calculate_1_day_SMA_of_Price_over_60_day_MAX_of_Price():\n    df = pd.read_hdf('daily_pv.h5', key='data').sort_index()\n    # Calculate 60-day MAX of close price\n    max_price_60 = df['close'].groupby(level='instrument', sort=False).rolling(window=60).max().droplevel(0)\n    # Calculate 1-day SMA of close price\n    sma_1 = df['close'].groupby(level='instrument', sort=False).rolling(window=1).mean().droplevel(0)\n    # Compute the factor value\n    values = sma_1 / max_price_60 - 1\n    result = values.to_frame('1-day SMA of Price over 60-day MAX of Price').reindex(df.index)\n    result.to_hdf('result.h5', key='data')\n\nif __name__ == '__main__':\n    calculate_1_day_SMA_of_Price_over_60_day_MAX_of_Price()",
-    "mean_ic": 0.0049872415904065,
-    "icir": 0.0212058528539412,
-    "rank_ic": -0.0010604794509394,
-    "rank_icir": -0.0043905291977006
-  },
-  {
-    "name": "1-day SMA of Price over 5-day SMA of Price",
-    "expr": "(ma(df,1))/(ma(df,5))",
-    "formulation": "SMA(P_t, 1) / SMA(P_t, 5) - 1",
-    "code": "import pandas as pd\n\ndef calculate_1_day_SMA_of_Price_over_5_day_SMA_of_Price():\n    df = pd.read_hdf(\"daily_pv.h5\", key=\"data\").sort_index()\n    window_1 = 1\n    window_5 = 5\n    close = df[\"close\"]\n    sma_1 = close.groupby(level=\"instrument\", sort=False).rolling(window_1).mean().droplevel(0)\n    sma_5 = close.groupby(level=\"instrument\", sort=False).rolling(window_5).mean().droplevel(0)\n    values = sma_1 / sma_5 - 1\n    result = values.to_frame(\"1-day SMA of Price over 5-day SMA of Price\").reindex(df.index)\n    result.to_hdf(\"result.h5\", key=\"data\")\n\nif __name__ == \"__main__\":\n    calculate_1_day_SMA_of_Price_over_5_day_SMA_of_Price()",
-    "mean_ic": 0.0049872415904065,
-    "icir": 0.0212058528539412,
-    "rank_ic": -0.0010604794509394,
-    "rank_icir": -0.0043905291977006
+    "formulation": "$\\frac{\\text{SMA}(P_t, 1)}{\\text{MAX}(P_{t-i}, i=1..60)} - 1$",
+    "code": "import pandas as pd\n\ndef calculate_1_day_SMA_of_Price_over_60_day_MAX_of_Price():\n    df = pd.read_hdf(\"daily_pv.h5\", key=\"data\").sort_index()\n    \n    # Calculate 1-day SMA of close price (which is just the current close)\n    sma_1 = df[\"close\"].groupby(level=\"instrument\", sort=False).rolling(1).mean().droplevel(0)\n    \n    # Calculate 60-day MAX of close price\n    max_60 = df[\"close\"].groupby(level=\"instrument\", sort=False).rolling(60).max().droplevel(0)\n    \n    # Calculate the ratio factor: (SMA / MAX) - 1\n    values = sma_1 / max_60 - 1\n    \n    result = values.to_frame(\"1-day SMA of Price over 60-day MAX of Price\").reindex(df.index)\n    \n    # Self-check to ensure the result is valid\n    assert result.index.nlevels == 2 and int(result.notna().sum().sum()) > 0, \"Factor calculation failed or produced only NaN\"\n    \n    result.to_hdf(\"result.h5\", key=\"data\")\n\nif __name__ == \"__main__\":\n    calculate_1_day_SMA_of_Price_over_60_day_MAX_of_Price()\n",
+    "mean_ic": 0.0084699322877141,
+    "icir": 0.0385484725394689,
+    "rank_ic": 0.0039545867734875,
+    "rank_icir": 0.0171935023690178
   },
   {
     "name": "1-day SMA of Price over 20-day MIN of Price",
     "expr": "(ma(df,1))/(min(df,20))",
-    "formulation": "P_t / MIN(P_{t-20}) - 1",
-    "code": "import pandas as pd\n\ndef calculate_1_day_SMA_over_20_day_MIN_close():\n    df = pd.read_hdf('daily_pv.h5', key='data').sort_index()\n    window = 20  # Put the window size for the 20-day MIN here\n    close_series = df['close'].groupby(level='instrument', sort=False)\n    min_close = close_series.rolling(window).min().droplevel(0)\n    values = df['close'] / min_close - 1\n    result = values.to_frame('1-day SMA of Price over 20-day MIN of Price').reindex(df.index)\n    result.to_hdf('result.h5', key='data')\n\nif __name__ == '__main__':\n    calculate_1_day_SMA_over_20_day_MIN_close()",
+    "formulation": "$\\frac{\\text{SMA}(P_t, 1)}{\\text{MIN}(P_{t-i}, i=1..20)} - 1$",
+    "code": "import pandas as pd\n\ndef calculate_1_day_sma_price_over_20_day_min_price():\n    df = pd.read_hdf(\"daily_pv.h5\", key=\"data\").sort_index()\n    # Calculate 1-day SMA of Price (which is just the current close price)\n    sma_1d = df[\"close\"].groupby(level=\"instrument\", sort=False).rolling(1).mean().droplevel(0)\n    # Calculate 20-day MIN of Price\n    min_20d = df[\"close\"].groupby(level=\"instrument\", sort=False).rolling(20).min().droplevel(0)\n    \n    # Formulation: (SMA(P_t, 1) / MIN(P_{t-i}, i=1..20)) - 1\n    # Handle division by zero or NaN gracefully by filling with 0 if necessary before calculation,\n    # but standard rolling min will return NaN for the first 19 rows per instrument.\n    values = (sma_1d / min_20d) - 1\n    \n    result = values.to_frame(\"1-day SMA of Price over 20-day MIN of Price\").reindex(df.index)\n    \n    # Self-check the shape\n    assert result.index.nlevels == 2 and int(result.notna().sum().sum()) > 0, \"Factor calculation failed or produced empty result.\"\n    \n    result.to_hdf(\"result.h5\", key=\"data\")\n\nif __name__ == \"__main__\":\n    calculate_1_day_sma_price_over_20_day_min_price()",
+    "mean_ic": 0.0084699322877141,
+    "icir": 0.0385484725394689,
+    "rank_ic": 0.0039545867734875,
+    "rank_icir": 0.0171935023690178
+  },
+  {
+    "name": "1-day SMA of Price over 5-day SMA of Price",
+    "expr": "(ma(df,1))/(ma(df,5))",
+    "formulation": "$\\frac{\\text{SMA}(P_t, 1)}{\\text{SMA}(P_{t-i}, i=1..5)} - 1$",
+    "code": "import pandas as pd\n\ndef calculate_1day_sma_price_over_5day_sma_price():\n    df = pd.read_hdf(\"daily_pv.h5\", key=\"data\").sort_index()\n    \n    # Calculate 1-day SMA of close price (which is just the current close)\n    sma1 = df[\"close\"].groupby(level=\"instrument\", sort=False).rolling(1).mean().droplevel(0)\n    \n    # Calculate 5-day SMA of close price\n    sma5 = df[\"close\"].groupby(level=\"instrument\", sort=False).rolling(5).mean().droplevel(0)\n    \n    # Calculate the ratio: (1-day SMA) / (5-day SMA) - 1\n    # Note: We divide Series by Series, which broadcasts correctly across instruments and time\n    values = sma1 / sma5 - 1\n    \n    # Create DataFrame with the specific factor name\n    result = values.to_frame(\"1-day SMA of Price over 5-day SMA of Price\")\n    \n    # Reindex to ensure alignment with original dataframe index (keeps datetime+instrument)\n    result = result.reindex(df.index)\n    \n    # Self-check: assert shape and non-null count\n    assert result.index.nlevels == 2, \"Index must have 2 levels\"\n    assert int(result.notna().sum().sum()) > 0, \"Factor should not be entirely NaN\"\n    \n    # Save to HDF5\n    result.to_hdf(\"result.h5\", key=\"data\")\n\nif __name__ == \"__main__\":\n    calculate_1day_sma_price_over_5day_sma_price()\n",
     "mean_ic": 0.0049566348903386,
     "icir": 0.0217206917413013,
     "rank_ic": 0.0013778430909086,

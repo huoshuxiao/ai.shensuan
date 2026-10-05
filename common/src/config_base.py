@@ -462,21 +462,33 @@ def build(line_root, env_prefix="ETF_", freq_default="daily", market="etf"):
     # 变量，注入驱动子进程后**优先于**工作区 .env（load_dotenv 默认不覆盖已有
     # 变量），留空表示沿用 .env 里的值。
     d["RDAGENT_COSTEER_MAX_LOOP"] = env("RDAGENT_COSTEER_MAX_LOOP", "").strip()
+    # 甲-2（10-04 裁）：coding 阶段 CoSTEER 知识库的**跨场落盘路径**。默认空＝一个键
+    # 都不注入、行为与 10-04 之前一字不差（股票线没这行 ⇒ 保持字节级不变）。给了路径
+    # 就在父进程注入 rdagent 的那两个同名键（`CoSTEER_KNOWLEDGE_BASE_PATH` 读 /
+    # `CoSTEER_NEW_KNOWLEDGE_BASE_PATH` 写，前缀 `CoSTEER_`），读写同一个文件＝这一场
+    # 从上一场写过的实现起步。为什么原来一定是空：site-packages
+    # `knowledge_management.py:83-84` 在写路径为 None 时只打一句
+    # `Dump knowledge base path is not set, skip dumping.` 就返回，10-04 那场日志
+    # 3196/3205/5817 行就是这句 ⇒ 每场都从空知识库起步、上一场的实现这一场重抄一遍。
+    # 它只治「重复劳动」，不治「没有新想法」——净增大概仍是 0（见 AGENT.md 同日节）。
+    d["RDAGENT_COSTEER_KB_PATH"] = env("RDAGENT_COSTEER_KB_PATH", "").strip()
     # official 支线用哪个本地聊天模型＝「跑一次到底起几个模型」的唯一入口。
     # 留空＝不注入、以本线 rdagent_output/.env 的 LITELLM_CHAT_MODEL 为准（历史默认，
     # 两份 .env 各写各的）；给了值就在父进程注入、压过那份 .env。**值必须带 litellm 的
     # provider 前缀**（本仓两份 .env 都写全名 `ollama_chat/…`）——10-03 实测少前缀＝官方
     # 支第一次调用 10 连败退出。它与 LLM_MODEL（主线侧）是两个模型，两支并发⇒同时常驻。
     d["RDAGENT_LLM_MODEL"] = env("RDAGENT_LLM_MODEL", "").strip()
-    # 官方支那一次 LLM 调用的**顶层 kwargs 补丁**（JSON 对象，留空＝一字不注入）。
+    # 官方支那一次 LLM 调用的**顶层 kwargs 补丁**（JSON 对象）。10-04 起留空不再等于
+    # 一字不注入：留空时由下面那两把统一开关（LLM_REASONING_EFFORT / LLM_NUM_CTX）
+    # 派生，见 core/official_rdagent._driver_env；显式给了就照原样透传、优先级最高。
     # 为什么要这么窄的一个口子：10-03 两轮探针实测，「关思考」在 `LITELLM_*` 那套
     # 环境变量上**表达不出来**（`LiteLLMSettings.reasoning_effort` 的类型是
     # `Literal["low","medium","high"] | None`，`litellm` 的 ollama 转换层只在它非空时
     # 才发 `think`、发出去还是恒 True），**只有走 `litellm.completion(...)` 的 kwargs
-    # 这条路关得掉**。本键就是那条路的开关，ETF 侧实测值：
+    # 这条路关得掉**。ETF 侧实测值：
     #   {"think": false, "num_ctx": 16384}   → 思考 0 字符、正文 3/3 次是合法 JSON
     # `num_ctx` 是把窗口撑到装得下真提示词（那条 hypothesis_gen 有 5502 token，
-    # 生产默认窗口只让它进 2050）；代价：驻留内存 +0.5GB、每次调用 prefill 多约 390s。
+    # 生产默认窗口只让它进 2050）；代价：驻留内存 +0.5GB、长提示词 prefill 约 390s。
     d["RDAGENT_LLM_KWARGS"] = env("RDAGENT_LLM_KWARGS", "").strip()
     # 挂载点 = provider_uri 往上两级（由构造保证二者永远一致，改一边不会漏改）
     _qlib_mount = os.path.dirname(os.path.dirname(_qlib_provider))
@@ -519,7 +531,7 @@ def build(line_root, env_prefix="ETF_", freq_default="daily", market="etf"):
     # 本地/自建 LLM 端点（Ollama: http://localhost:11434/v1、vLLM、LM Studio 等，
     # 均需 OpenAI 兼容接口）。留空走 OpenAI 官方；本地服务不校验 key，可缺省
     d["LLM_BASE_URL"] = env("LLM_BASE_URL", "").strip()
-    # 思考型模型（qwen3.5 等）的三道请求体闸门。历史包袱：本仓 20 个
+    # 思考型模型（qwen3.5 等）的三道请求体闸门。历史包袱：本仓 21 个
     # chat.completions.create 调用点**没有一个**传 max_tokens，而纯 CPU 的 ollama
     # 上 9b 不开思考封顶时实测单次 >900s 不返回（09-25）。三个键默认"不注入"，
     # 于是没设 ETF_LLM_*/STOCK_LLM_* 的那条线拿到的客户端与改动前逐字一致。
@@ -527,6 +539,29 @@ def build(line_root, env_prefix="ETF_", freq_default="daily", market="etf"):
     # "none" 才真关得掉思考：/v1 兼容口下 think:false / thinking:{type:disabled} /
     # chat_template_kwargs 三种写法实测全部无效（09-25 i34/i34b）
     d["LLM_REASONING_EFFORT"] = env("LLM_REASONING_EFFORT", "").strip()
+    # 上下文窗口＝模型一次能看进多少字。0＝不注入＝沿用 ollama 服务端默认
+    # （本机 0.34.2 是 4096）。为什么要这把旋钮：10-03 逐字节量过官方支那条真提示词
+    # 有 5502 token，而 4096 窗口只让它进 2050 ⇒ 63% 被丢。
+    # 两条腿读不了同一个键（`LITELLM_*` 那套 pydantic 设置里根本没有窗口这项），所以这里是
+    # **源头**，两套映射各走各的。10-04 四臂实测（`etf/v1/temp/check_num_ctx_v1_1004.log`，
+    # 同一条 5502 token 真提示词、每臂两个独立读数对表）给这两套判了**不同**的结果：
+    #   主线 → core/llm_client 曾塞 extra_body 的 options.num_ctx ⇒ **空转**：`/v1` 对裸发／options
+    #     内给／顶层给三种写法一律只进 2050、驻留窗口恒 4096（静默截断不报错）
+    #   official 支 → core/official_rdagent._driver_env 派生成 RDAGENT_LLM_KWARGS ⇒ **有效**：
+    #     litellm 那腿走原生 `/api/chat`，同一句进 5502、驻留窗口真变 16384
+    # 所以这把旋钮统一的是「配置只写一次」，不是「两腿窗口都一样宽」。⇒ **10-04 用户裁「乙」＝
+    # 主线那支注入已拔掉**，本键从此**只**喂 official 支；主线不再假装自己拨过窗口，超线改由下面
+    # 那枚铃铛出声。主线要真撑宽窗口只剩"换通路直连 `/api/chat`"那一条（丙），今天没选。
+    # 驻留内存与 prefill 的实测代价记在下面 RDAGENT_LLM_KWARGS 那段。
+    d["LLM_NUM_CTX"] = int(env("LLM_NUM_CTX", "0") or 0)
+    # 超窗铃铛（10-04 用户裁「乙＋铃铛」里的那枚铃铛）：请求发出去**之前**数一遍这条提示词多少
+    # **字符**，超过本值就往日志打一行 ⚠️。**只叫不改**——不动请求体、不拦、不报错、不重试。
+    # 为什么按字符不按 token：主线没有 tokenizer，而字符→token 实测**跨句不可迁移**（10-04 三条
+    # 真件 0.743／0.597／0.925）⇒ 只能拿最密那一句（0.925 token/字）把服务端现量输入线 ≈2050
+    # token 换算成**偏保守的界**：2050 ÷ 0.925 ≈ 2200 字。真超没超以 ollama 上报的
+    # `prompt_eval_count` 为准（尺子 `etf/v1/temp/check_mainline_prompt_fit_1004.py`），本行只是警铃。
+    # 0＝不响＝默认。留 0 守的是那条老规矩：没配 `*_LLM_*` 的线拿到的客户端与改动前逐字一致。
+    d["LLM_WARN_CHARS"] = int(env("LLM_WARN_CHARS", "0") or 0)
     # 墙钟上限（秒），0=不注入（沿用 SDK 默认）。防的是"一次调用挂住整批日更"
     d["LLM_TIMEOUT"] = float(env("LLM_TIMEOUT", "0") or 0)
     # 多角色前置假设闸（hypothesis_roles）：假设生成→批判→修正→定稿。

@@ -10,6 +10,7 @@ rdagent/pyqlib 的依赖树（pandas/numpy 版本钳制、litellm 等）与研�
 
 import os
 import json
+import pickletools
 import shlex
 import signal
 import time
@@ -17,8 +18,9 @@ import shutil
 import subprocess
 from config import (RDAGENT_OUTPUT_DIR, RDAGENT_CONDA_ENV, DATA_DIR,
                     RDAGENT_TIMEOUT_SEC, RDAGENT_SOURCE_DIR,
-                    RDAGENT_COSTEER_MAX_LOOP, RDAGENT_LLM_MODEL,
-                    RDAGENT_LLM_KWARGS,
+                    RDAGENT_COSTEER_MAX_LOOP, RDAGENT_COSTEER_KB_PATH,
+                    RDAGENT_LLM_MODEL,
+                    RDAGENT_LLM_KWARGS, LLM_REASONING_EFFORT, LLM_NUM_CTX,
                     RDAGENT_QLIB_DOCKER_ENV, RDAGENT_QLIB_PROVIDER)
 
 # conda 未进 PATH 时的常见安装位
@@ -35,6 +37,71 @@ _CONDA_CANDIDATES = [
 # 管线依赖，与 rdagent 依赖树版本冲突），一切以环境内 site-packages 为准
 _ENV_ISOLATED = {**os.environ, "PYTHONNOUSERSITE": "1"}
 
+# 甲-2 那把知识库旋钮的「本场到底怎么接的」一句话读数，由 _driver_env 写、
+# try_official_rdagent 打印。留空（股票线）时这里永远是空串、一个字都不打。
+_COSTEER_KB_NOTE = ""
+
+
+def _kb_pickle_class(path):
+    """从知识库 pickle 的**字节**里读顶层类名，不 import、不反序列化（甲-2 前置体检）。
+
+    为什么不能直接 `pickle.load`：rdagent 只装在 conda 环境里，父进程（系统
+    python3.10）import 不到那个模块，unpickle 会在「找不到类」这一步就炸；而
+    `pickletools.genops` 只解析 opcode、不执行被序列化对象的 `__reduce__`，
+    既读得出版本又不 import 任何东西（顺带避开反序列化注入面）。
+
+    为什么必须在起场前读出来：site-packages
+    `components/coder/CoSTEER/knowledge_management.py:63-76` 拿到不是
+    `CoSTEERKnowledgeBaseV2` 的对象时**直接抛 ValueError**，整场崩在 coding 之前、
+    一次 LLM 都不会发生（10-04 构造级探针 D 臂实测：放一份 V1 进读路径＝
+    `ValueError: The former knowledge base is not compatible with the current version`）。
+    顶层对象的类名是字节流里**第一个** `CoSTEERKnowledgeBase*`，取到即可判版本。
+    ⚠️ 它有两种 opcode 写法：协议 ≤3 是 `GLOBAL`（操作数直接是 (模块名, 类名)），
+    协议 ≥4 是 `STACK_GLOBAL`（先把两个字符串压栈，操作数为 None）。rdagent 那句
+    `pickle.dump(...)` 没传 protocol ⇒ 跟解释器默认协议走（本机 python3.10＝协议 5，
+    实测落的是 STACK_GLOBAL）。10-05 只认 `GLOBAL` 的第一版判据会被自己的夹具抓出来：
+    真品读不出版本 ⇒ 每场都悄悄降成「只写不读」，甲-2 就成了没牙的改动。
+    ⚠️ `pickletools.genops` 在本机 3.10 上吐的是 `(opcode, arg, pos)` 三元组
+    （带 `.name` 的 OpcodeInfo 是 3.14 才有的），而 `GLOBAL` 的操作数在 3.10 上是
+    **一整串** `"模块名 类名"`、在别的版本上是二元组 ⇒ 两种都要拆（第一版按
+    `arg[1]` 取下标，拿到的是模块名的第 2 个字符，判据同样没牙）。
+    """
+    def _text(x):
+        return x.decode("utf-8", "replace") if isinstance(x, bytes) else str(x)
+
+    def _pair(x):
+        """把 GLOBAL 的操作数归一成 (模块名, 类名)；拆不出两段就返回 None"""
+        if isinstance(x, (tuple, list)) and len(x) == 2:
+            return _text(x[0]), _text(x[1])
+        x = _text(x)
+        if " " in x:
+            module, _, name = x.rpartition(" ")
+            return module, name
+        return None
+
+    try:
+        strings = []          # STACK_GLOBAL 的两个压栈操作数（模块名, 类名）
+        with open(path, "rb") as fh:
+            for code, arg, _pos in pickletools.genops(fh):
+                if code.name in ("UNICODE", "BINUNICODE", "SHORT_BINUNICODE",
+                                 "BINUNICODE8"):
+                    strings.append(_text(arg))
+                    del strings[:-2]
+                    continue
+                if code.name == "GLOBAL":
+                    pair = _pair(arg)
+                    if pair:
+                        strings = list(pair)
+                elif code.name != "STACK_GLOBAL":
+                    continue
+                # STACK_GLOBAL 的类名就是压栈的最后一个字符串；GLOBAL 已归一成同形
+                if len(strings) == 2 and strings[1].startswith(
+                        "CoSTEERKnowledgeBase"):
+                    return strings[1]
+    except Exception as e:      # noqa: BLE001 读不动/非 pickle 都归为「不认」
+        return f"（读不出来：{type(e).__name__}）"
+    return "（字节流里没有 CoSTEERKnowledgeBase 类名）"
+
 def _driver_env():
     """驱动子进程环境：沙箱容器参数 + 可选的演化轮数 + 可选的模型注入。
 
@@ -43,17 +110,92 @@ def _driver_env():
     rdagent_driver 用 load_dotenv(".env") 且默认不覆盖已有环境变量，所以在父进程
     这里给值就压过工作区 .env 那份手改值（ETF 线用它把轮数从 4 提到 8）；配置留空
     则不注入，沿用 .env，避免凭空盖住本地设置。
+
+    CONDA_DEFAULT_ENV 与 conda 所在目录是**直调解释器之后欠下的两笔**（10-03 夜
+    拔 `conda run` 那层壳换来超时可整组收尸，代价是 conda 顺手填的那两个东西没了）：
+      ① rdagent 的 `CondaConf.conda_env_name` 是必填 str，值只从 CONDA_DEFAULT_ENV
+         取（components/coder/factor_coder/config.py:40）⇒ 空就是 pydantic 判红，
+         构造 FactorRDLoop 当场崩（10-03 23:35 那场，8 秒退出、0 次 LLM 调用）。
+      ② 它的 validator 再拿 **shell 里的 `conda`** 去要该环境的 PATH
+         （utils/env.py:616-622），**找不到 conda 不报错、静默给空串**，而 LocalEnv
+         执行 LLM 生成的因子代码时把这个空串拼在 PATH 最前（utils/env.py:524）
+         ⇒ 代码会拿系统 python 跑、qlib 导不进，循环一路"实现失败"却不崩。
+      ③ 10-04 那场又量出第三笔、也是真正卡死产出的一笔：factor 求值走的是
+         `FactorCoSTEERSettings.python_bin`，默认值就是字面量 `"python"`，而
+         `factor.py:execute()` 用 `subprocess.check_output("python <code>", shell=True)`
+         **直接吃驱动进程的 PATH**。只挂 condabin（那里只有 `conda` 一个文件）
+         ⇒ 本机 `/usr/bin` 又只有 `python3`、没有 `python` ⇒ 每个因子任务都返回
+         `/bin/sh: 1: python: not found` ⇒ 读不到 `result.h5` ⇒ 打印
+         `No factor value generated` ⇒ 让 LLM 去批一份根本没跑过的代码。
+         10-03 23:46 直调解释器之后三场（10-03 夜、10-04 中午、10-04 傍晚）净增全 0，
+         病根就是这一条，与提示词/窗口/索引形状无关。
+    所以三个都给：环境名照本线配置，`conda` 目录与**环境自己的 `bin`** 一起挂 PATH 最前
+    （后者才装得出 `python`，实测 pandas 2.2.0 + qlib 可 import）。
+
+    甲-2（10-04 深夜裁）那把知识库旋钮与上面三笔 PATH 欠账无关，规则只有一句：
+    `RDAGENT_COSTEER_KB_PATH` 留空＝一个键都不发、行为与 10-04 之前逐字节相同；
+    给了路径＝读与写指同一个文件（这一场从上一场写过的实现起步）；文件已存在但顶层
+    类不是 V2 ⇒ 当场降为**只写不读**，收场的 dump 会把它覆写成合法 V2、下一场自愈
+    （判版本与理由见 `_kb_pickle_class`）。
     """
     env = {**_ENV_ISOLATED, **RDAGENT_QLIB_DOCKER_ENV}
+    env["CONDA_DEFAULT_ENV"] = RDAGENT_CONDA_ENV
+    conda = _find_conda()
+    if conda:
+        conda_dir = os.path.dirname(os.path.abspath(conda))
+        # condabin 或 …/bin：两者上一层都是 conda 安装根
+        env_bin = os.path.join(os.path.dirname(conda_dir), "envs",
+                               RDAGENT_CONDA_ENV, "bin")
+        for directory in ([env_bin, conda_dir] if os.path.isdir(env_bin)
+                          else [conda_dir]):
+            if directory not in env.get("PATH", "").split(":"):
+                env["PATH"] = directory + ":" + env.get("PATH", "")
     loops = str(RDAGENT_COSTEER_MAX_LOOP).strip()
     if loops.isdigit():
         env["CoSTEER_MAX_LOOP"] = loops
+    # 甲-2：coding 阶段 CoSTEER 知识库跨场落盘（rdagent 侧前缀是 `CoSTEER_`，
+    # 字段名 knowledge_base_path＝读、new_knowledge_base_path＝写；10-04 构造级
+    # 探针 B 臂实测这副大小写在进程内真被 pydantic-settings 读到）。
+    global _COSTEER_KB_NOTE
+    _COSTEER_KB_NOTE = ""
+    kb = str(RDAGENT_COSTEER_KB_PATH).strip()
+    if kb:
+        # 绝对路径照 expanduser 用；**相对路径挂在本线 RDAGENT_OUTPUT_DIR 底下**——
+        # 子进程的 CWD 虽然也是这个目录、写相对路径碰巧能通，但那是巧合不是接口：
+        # 仓库搬过一次家（09-29 数据层进 common），写死的绝对路径会把知识库悄悄
+        # 建到老位置上，而 rdagent 的 dump 自己会 mkdir(parents=True) 把树造出来。
+        kb_abs = os.path.expanduser(kb)
+        kb_path = (kb_abs if os.path.isabs(kb_abs) else
+                   os.path.abspath(os.path.join(RDAGENT_OUTPUT_DIR, kb_abs)))
+        cls = _kb_pickle_class(kb_path) if os.path.exists(kb_path) else ""
+        if cls and cls != "CoSTEERKnowledgeBaseV2":
+            _COSTEER_KB_NOTE = (f"⚠️ 知识库 {kb_path} 顶层类={cls}（不是 "
+                                f"CoSTEERKnowledgeBaseV2）⇒ 本场只写不读，"
+                                f"收场 dump 会覆写它、下一场自愈")
+        else:
+            env["CoSTEER_KNOWLEDGE_BASE_PATH"] = kb_path
+            _COSTEER_KB_NOTE = (f"知识库＝{kb_path}"
+                                + ("（文件还不存在⇒本场从空库起步）" if not cls
+                                   else "（读回类型 V2）"))
+        env["CoSTEER_NEW_KNOWLEDGE_BASE_PATH"] = kb_path
     model = str(RDAGENT_LLM_MODEL).strip()
     if model:
         env["LITELLM_CHAT_MODEL"] = model
-    # 见 config_base 那段：官方支的「关思考 / 撑窗口」只能走 completion 的顶层
-    # kwargs，透传给驱动自己打的补丁（留空＝驱动一字不改，沿用今天的行为）
+    # 官方支那一次调用的顶层 kwargs（见 config_base 那两段）。10-04 起**不再只有
+    # 一条手写的 JSON**：本线把「关思考 / 撑窗口」写在同一处源头（`LLM_REASONING_
+    # EFFORT`/`LLM_NUM_CTX`。这里把它翻译成 litellm 唯一认得的那副写法——`LITELLM_*` 环境
+    # 变量既表达不出 think:false，也表达不出窗口。⚠️ 窗口这把 10-04 裁「乙」后**只剩这一腿吃**。
+    # 显式给了 RDAGENT_LLM_KWARGS 就照原样透传（起场器与既有夹具走这条，优先级最高）；
+    # 两个源头都是默认值时一个键都不注入 ⇒ 行为与 10-03 那场一字不差。
     extra = str(RDAGENT_LLM_KWARGS).strip()
+    if not extra:
+        derived = {}
+        if LLM_REASONING_EFFORT == "none":
+            derived["think"] = False
+        if LLM_NUM_CTX > 0:
+            derived["num_ctx"] = int(LLM_NUM_CTX)
+        if derived:
+            extra = json.dumps(derived)
     if extra:
         env["RDAGENT_LLM_KWARGS"] = extra
     return env
@@ -83,9 +225,6 @@ def official_chat_model(env_file):
     return "（两份都没设，走 rdagent 默认）", env_file
 
 
-_ENV_DRIVER = _driver_env()
-
-
 def _find_conda():
     found = shutil.which("conda")
     if found:
@@ -94,6 +233,9 @@ def _find_conda():
         if os.path.exists(p):
             return p
     return None
+
+
+_ENV_DRIVER = _driver_env()   # ←必须在 _find_conda 之后：它要拿 conda 目录填 PATH
 
 
 def _find_env_python(conda):
@@ -451,6 +593,14 @@ def try_official_rdagent(output_dir=RDAGENT_OUTPUT_DIR):
         print(f"     coding 演化轮数 CoSTEER_MAX_LOOP="
               f"{_ENV_DRIVER['CoSTEER_MAX_LOOP']}（由本仓库配置注入，"
               f"优先于工作区 .env）")
+    # 甲-2 那把旋钮的状态**只在启动打印里出现、不进前置检查表**：前置检查里的
+    # 任何 ❌ 都会让整场不跑（missing 非空即 return None），而知识库坏版本的正确
+    # 处置是「降为只写不读、继续跑」，用它挡场等于把一个优化项变成依赖。
+    if _COSTEER_KB_NOTE:
+        print(f"     {_COSTEER_KB_NOTE}")
+
+    # 起场前的既有因子名单＝回收读数的基线（必须在 Popen 之前抄，晚一步就被覆盖了）
+    _baseline = _existing_factor_names(output_dir)
 
     def harvest(reason):
         """循环没走通时也要把既有产物交回主线
@@ -458,9 +608,14 @@ def try_official_rdagent(output_dir=RDAGENT_OUTPUT_DIR):
         驱动子进程在 finally 里做回收（崩溃轮也会写 factors.json），所以
         超时/非零退出/根本没拉起来这三种情况下，factors.json 里往往仍有历轮
         攒下的定义与官方 IC。早先这里直接 return None，等于把已烧掉的 LLM
-        时间整份丢掉，也是 ETF 线因子库里 0 条 official 的直接原因之一。"""
+        时间整份丢掉，也是 ETF 线因子库里 0 条 official 的直接原因之一。
+
+        ⚠️ 但「捞回来几条」从来不等于「这一场写出几条」：10-03 与 10-04 两场
+        都由这里念出「官方产出 12 个因子」，而 `cmp` 对起场前快照是逐字节相同
+        ＝本场 0 写入。所以起场前先把既有名单抄下来，回收时按它做差、只把净增
+        念成产出（返回值不变，改的是读数口径，不改行为）。"""
         print(f"  ⚠️ {reason}；尝试回收既有产物（驱动崩溃轮也会写 factors.json）")
-        return _recover_factors(output_dir)
+        return _recover_factors(output_dir, baseline=_baseline)
 
     try:
         # start_new_session：让驱动自成一组，超时那句 _reap_group 才打得到它
@@ -484,16 +639,45 @@ def try_official_rdagent(output_dir=RDAGENT_OUTPUT_DIR):
     if proc.returncode != 0:
         return harvest(f"factor 循环退出码 {proc.returncode}")
     print("  ✅ RD-Agent(Q) factor 循环执行完毕，回收产物...")
-    return _recover_factors(output_dir)
+    return _recover_factors(output_dir, baseline=_baseline)
 
 
-def _recover_factors(output_dir):
-    """从环境子进程落盘的 JSON 中回收因子表达式"""
-    candidates = [
+def _factor_artifact_paths(output_dir):
+    """回收读的是哪几个文件——基线与回收必须共用同一份清单，否则两边口径会飘"""
+    return [
         os.path.join(output_dir, "factors.json"),
         os.path.join(output_dir, "result.json"),
         os.path.join(output_dir, "latest", "factors.json"),
     ]
+
+
+def _existing_factor_names(output_dir):
+    """起场前 factors.json 里已有的因子名，作为回收读数的「净增」基线
+
+    返回空集有两种含义（都如实表示"没有可比的旧档"）：文件不存在、或读不出
+    JSON。此时 _recover_factors 会退回只报累计条数，不假装算得出净增。
+    """
+    for path in _factor_artifact_paths(output_dir):
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception:
+                return set()
+            if not isinstance(data, list):
+                return set()
+            return {item.get("name", f"official_{i}")
+                    for i, item in enumerate(data)}
+    return set()
+
+
+def _recover_factors(output_dir, baseline=None):
+    """从环境子进程落盘的 JSON 中回收因子表达式
+
+    baseline（起场前的因子名集合）只影响读数口径，不影响返回值：
+    给得出基线时额外念一行「本场净增」，这是 10-03 / 10-04 两场假绿的源头。
+    """
+    candidates = _factor_artifact_paths(output_dir)
     for path in candidates:
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
@@ -513,8 +697,15 @@ def _recover_factors(output_dir):
                     # 随因子一路带到因子库/报告，供人工复核语义
                     "formulation": item.get("formulation", ""),
                 })
-            print(f"  ✅ 官方产出 {len(factors)} 个因子（{path}，"
+            print(f"  📦 既有产物累计 {len(factors)} 个因子（{path}，"
                   f"落盘于 {_fmt_mtime(path)}）")
+            if baseline is not None:
+                new = [f["name"] for f in factors if f["name"] not in baseline]
+                print(f"  {'✅' if new else '⚠️'} 本场净增 {len(new)} 个因子"
+                      f"{'：' + '、'.join(new) if new else ''}"
+                      + ("" if new else "（全是起场前旧档，本场 0 写入）"))
+            else:
+                print("  ℹ️ 本场净增无法判定（起场前没有可比基线）")
             return factors
     print("  ⚠️ 循环完成但未在产出目录找到 factors.json/result.json，"
           "详见子进程日志与 rdagent 会话目录")

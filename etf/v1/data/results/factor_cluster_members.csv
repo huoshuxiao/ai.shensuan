@@ -1,4 +1,5 @@
 ﻿factor,cluster,is_rep
-volume_weighted_price_change,1,True
-volume_price_divergence,1,False
-vol_spike_momentum,2,True
+rel_vol_spike,1,True
+delta_high_gap_norm,2,True
+high_low_width_norm,3,True
+vol_regime_switch_momentum,1,False

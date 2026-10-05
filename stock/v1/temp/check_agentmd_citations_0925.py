@@ -81,7 +81,7 @@ CHECKS = [
     # 读数（+54 行）⇒ 292/327 起 +54；这两格**动手前就已红**（并行会话同日在 ③ 前置
     # 链里加过代码），本批一并重挂，不是只跟我自己挪的那部分。
     ("§5.1 容器内 provider_uri", "common/src/config_base.py", 443, 447, "qlib_data"),
-    ("§5.1 容器资源 shm/mem", "common/src/config_base.py", 485, 491, "QLIB_DOCKER_SHM_SIZE"),
+    ("§5.1 容器资源 shm/mem", "common/src/config_base.py", 500, 506, "QLIB_DOCKER_SHM_SIZE"),
     ("§12.3 重挖触发阈值", "common/src/config_base.py", 344, 351, "dsr_threshold"),
     ("§12.2 风控基线", "common/src/config_base.py", 314, 315, "daily_stop_loss"),
     ("§12.3 触发判定入口", "common/src/optimizer/trigger_logic.py", 48, 50, "def check"),
@@ -148,39 +148,107 @@ CHECKS = [
      93, 93, "240"),
     # ↓ 10-03「C2/C3 收尸」在该文件顶部加 import signal + 三个新函数（净 +64 行）
     #   ⇒ 346/381 与 48/53 四格整体下移，本批重挂（牙在 etf/v1/temp/check_reap_group_1003.py）
-    ("§18.11 official 回收读固定目录、不分折", "common/src/core/official_rdagent.py", 415, 415,
+    # ↓ 10-04 19:1x「乙二」：`_driver_env` 把 <conda 根>/envs/rdagent/bin 挂上 PATH（含 docstring 净 +14），
+    #   叠上当日「丁」「统一 kwargs」两批未提交改动 ⇒ official_rdagent.py 这 14 根针整体重挂，新行号=实跑核出：
+    #   71→85 / 78→92 / 79-86→94-100 / 92→106 / 129→143 / 152→166 / 445→459 / 485-493→502-510 /
+    #   486→500 / 508→522 / 515→529 / 565→579（558 是新建的 _existing_factor_names 里同名那一处，不是它）/
+    #   583→597 / 585-591→599-605。同一批文案里未钉针的七根也一起改了：455→502 / 207→221 / 178→222 /
+    #   470→522 / 477→529 / 149→534 / 498→579（这里的 470/477 是 AGENT.md 正文引 official_rdagent.py 的行号，
+    #   与上面 config_base.py:470 那根针无关）。**这 14 根的现行行号以本段为准**，下面两条 10-04 中午/上午
+    #   的旧位移记录只当流水，别再拿来当现值。
+    # ↓ 10-05 甲-2「CoSTEER 跨场知识库」：official_rdagent.py 顶部插 `_COSTEER_KB_NOTE` +
+    #   `_kb_pickle_class`（读 pickle 字节判版本）、`_driver_env` 里插知识库注入段、
+    #   `try_official_rdagent` 里插那行起场读数；config_base.py 插 `RDAGENT_COSTEER_KB_PATH` 一段。
+    #   ⇒ 这 20 根针整体下移，本批重挂（每个新号都是拿期望子串在**当前文件**里 grep 出来的，
+    #   不是按"+多少行"心算的）：official_rdagent.py 92→190 / 94-100→192-198 / 85→183 /
+    #   106→204 / 143→241 / 166→264 / 459→557 / 500→603 / 502-510→605-613 / 522→625 /
+    #   529→632 / 579→682 / 597→700 / 599-605→702-708；config_base.py 470→480 / 482→492 /
+    #   490-496→500-506 / 546→556 / 554→564 / 562→572。
+    #   ⚠️ 上面 10-04 19:1x 那段（14 根）与更早两条流水都只当账，**这 20 根的现值以本段为准**。
+    #   重挂后实跑＝193 根 / 186 绿 / 7 红，7 红与这批之前同一批（全在 config.py、
+    #   walk_forward.py、run_checkpoint.py、run_etf_daily_chain.py、requirements.txt 这五份
+    #   本会话没碰过的文件里）⇒ 本批没把任何一根原本绿的针改红。
+    #   牙＝etf/v1/tests/test_rdagent_wiring.py 的甲-2 七格（含「版本判据三臂」：protocol 5 的
+    #   STACK_GLOBAL 与 protocol ≤3 的 GLOBAL 都要认、坏字节要降级不许抛）。
+    ("§18.11 official 回收读固定目录、不分折", "common/src/core/official_rdagent.py", 557, 557,
      "RDAGENT_OUTPUT_DIR"),
-    ("§18.11 超时分支直接交回既有产物", "common/src/core/official_rdagent.py", 455, 463, "harvest"),
+    ("§18.11 超时分支直接交回既有产物", "common/src/core/official_rdagent.py", 605, 613, "harvest"),
     # ↓ 10-03 §18.13「跑一次为什么起两个本地模型」：甲只统一**配置入口**并把选型变成**读数**，
     #        四根新针钉的是正文那四个 `文件:行号`（正文归正文、这把尺子只认这张表）
     ("§18.13 两源并发＝两个模型同时常驻的那一行", "common/src/core/multi_source_mining.py",
      184, 184, "ThreadPoolExecutor"),
-    ("§18.13 单入口键＝默认留空不注入", "common/src/config_base.py", 470, 470,
+    ("§18.13 单入口键＝默认留空不注入", "common/src/config_base.py", 480, 480,
      'd["RDAGENT_LLM_MODEL"]'),
-    ("§18.13 注入点（压过工作区 .env）", "common/src/core/official_rdagent.py", 53, 53,
+    ("§18.13 注入点（压过工作区 .env）", "common/src/core/official_rdagent.py", 183, 183,
      'env["LITELLM_CHAT_MODEL"]'),
-    ("§18.13 读数的取数点", "common/src/core/official_rdagent.py", 62, 62,
+    ("§18.13 读数的取数点", "common/src/core/official_rdagent.py", 204, 204,
      "def official_chat_model"),
     # ↓ 10-03 夜「C2/C3 收尸」：正文那五处 `文件:行号` 同批钉住（牙=
     #   etf/v1/temp/check_reap_group_1003.py，六臂 17 格全绿）
-    ("§18.13 C3 直调环境内解释器", "common/src/core/official_rdagent.py", 99, 99,
+    ("§18.13 C3 直调环境内解释器", "common/src/core/official_rdagent.py", 241, 241,
      "def _find_env_python"),
-    ("§18.13 C2 整组收尸单点", "common/src/core/official_rdagent.py", 122, 122,
+    ("§18.13 C2 整组收尸单点", "common/src/core/official_rdagent.py", 264, 264,
      "def _reap_group"),
-    ("§18.13 驱动自成一组", "common/src/core/official_rdagent.py", 470, 470,
+    ("§18.13 驱动自成一组", "common/src/core/official_rdagent.py", 625, 625,
      "start_new_session=True"),
-    ("§18.13 超时那一句走收尸不是 kill 外壳", "common/src/core/official_rdagent.py", 477, 477,
+    ("§18.13 超时那一句走收尸不是 kill 外壳", "common/src/core/official_rdagent.py", 632, 632,
      "_reap_group(proc)"),
-    ("§18.13 回收只查文件存在（B6 未裁、仍是旧档）", "common/src/core/official_rdagent.py", 498, 498,
+    ("§18.13 回收只查文件存在（B6 未裁、仍是旧档）", "common/src/core/official_rdagent.py", 682, 682,
      "os.path.exists(path)"),
+    # ↓ 10-04「丁」正文那三处 `文件:行号` 同批钉住（§18.11 末段，净增读数三件套）
+    ("§18.11 丁：基线必须在 Popen 之前抄", "common/src/core/official_rdagent.py", 603, 603,
+     "_baseline = _existing_factor_names(output_dir)"),
+    ("§18.11 丁：mtime 那行只当文字念、不作判据", "common/src/core/official_rdagent.py", 700, 700,
+     "既有产物累计"),
+    ("§18.11 丁：净增读数本体", "common/src/core/official_rdagent.py", 702, 708,
+     "本场净增"),
+    # ↑ 10-04「丁 净增读数」在 harvest 之前插入基线抄录、并在 _recover_factors 上方
+    #   新建 _factor_artifact_paths/_existing_factor_names 两个函数（净 +37 行）
+    #   ⇒ 500→508 / 507→515 / 528→565（528 那格原本钉的是 _recover_factors 里的
+    #   exists，现在它整体下移到 565；544 是新建的基线函数里同名的另一处，不是它）。
+    #   ⚠️ 上面这三组"→"只是那一批的账，现行号见更上面 10-04 19:1x「乙二」那一段（565 又下移到 579）。
+    #   牙＝etf/v1/tests/test_rdagent_wiring.py 的「净增」三格。两次变异实测：
+    #   ① 把 `if baseline is not None:` 换成 `if False:`（净增整块拔掉）⇒ 恰好
+    #      净增那两格红、其余 17 格原样绿；② 把基线抄录挪到子进程拉起之后 ⇒ 红
+    #      的是 `test_stale_data_blocks_subprocess`（NameError）与
+    #      `test_launch_failure_recovers_previous_round` 两格，**净增那两格反而照绿**
+    #      ＝「抄晚了」这个错本组用例抓不到（假绿的原始两场正是这种形态），已如实记着。
     # ↓ 10-03 夜「乙+ kwargs 补丁」：正文那六处 `文件:行号` 同批钉住（牙=
     #   etf/v1/temp/check_llm_kwargs_patch_1003.py，两套解释器 17/21 格全绿；破坏性自证＝
     #   把 `litellm.completion = completion` 换成 `pass` ⇒ 恰好 F5 三格 + F7 before + F8 on
     #   五格红、rc=1，该绿的 F6/F7 after/F8 off 原样绿）
-    ("§18.13 乙+ 配置键＝默认空串不注入", "common/src/config_base.py", 480, 480,
+    ("§18.13 乙+ 配置键（10-04 起空串＝派生而非不注入）", "common/src/config_base.py", 492, 492,
      'd["RDAGENT_LLM_KWARGS"]'),
-    ("§18.13 乙+ 外壳透传（非空才进子进程 env）", "common/src/core/official_rdagent.py", 56, 56,
+    # 10-04「LLM 参数统一（裁选项B）」：`_driver_env` 的 docstring 补了 conda 那两笔欠账（+18 行）、
+    #        尾部补了 kwargs 派生（+4 行）⇒ official_rdagent.py 53→71 / 56→78 / 62→92 / 99→129 /
+    #        122→152 / 415→445 / 455→485 / 470→500 / 477→507 / 498→528；config_base.py 的
+    #        RDAGENT_LLM_KWARGS 注释改了语义（+2）⇒ 480→482 / 485→490，其后 `LLM_NUM_CTX` 那一段
+    #        新建（+9）⇒ 537→548。牙=etf/v1/temp/check_kwargs_source_1004.py（那时 12 格，含负对照；
+    #        10-04 上午裁「乙」后读侧三臂换契约 ⇒ 现为 22 格，见下面那一段）。
+    # 10-04 夜四臂实测（`check_num_ctx_v1_1004.py`＝`/v1` 不认 num_ctx）之后，两条注释各自扩写：
+    #        config_base.py 那段 +5 ⇒ LLM_NUM_CTX 540→545、其下 HYPOTHESIS_ROLES 548→553；
+    #        llm_client.py docstring +4 ⇒ extra_body 那行 67→71。
+    # 10-04 上午裁「乙＋铃铛」＝主线拔掉 num_ctx 注入、换一枚只叫不改的 LLM_WARN_CHARS 警铃：
+    #        config_base.py 窗口注释 +1、其下新建铃铛段 +8 ⇒ LLM_NUM_CTX 545→546、新针 554、
+    #        HYPOTHESIS_ROLES 553→562；llm_client.py 的 `_apply_request_defaults` 整段重写 ⇒
+    #        上面那根钉 `opts.setdefault("num_ctx"` 的针**按定义失效**（那一行已不存在），换成三根新的
+    #        （`窗口=主线不注入`:101 / `def _prompt_chars`:39-45 / `超窗铃铛`:82-88）。
+    #        牙＝etf/v1/temp/check_kwargs_source_1004.py 的 M1（拨到 16384 也不出现在请求体）＋
+    #        M2（未线不响／超线响、请求体逐字未改）＋M3（四把全默认＝连包装都不发生），22 格。
+    ("§18.13 乙+ 外壳透传（10-04 起留空也会派生）", "common/src/core/official_rdagent.py", 190, 190,
      "extra = str(RDAGENT_LLM_KWARGS"),
+    ("§18.13 统一：派生只填「空着」那一格，显式给值原样透传", "common/src/core/official_rdagent.py",
+     192, 198, "derived"),
+    ("§18.13 统一：一把旋钮 LLM_NUM_CTX", "common/src/config_base.py", 556, 556,
+     'd["LLM_NUM_CTX"]'),
+    ("§18.13 乙：主线只剩一行自述、不再往请求体写窗口", "common/src/core/llm_client.py",
+     101, 101, "窗口=主线不注入"),
+    ("§18.13 乙＋铃铛：报警线这把新旋钮（默认 0＝不响）", "common/src/config_base.py", 564, 564,
+     'd["LLM_WARN_CHARS"]'),
+    ("§18.13 铃铛数的是字符不是 token（主线没有 tokenizer）", "common/src/core/llm_client.py",
+     39, 45, "def _prompt_chars"),
+    ("§18.13 铃铛只叫不改：超线打一行 ⚠️ 请求照发", "common/src/core/llm_client.py",
+     82, 88, "超窗铃铛"),
     ("§18.13 乙+ 驱动解析（坏值必须抛不许静默）", "common/src/core/rdagent_driver.py", 27, 27,
      "def _parse_llm_kwargs"),
     ("§18.13 乙+ 驱动打补丁（包 litellm.completion）", "common/src/core/rdagent_driver.py", 43, 43,
@@ -210,7 +278,7 @@ CHECKS = [
     ("§18.12 未来函数硬拒（10-01 移到 factor_static_check）", "common/src/core/factor_static_check.py", 47, 47, "def check_lookahead"),
     ("§18.12 开关唯一生效点（活读不快照）", "common/src/core/hypothesis_roles.py", 150, 151,
      "bool(HYPOTHESIS_ROLES) and self._llm.enabled"),
-    ("§18.12 开关默认空＝关", "common/src/config_base.py", 537, 537, 'd["HYPOTHESIS_ROLES"]'),
+    ("§18.12 开关默认空＝关", "common/src/config_base.py", 572, 572, 'd["HYPOTHESIS_ROLES"]'),
     ("§18.12 接线：闸开走四角色", "common/src/core/llm_factor_agent.py", 83, 85,
      "self.gate.enabled"),
     ("§18.12 丙：闸关原路那处 fill", "common/src/core/llm_factor_agent.py", 99, 99,
@@ -346,6 +414,17 @@ CHECKS = [
      "def test_production_stage_function_blocks_it"),
     ("§17 接闸：e2e 账单（真库 45 行走真 upsert，四臂）",
      "etf/v1/temp/library_gate_e2e_1001.py", 64, 86, "def arm(tag, extra)"),
+    # ↓ 10-04 §18.15「丁＝先量主线自己有没有超窗」：分析乙/丙时现查的三格，其中两格是可钉的
+    #   代码位置。钉第一格是因为正文那个例子（multi_llm_voter）**本地压根不发射**——DEFAULT_MODELS
+    #   里四个模型名没有一个在 `ollama list` 里，这一行就是这个事实的出处，将来有人把模型名换成
+    #   本地真有的，这条针会提醒他正文那段「不发射」的论证要一起改。
+    ("§18.15 voter 的模型名单（本地不发射的出处）",
+     "common/src/report/multi_llm_voter.py", 15, 24, '"name": "gpt-4o-mini"'),
+    # 钉第二格是因为「丙＝换通路」的全部代价都压在这一点上：全仓 import openai 只有这一处，
+    # 21 个调用点全都消费这一个客户端 ⇒ 通路只有一条缝可下刀。这一行被挪走/复制成第二处，
+    # 那句「只改一层」就不成立了。
+    ("§18.15 全仓唯一一处 SDK import（丙只有一条缝）",
+     "common/src/core/llm_client.py", 25, 29, "from openai import OpenAI"),
 ]
 
 

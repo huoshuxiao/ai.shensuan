@@ -1413,3 +1413,73 @@
 2026-10-03 14:29,volume_ratio_20,ic_std_5,0.0
 2026-10-03 14:29,volume_ratio_20,ic_slope_5,0.0
 2026-10-03 14:29,volume_ratio_20,volatility,0.0
+2026-10-04 00:53,5-day SMA of Price,lag_10,0.0
+2026-10-04 00:53,5-day SMA of Price,lag_9,0.0
+2026-10-04 00:53,5-day SMA of Price,lag_8,0.0
+2026-10-04 00:53,5-day SMA of Price,lag_7,0.0
+2026-10-04 00:53,5-day SMA of Price,lag_6,0.0
+2026-10-04 00:53,5-day SMA of Price,lag_5,0.0
+2026-10-04 00:53,5-day SMA of Price,lag_4,0.0
+2026-10-04 00:53,5-day SMA of Price,lag_3,0.0
+2026-10-04 00:53,5-day SMA of Price,lag_2,0.0
+2026-10-04 00:53,5-day SMA of Price,lag_1,0.0
+2026-10-04 00:53,5-day SMA of Price,ic_mean_5,0.0
+2026-10-04 00:53,5-day SMA of Price,ic_std_5,0.0
+2026-10-04 00:53,5-day SMA of Price,ic_slope_5,0.0
+2026-10-04 00:53,5-day SMA of Price,volatility,0.0
+2026-10-04 00:53,return_variance_decay,lag_10,0.0
+2026-10-04 00:53,return_variance_decay,lag_9,0.0
+2026-10-04 00:53,return_variance_decay,lag_8,0.0
+2026-10-04 00:53,return_variance_decay,lag_7,0.0
+2026-10-04 00:53,return_variance_decay,lag_6,0.0
+2026-10-04 00:53,return_variance_decay,lag_5,0.0
+2026-10-04 00:53,return_variance_decay,lag_4,0.0
+2026-10-04 00:53,return_variance_decay,lag_3,0.0
+2026-10-04 00:53,return_variance_decay,lag_2,0.0
+2026-10-04 00:53,return_variance_decay,lag_1,0.0
+2026-10-04 00:53,return_variance_decay,ic_mean_5,0.0
+2026-10-04 00:53,return_variance_decay,ic_std_5,0.0
+2026-10-04 00:53,return_variance_decay,ic_slope_5,0.0
+2026-10-04 00:53,return_variance_decay,volatility,0.0
+2026-10-04 00:53,reversal_5,lag_10,0.0
+2026-10-04 00:53,reversal_5,lag_9,0.0
+2026-10-04 00:53,reversal_5,lag_8,0.0
+2026-10-04 00:53,reversal_5,lag_7,0.0
+2026-10-04 00:53,reversal_5,lag_6,0.0
+2026-10-04 00:53,reversal_5,lag_5,0.0
+2026-10-04 00:53,reversal_5,lag_4,0.0
+2026-10-04 00:53,reversal_5,lag_3,0.0
+2026-10-04 00:53,reversal_5,lag_2,0.0
+2026-10-04 00:53,reversal_5,lag_1,0.0
+2026-10-04 00:53,reversal_5,ic_mean_5,0.0
+2026-10-04 00:53,reversal_5,ic_std_5,0.0
+2026-10-04 00:53,reversal_5,ic_slope_5,0.0
+2026-10-04 00:53,reversal_5,volatility,0.0
+2026-10-04 00:53,1-day SMA of Price over 60-day SMA of Price,lag_10,0.0
+2026-10-04 00:53,1-day SMA of Price over 60-day SMA of Price,lag_9,0.0
+2026-10-04 00:53,1-day SMA of Price over 60-day SMA of Price,lag_8,0.0
+2026-10-04 00:53,1-day SMA of Price over 60-day SMA of Price,lag_7,0.0
+2026-10-04 00:53,1-day SMA of Price over 60-day SMA of Price,lag_6,0.0
+2026-10-04 00:53,1-day SMA of Price over 60-day SMA of Price,lag_5,0.0
+2026-10-04 00:53,1-day SMA of Price over 60-day SMA of Price,lag_4,0.0
+2026-10-04 00:53,1-day SMA of Price over 60-day SMA of Price,lag_3,0.0
+2026-10-04 00:53,1-day SMA of Price over 60-day SMA of Price,lag_2,0.0
+2026-10-04 00:53,1-day SMA of Price over 60-day SMA of Price,lag_1,0.0
+2026-10-04 00:53,1-day SMA of Price over 60-day SMA of Price,ic_mean_5,0.0
+2026-10-04 00:53,1-day SMA of Price over 60-day SMA of Price,ic_std_5,0.0
+2026-10-04 00:53,1-day SMA of Price over 60-day SMA of Price,ic_slope_5,0.0
+2026-10-04 00:53,1-day SMA of Price over 60-day SMA of Price,volatility,0.0
+2026-10-04 00:53,volume_ratio_20,lag_10,0.0
+2026-10-04 00:53,volume_ratio_20,lag_9,0.0
+2026-10-04 00:53,volume_ratio_20,lag_8,0.0
+2026-10-04 00:53,volume_ratio_20,lag_7,0.0
+2026-10-04 00:53,volume_ratio_20,lag_6,0.0
+2026-10-04 00:53,volume_ratio_20,lag_5,0.0
+2026-10-04 00:53,volume_ratio_20,lag_4,0.0
+2026-10-04 00:53,volume_ratio_20,lag_3,0.0
+2026-10-04 00:53,volume_ratio_20,lag_2,0.0
+2026-10-04 00:53,volume_ratio_20,lag_1,0.0
+2026-10-04 00:53,volume_ratio_20,ic_mean_5,0.0
+2026-10-04 00:53,volume_ratio_20,ic_std_5,0.0
+2026-10-04 00:53,volume_ratio_20,ic_slope_5,0.0
+2026-10-04 00:53,volume_ratio_20,volatility,0.0

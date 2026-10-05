@@ -10,6 +10,11 @@
   开臂  子进程 env 里必须有 `RDAGENT_LLM_KWARGS`，且值与传入串逐字节相同
   关臂  子进程 env 里必须**没有**这个键（留空＝不注入，不是注入空串）
 
+⚠️ 10-04 语义变了（用户裁「选项B」＝统一项只写在 `etf/v1/.env`）：留空不再等于
+不注入，而是由 `ETF_LLM_REASONING_EFFORT`/`ETF_LLM_NUM_CTX` **派生**。所以这一支的
+「关臂」今天重跑会红——红的是判据过期，不是代码坏。接管它的是
+`check_kwargs_source_1004.py`（四臂＋主线读侧）。这一支留档只对它写下的那一场有效。
+
 用法：/usr/bin/python3.10 -u etf/v1/temp/check_kwargs_env_plumbing_1003.py
 """
 import json

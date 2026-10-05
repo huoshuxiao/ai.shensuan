@@ -1,20 +1,4 @@
 {
-  "S1_gram_schmidt_sl0.03_equal": {
-    "name": "S1_gram_schmidt_sl0.03_equal",
-    "ortho": {
-      "corr_threshold": 0.5,
-      "method": "gram_schmidt"
-    },
-    "risk": {
-      "daily_stop_loss": -0.03,
-      "max_drawdown_stop": -0.1,
-      "cooldown_days": 3,
-      "single_position_max": 0.95,
-      "min_bars_between_trades": 1,
-      "max_trades_per_day": 10
-    },
-    "weight_method": "equal"
-  },
   "S3_gram_schmidt_sl0.02_ic_ir": {
     "name": "S3_gram_schmidt_sl0.02_ic_ir",
     "ortho": {
@@ -30,5 +14,21 @@
       "max_trades_per_day": 10
     },
     "weight_method": "ic_ir"
+  },
+  "S1_gram_schmidt_sl0.03_equal": {
+    "name": "S1_gram_schmidt_sl0.03_equal",
+    "ortho": {
+      "corr_threshold": 0.5,
+      "method": "gram_schmidt"
+    },
+    "risk": {
+      "daily_stop_loss": -0.03,
+      "max_drawdown_stop": -0.1,
+      "cooldown_days": 3,
+      "single_position_max": 0.95,
+      "min_bars_between_trades": 1,
+      "max_trades_per_day": 10
+    },
+    "weight_method": "equal"
   }
 }

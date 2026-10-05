@@ -40,6 +40,17 @@
 #    回测与回收都没受影响（result.h5 按位置读，factors.json 的名字取任务侧 factor_name），
 #    所以真正的风险不是管线断裂，而是「裁判自己抄错名字」。下面据此把规则改成：
 #    列名要逐字等于**任务里给的**因子名；评审若要求改名，不得从评审文本里抄名字。
+#
+# 10-04 第 5 处补（#172 那场 9b 实测，kwargs 全开＝窗口 16384、正文非空）：Hard rules 里
+#    新增「groupby().rolling() 之后按 recipe 用 .droplevel(0)」＋「写 result.h5 前先自检
+#    索引层数与非空值」。那两场 `No factor value generated, skip value evaluation` 前面
+#    的 Execution feedback 是**一个句号**（代码没报错），模型拿不到任何可反应的信息；
+#    它自己给出的代码用的是 `...rolling(1).mean()['close']` 而不是 recipe 的 `.droplevel(0)`。
+#    本机 pandas 实测：`Series.groupby(level="instrument").rolling(w).mean()` 的索引是
+#    **3 层**（`['instrument', 'datetime', 'instrument']`），拿它去 `reindex(df.index)`（2 层）
+#    在本地直接 AssertionError ⇒ 具体怎么变空值的环境侧机理**没在这台机器上复现**，
+#    所以规则只写「照 recipe 的 droplevel」＋「自检把静默的空结果变成一条 traceback」，
+#    不假装解释了它。
 qlib_factor_interface: |-
   Your python code should follow the interface to better interact with the user's system.
   Your python code should contain the following part: the import part, the function part, and the main part. You should write a main function name: "calculate_{function_name}" and call this function in the main guard if __name__ == "__main__": (note the quotes around __main__). Don't write any try-except block in your python code. The user will catch the exception message and provide the feedback to you.
@@ -102,5 +113,14 @@ qlib_factor_interface: |-
     the code dies later on the index assignment.
   - NEVER reassign `result.index = df.index`; use `.reindex(df.index)` as in the recipe.
   - Do not reset_index() and then relabel the columns positionally.
+  - After `groupby(level="instrument").rolling(...)`, drop the extra level with `.droplevel(0)`
+    exactly as the recipe does. Do not substitute `['close']` or any other selection for it:
+    on 10-04 two attempts written that way ran without any error and still produced
+    "No factor value generated", which left the evolution loop with nothing to react to.
+  - Before `result.to_hdf(...)`, self-check the shape you are about to write, so that a wrong
+    index fails loudly instead of silently turning into an empty factor:
+    `assert result.index.nlevels == 2 and int(result.notna().sum().sum()) > 0`
+    (a factor whose every value is NaN is a failure, not a warm-up artefact — the expected
+    NaN are only the leading rows of each instrument).
   - The result must keep exactly the two index levels datetime, instrument and exactly one
     column. Leading NaN for the warm-up window of each instrument is expected, keep them.

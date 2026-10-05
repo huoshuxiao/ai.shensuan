@@ -1,6 +1,6 @@
 ﻿因子,最新IC,半衰期(bar),衰减计数
-return_accelerated_rank,-0.0792,∞,0
-5-day SMA of Price,-0.0429,∞,0
-reversal_5,0.0454,∞,0
-1-day SMA of Price over 60-day SMA of Price,0.0205,∞,0
-volume_ratio_20,0.0215,∞,0
+5-day SMA of Price,-0.0848,∞,0
+return_variance_decay,0.0798,∞,0
+reversal_5,0.028,∞,0
+1-day SMA of Price over 60-day SMA of Price,0.0439,∞,0
+volume_ratio_20,0.0178,∞,0

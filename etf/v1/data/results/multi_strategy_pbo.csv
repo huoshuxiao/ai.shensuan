@@ -1,5 +1,5 @@
 ﻿策略,PBO,通过
-S1_gram_schmidt_sl0.03_equal,0.6428571428571429,False
-S2_gram_schmidt_sl0.05_equal,0.8142857142857143,False
-S3_gram_schmidt_sl0.02_ic_ir,0.7428571428571429,False
-S5_none_sl0.03_risk_parity,0.7571428571428571,False
+S1_gram_schmidt_sl0.03_equal,0.5428571428571428,False
+S2_gram_schmidt_sl0.05_equal,0.9,False
+S3_gram_schmidt_sl0.02_ic_ir,0.2714285714285714,True
+S5_none_sl0.03_risk_parity,0.6714285714285714,False

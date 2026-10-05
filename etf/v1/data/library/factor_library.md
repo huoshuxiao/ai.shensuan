@@ -1,12 +1,12 @@
 # 因子库
 
-> 自动生成于 `2026-10-05 23:40:13` | 共 **78** 个因子
+> 自动生成于 `2026-10-06 07:46:12` | 共 **81** 个因子
 
 ## 📊 元信息
 
-- 总因子数: 78
-- 活跃: 78
-- 来源分布: {'genetic': 3, 'pipeline': 20, 'simple': 7, 'official': 8, 'llm': 40}
+- 总因子数: 81
+- 活跃: 81
+- 来源分布: {'genetic': 3, 'pipeline': 20, 'simple': 7, 'official': 8, 'llm': 43}
 - 截面口径(market): `etf` —— IC 只在同口径内可比
 
 ## 🏆 Top 20 因子
@@ -23,16 +23,16 @@
 | 8 | `delayed_vol_shock_rank` | 滚动分位(标准差(收益率,20),180) - 滞后(滚动分位(标准差(收益率, | +0.0564 | +1.172 | llm | active |
 | 9 | `rel_vol_spike` | 差分(成交量, 5) / (均线(数据, 20) + 1e-9) | +0.0542 | +1.269 | llm | active |
 | 10 | `shadow_pressure` | -(最高价 - 收盘价) / (收盘价 + 1e-9) | -0.0532 | -2.454 | llm | active |
-| 11 | `return_accelerated_rank` | 滚动分位(差分(收益率, 3), 40) - 滚动分位(标准差(收盘价, 10) | -0.0511 | -1.276 | llm | active |
-| 12 | `delta_high_gap_norm` | (最高价 - 区间最高(最高价, 240)) / (均线(数据, 60) + 1 | -0.0506 | -1.657 | llm | active |
-| 13 | `high_low_width_norm` | (区间最高(最高价, 20) - 区间最低(最低价, 20)) / (均线(收盘 | +0.0474 | +2.174 | llm | active |
-| 14 | `volume_weighted_price_change` | (滚动求和(成交量, 60) * 差分(收盘价, 5)) / (均线(数据, 2 | -0.0428 | -1.867 | llm | active |
-| 15 | `volatility_contraction_breakout` | 绝对值(标准差(最高价,120)-标准差(最低价,120)) / (均线(收盘价 | -0.0428 | -1.606 | llm | active |
-| 16 | `gap_reversal_signal` | 符号((收盘价 - 开盘价) / (最高价 - 最低价 + 1e-9)) * 绝 | -0.0395 | -2.223 | llm | active |
-| 17 | `vol_breakout_momentum` | (差分(收盘价, 5) - 差分(收盘价, 1)) / (均线(数据, 60)  | -0.0394 | -1.644 | llm | active |
-| 18 | `1-day SMA of Price over 60-day MAX of Price` | (均线(数据,1))/(区间最高(数据,60)) | -0.0393 | -1.080 | official | active |
-| 19 | `high_low_spread_momentum` | 差分(收盘价, 5) * ((最高价 - 最低价) / 均线(数据, 60)) | -0.0388 | -1.602 | llm | active |
-| 20 | `vol_momentum_ratio` | 差分(收盘价, 5) / (标准差(最高价, 240) + 1e-9) | -0.0387 | -1.045 | llm | active |
+| 11 | `high_gap_rank` | 滚动分位((最高价 - 收盘价) / 均线(收盘价, 20), 120) | +0.0516 | +1.025 | llm | active |
+| 12 | `return_accelerated_rank` | 滚动分位(差分(收益率, 3), 40) - 滚动分位(标准差(收盘价, 10) | -0.0511 | -1.276 | llm | active |
+| 13 | `delta_high_gap_norm` | (最高价 - 区间最高(最高价, 240)) / (均线(数据, 60) + 1 | -0.0506 | -1.657 | llm | active |
+| 14 | `high_low_width_norm` | (区间最高(最高价, 20) - 区间最低(最低价, 20)) / (均线(收盘 | +0.0474 | +2.174 | llm | active |
+| 15 | `volume_weighted_price_change` | (滚动求和(成交量, 60) * 差分(收盘价, 5)) / (均线(数据, 2 | -0.0428 | -1.867 | llm | active |
+| 16 | `volatility_contraction_breakout` | 绝对值(标准差(最高价,120)-标准差(最低价,120)) / (均线(收盘价 | -0.0428 | -1.606 | llm | active |
+| 17 | `gap_reversal_signal` | 符号((收盘价 - 开盘价) / (最高价 - 最低价 + 1e-9)) * 绝 | -0.0395 | -2.223 | llm | active |
+| 18 | `vol_breakout_momentum` | (差分(收盘价, 5) - 差分(收盘价, 1)) / (均线(数据, 60)  | -0.0394 | -1.644 | llm | active |
+| 19 | `1-day SMA of Price over 60-day MAX of Price` | (均线(数据,1))/(区间最高(数据,60)) | -0.0393 | -1.080 | official | active |
+| 20 | `high_low_spread_momentum` | 差分(收盘价, 5) * ((最高价 - 最低价) / 均线(数据, 60)) | -0.0388 | -1.602 | llm | active |
 
 ## 📈 指标说明
 
@@ -1443,6 +1443,60 @@ abs(std(high,120)-std(low,120)) / (ma(close,10)+1e-9) * sign(delta(close,5))
 
 ```python
 rank(std(returns,20),120) - rank(std(returns,20),30)
+```
+
+---
+
+### `high_gap_rank` · 滚动分位((最高价 - 收盘价) / 均线(收盘价, 20), 120)
+
+- **中文名**: 滚动分位((最高价 - 收盘价) / 均线(收盘价, 20), 120)
+- **状态**: `active`
+- **来源**: `llm`
+- **截面口径**: `etf`
+- **IC**: +0.0516
+- **ICIR**: +1.025
+- **首次发现**: 2026-10-06 07:46:12
+
+**表达式**:
+
+```python
+rank((high - close) / ma(close, 20), 120)
+```
+
+---
+
+### `high_low_spread_norm` · 绝对值(最高价 - 最低价) / (均线(收盘价, 10) + 1e-9)
+
+- **中文名**: 绝对值(最高价 - 最低价) / (均线(收盘价, 10) + 1e-9)
+- **状态**: `active`
+- **来源**: `llm`
+- **截面口径**: `etf`
+- **IC**: +0.0236
+- **ICIR**: +0.594
+- **首次发现**: 2026-10-06 07:46:12
+
+**表达式**:
+
+```python
+abs(high - low) / (ma(close, 10) + 1e-9)
+```
+
+---
+
+### `vol_ma_slope_rank` · 滚动分位(差分(均线(成交量, 20), 5), 60)
+
+- **中文名**: 滚动分位(差分(均线(成交量, 20), 5), 60)
+- **状态**: `active`
+- **来源**: `llm`
+- **截面口径**: `etf`
+- **IC**: +0.0223
+- **ICIR**: +0.664
+- **首次发现**: 2026-10-06 07:46:12
+
+**表达式**:
+
+```python
+rank(delta(ma(volume, 20), 5), 60)
 ```
 
 ---

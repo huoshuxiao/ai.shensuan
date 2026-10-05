@@ -68,3 +68,9 @@ intraday_range_momentum,"滚动均值(最高价 - 最低价, 240) * 收益率 / 
 1-day SMA of Price over 5-day MAX of Price,"(均线(数据,1))/(区间最高(数据,5))","(ma(df,1))/(max(df,5))",-0.0223,-0.7112,official,etf,active,2026-10-05 23:22:45,2026-10-05 23:22:51,2
 5-day SMA of Price over 20-day MIN of Price,"(均线(数据,5))/(区间最低(数据,20))","(ma(df,5))/(min(df,20))",0.0216,0.6717,official,etf,active,2026-10-05 23:22:45,2026-10-05 23:22:51,2
 vol_aware_return_acceleration,"差分(差分(收盘价, 5), 5) / (均线(标准差(最高价, 15), 8)","delta(delta(close, 5), 5) / (ma(std(high, 15), 8) + 1e-9)",-0.02,-0.7527,llm,etf,active,2026-10-05 23:22:45,2026-10-05 23:22:51,2
+volume_gap_momentum,"差分(成交量, 5) / (均线(成交量, 30) + 1e-6)","delta(volume, 5) / (ma(volume, 30) + 1e-6)",0.066,1.7078,llm,etf,active,2026-10-05 23:33:36,2026-10-05 23:33:36,1
+vol_momentum_ratio,"差分(收盘价, 5) / (标准差(最高价, 240) + 1e-9)","delta(close, 5) / (std(high, 240) + 1e-9)",-0.0387,-1.0446,llm,etf,active,2026-10-05 23:33:36,2026-10-05 23:33:36,1
+price_vol_divergence,"滚动分位(绝对值(差分(收盘价, 5)) - 差分(成交量, 20), 60)","rank(abs(delta(close, 5)) - delta(volume, 20), 60)",-0.0383,-1.3606,llm,etf,active,2026-10-05 23:33:36,2026-10-05 23:33:36,1
+low_high_range_decay,"均线((最高价-最低价), 60) / (标准差(收盘价, 120) + 1e-","ma((high-low), 60) / (std(close, 120) + 1e-9)",-0.0269,-1.2745,llm,etf,active,2026-10-05 23:33:36,2026-10-05 23:33:36,1
+volume_price_divergence_rank,"滚动分位(绝对值(差分(收盘价, 2) - 差分(成交量, 2)), 30)","rank(abs(delta(close, 2) - delta(volume, 2)), 30)",0.0262,1.4801,llm,etf,active,2026-10-05 23:33:36,2026-10-05 23:33:36,1
+volatility_acceleration,"滚动标准差(差分(收盘价, 5), 15)","ts_std(delta(close, 5), 15)",0.0218,1.5578,llm,etf,active,2026-10-05 23:33:36,2026-10-05 23:33:36,1

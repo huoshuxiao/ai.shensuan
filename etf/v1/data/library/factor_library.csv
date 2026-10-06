@@ -85,3 +85,5 @@ volume_rel_accel,"差分(成交量, 3) / (均线(数据, 20) + 1e-9) * 符号(�
 vol_slope_momentum,"滚动均值(差分(成交量, 5), 10) / (均线(数据, 20) + 1e-","ts_mean(delta(volume, 5), 10) / (ma(df, 20) + 1e-9)",-0.0241,-0.7335,llm,etf,active,2026-10-06 08:00:13,2026-10-06 08:00:13,1
 vol_spread_momentum,"(收盘价 - 最低价) / 最高价 * 差分(收盘价, 5) / (均线(数据,","(close - low) / high * delta(close, 5) / (ma(df, 10) + 1e-9)",-0.024,-1.3504,llm,etf,active,2026-10-06 08:00:13,2026-10-06 08:00:13,1
 vol_std_accel,"滚动标准差(成交量, 15) - 滚动均值(标准差(成交量, 10), 20)","ts_std(volume, 15) - ts_mean(std(volume, 10), 20)",0.0216,0.6809,llm,etf,active,2026-10-06 08:00:13,2026-10-06 08:00:13,1
+volatility_regime_switch,"符号(滚动求和(差分(标准差(收盘价, 5), 10), 3)) * (均线(最","sign(ts_sum(delta(std(close, 5), 10), 3)) * (ma(high, 60) - ma(low, 60)) / (std(close, 240) + 1e-9)",0.0452,1.0219,llm,etf,active,2026-10-06 08:06:42,2026-10-06 08:06:42,1
+delta_vol_slope,"差分(绝对值(差分(收盘价, 5)), 10) / (均线(标准差(收盘价, 3","delta(abs(delta(close, 5)), 10) / (ma(std(close, 30), 10) + 1e-9)",0.0252,0.8019,llm,etf,active,2026-10-06 08:06:42,2026-10-06 08:06:42,1

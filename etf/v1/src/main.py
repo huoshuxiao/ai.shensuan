@@ -22,7 +22,7 @@ from config import (
 )
 from etf_universe import get_universe
 from data_loader import DataLoader
-from factors import FACTOR_REGISTRY
+from factors import FACTOR_REGISTRY, FACTOR_EXPR
 from factor_dsl import compute_ic
 from factor_naming import cn_name
 from factor_orthogonal import orthogonalize_factors
@@ -54,7 +54,7 @@ def mine_factors(pool):
             mean_ic = float(np.mean(ics))
             std_ic = float(np.std(ics)) if len(ics) > 1 else 1.0
             factors.append({"name": name, "mean_ic": mean_ic,
-                            "icir": mean_ic / (std_ic + 1e-9),
+                            "icir": mean_ic / (std_ic + 1e-9), "expr": FACTOR_EXPR[name],
                             "impl": impl, "source": "simple"})
             print(f"  {name:20s} IC={mean_ic:+.4f}  [{cn_name(name)}]")
     factors = select_factors(factors)

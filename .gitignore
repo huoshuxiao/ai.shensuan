@@ -261,6 +261,13 @@ shell/**
 !*/v1/data/results/*.md
 !*/v1/data/results/daily_signal/*.csv
 !*/v1/data/library/*
+# 10-06 裁令「第 3 问：候选归档要不要进 git——进，只针对那一份归档，不动其它」。
+# ⚠️ 裁令原话写的是 `rdagent_output/`，但那棵树实测 2.2G 会话碎屑（.bin/.pkl），
+# 且里面那份候选清单每场被覆写 ⇒ 放行它既吞碎屑又拿不到历史。代码真正在归档的是
+# `run_etf_daily_chain.py:archive_official_candidates()`，落点在本目录：**只追加不覆写**
+# （sha 相同不重写第二份），每场增量 ≈ 候选文件本身的大小（实测当日 21,726 B）。
+# 末尾不带 `**`：gitignore 的 `*` 不跨 `/`，这条只吃该目录的直接子文件。
+!*/v1/data/archive/official_candidates/*
 
 # 09-29 数据层进 common：抓来的基础行情数据（qlib bin / 全市场日线镜像 / 当日
 # 快照 / 份额净值长表 / 行业映射）统一落 common/data/<线>/，分析产物仍留在各线

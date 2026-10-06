@@ -9,6 +9,364 @@ docstring 为准（那里是判据的权威出处）。
 <!-- 由根 CHANGELOG.md 于 09-29 按线条目标签拆出（用户裁「B」）。本文件收标签为「ETF 线」的条目；第三条线 live2etf 的条目曾并进本文件，09-30 该线删档（见下一条），其历史条目保留为流水、不再当现状引用。 -->
 
 
+## 2026-10-06（13:5x）｜用户三问连裁「1 丙／2 丙／3 进」各自落地：发射端补齐 `expr`（9 串与 lambda 逐位相同）／折内那 7 枚的席位账量完／候选归档放行一条窄白名单
+
+本批裁令原话：「第 1 问｜那 7 枚"窗口成绩混进全样本库"怎么处理：丙／第 2 问｜空 expr 怎么处理：丙／
+第 3 问｜候选归档要不要进 git：进。只针对 `rdagent_output/` 下那一份归档，不动其它 `*/v1/data/**`」，
+并对第 2 问先声明了代价与要证的那一件事：「代价＝要逐条把 lambda 翻成表达式，翻错即造出"库里挂着一条
+与实算不一致的表达式"这种新事故」；「要证的一件事：给 `FACTOR_REGISTRY` 那 9 条 lambda 补的表达式串，
+算出来的列必须与 lambda **逐位相同**（不是"差不多"）」。
+
+### 一、第 2 问丙：不改写库那道闸，改**发射端**
+
+1. **落地形状**（`common/src/core/factors.py` ＋ `etf/v1/src/main.py` 两行）：紧贴 `FACTOR_REGISTRY`
+   长出 `FACTOR_EXPR`——9 条 lambda 各配一条 DSL 串，表与 lambda 同一文件同一段（改一条必然看见另一条）；
+   `mine_factors` 那条腿从此每条带 `"expr": FACTOR_EXPR[name]`。下游一行没动：`main.py` 保持 **825 行**
+   （引证针按行号指它，多一行就把 `§17 接闸：日更第③段` 那根针拔了），`lib.upsert` 那一步照旧。
+2. **为什么 `expr` 不是注释**：`run_live.py:155-162` 要求 `expr` 非空才有资格进实盘打分、按 `-abs(ic)` 取
+   前 10 席，`:193` 又拿 `safe_eval(库里那条 expr)` 现算——而排座用的 `ic` 是 lambda 当年算的。⇒ 串与
+   lambda 不一致＝**实盘用另一个数算、却按 lambda 的成绩排队**，这正是用户点出的那种新事故。
+3. **对拍尺子（先自翻一次才对的）**：`temp/registry_expr_equivalence_1006.py` 第一版只扫真池就推荐了
+   `close/shift-1` 那一形——真池（100 只／145,833 根 bar）**内部 NaN＝0**（五列现量全 0），于是 pandas 2.2
+   里 `pct_change()` 默认 `fill_method='pad'` 与 DSL `returns` 的 `fill_method=None` 那一档差别**根本没被
+   测到**。改版加第二遍：同一批池子人为挖停牌洞（12 只、洞长 1~4 不等），并加两道闸——现量内部 NaN 的普查、
+   以及 `seam == 0 ⇒「第二遍是空跑」直接判失败`。读数：缺口池那一遍把 **4 条形**从「按构造相同」里挑了出去
+   （`momentum_20/10`、`reversal_5` 各 60 个 NaN 格差、`volatility_20` 270 格差且数值层 `1.383e-16`）
+   ⇒ 定形改为 **4 条 B 形（方法链）＋5 条 A 形**；三支负对照全被抓，且都报**两层**读数
+   （`NaN 层 100 格 ＋ 数值层 4.214e+00` 这种形状；只报一个 `max|Δ|=0` 是上一版的毛病）。
+   一条差点被误判的：`rsi_14` 旧写法与 lambda 全精度差 `2.776e-16`、Spearman 1.0000 ⇒ 是浮点运算次序、
+   不是语义分家，落地那一串的读数是 `0.000e+00`。EXIT=0／墙钟 7.41 秒／峰值内存 184,420 KB。
+4. **常驻回归位**：`etf/v1/tests/test_registry_expr_1006.py` **24 格**＝9 格过静态闸 `check_expr`＋9 格在
+   挖洞池上与 lambda 逐位相同＋1 格发射端（真调用 `M.mine_factors`，并断言 `len(got) >= 1` ⇒ 这一格不许
+   恒真）＋3 格尺子的牙＋1 格「`pad` vs `None` 之差是真的」。牙实测用**仓库外插件**
+   （`/tmp/teeth_regexpr_1006/teeth_plugin.py`，两臂：`TEETH=1` 改 `FACTOR_EXPR["momentum_20"]` ⇒ 翻红；
+   noop 臂 ⇒ 全绿），生产文件一个字节没被改过——上一次想原地改 `common/src/core/factors.py` 试牙被权限闸
+   拦下，按规矩没有换姿势重试。
+5. **⚠️ 丙修不了已经存进库的那几行（这是本条的边界，不是遗漏）**：`factor_library.upsert` 的"已存在"分支
+   （`:65-77`）会把 ic/icir/`ic_history`/`last_seen`/`status`/`market` 和 `extra` 都更新，**唯独从不重写
+   `expr`** ⇒ 第一次写它的人永久定形。所以库里 `ma_ratio_10_30` 那条空串、以及 `momentum_20`／`momentum_10`／
+   `reversal_5`／`volatility_20` 那 4 条**A 形旧值**（现读库三个文件 sha 前缀 `53652da1…`／`e52993bb…`／
+   `4a63c70f…`、mtime 08:06，本批一行未写）都原地不动，丙只保证**还没进库的键**不再以空串落库。
+   两条后果记账：① 库里这 4 条旧行是 **A 形**（`close / delay(close, 20.0) - 1`、`-ts_std(returns, 20.0)` 这类
+   DSL 串，NaN 一路传染），而发射端现在落的是 **B 形**（`close.pct_change(20)`＝pandas 2.2 默认
+   `fill_method='pad'`）——**两边不是同一个数**：序列中间有停牌洞时，`run_live.py:193` 拿旧行求值得到 NaN，
+   回测侧那条 lambda 却用 pad 填出一个数 ⇒ 库里那条 `ic` 与实盘算出的列在那几格上不同源
+   （现读库四个 `expr` 逐字：`(close / delay(close, 20.0) - 1)`／`(close / delay(close, 10.0) - 1)`／
+   `(1 - close / delay(close, 5.0))`／`(-ts_std(returns, 20.0))`）。今天看不见（现池内部 NaN＝0），但账在这儿；
+   ② 补上 `expr` 等于把这
+   9 个名字放进实盘打分候选（原先被"`expr` 非空"那道过滤挡在外面），是行为变化——只是 `run_live.py` 没接进
+   日更链路、影子盘至今零成交，所以今天不产生任何真动作。
+
+### 二、第 1 问丙：那 7 枚「折内生的键」今天占不占席位——只读量完，一个字节没写
+
+新尺子 `etf/v1/temp/bill_fold_seats_1006.py`（EXIT=0／墙钟 0.66 秒／峰值内存 102,376 KB）。折窗从
+`log/research_daily_20261006.log` 的时间戳切（折 1 `07:52:33→08:00:49`、折 2 `08:00:49→08:07:42`；右界不许
+越进下一折——第一版给每扇窗宽裕 60 秒导致两窗重叠，一枚键会被**前**一折抢走，已修），落在窗内的新键
+**正好 7 枚**，与日志那两行 `📚 因子库更新: +5 (来源=llm)`／`+2` 逐场对得上 ⇒ 归属不是猜：
+`vol_momentum_spread`／`volume_rel_accel`／`vol_slope_momentum`／`vol_spread_momentum`／`vol_std_accel`
+（折 1，`first_seen` 08:00:13）＋`volatility_regime_switch`／`delta_vol_slope`（折 2，08:06:42），
+每枚 `ic_history` 长度＝1。
+
+| 读库的腿 | 取数口径 | 读数 |
+| --- | --- | --- |
+| 实盘打分层 | 逐字复刻 `run_live.py:150-162`（`get_active()` 且 `expr` 非空 ⇒ 按 \|ic\| 取前 10） | **1／7**：只有 `vol_momentum_spread` 占第 **9** 席（`ic=+0.05485078240047495`＝折 1 训练段那个数，被当全样本成绩排队）；其余六枚排 16／17／44／46／49／60。候选 87 个（全库 88，被过滤挡掉那 1 个＝空 `expr` 的 `ma_ratio_10_30`） |
+| 策略权重层 | 现读 `data/results/optimized_params_daily.json` 的 `factor_weights`（环 2 定档后真发席位那张表，7 个名字） | **0／7** ⇒ 折内键一枚都没进权重 |
+| 另两个读库入口 | 现读 `config.GENETIC.enabled`／`config.LLM_RESEARCH_PLANNER.enabled` | **False／False**（`research_plan.json` mtime 09-25 00:19 是历史产物、不是本场读数） |
+
+⚠️ 那 1 席还要再折一层：`run_live.py` 没接进日更链路（链路只跑 ①②③④），影子盘至今零成交 ⇒ 是**名义席**，
+今天不会因此多下一单。⇒ 这笔账读出来的是「窗口成绩混进全样本库」目前只脏了一张**排队用的数**，没进权重、
+没进名单。⇒ **同批末尾我把这一问连同下面两问一起重问，他三问连回「甲／甲／甲」（下文统称「追问一／二／三」，
+免得与本节标题那三问撞号）：追问一＝甲，只补一列「来源折窗」标签、写入与权重逻辑一行不动，动代码在下一批**；
+他同时给了复议触发条件原话「**下一批若席位占用上升（>1/7 或权重要读它），再复议甲 vs 乙**」。
+⚠️ 就这一问而言本批未动一行写入侧代码（本节「一」那批 `FACTOR_EXPR` 是第 2 问的发射端改动，与这里无关）。
+⚠️ 这把尺子是**场次快照**：库每跑一场就长、`factor_weights` 每定档就换血 ⇒ 隔场复跑必须重新出数。
+
+### 三、第 3 问：候选归档进 git——先报路径对不上，再按语义放行一条
+
+1. **裁令里的路径与代码落点不是一棵树（先说清，再动手）**：原话是「只针对 `rdagent_output/` 下那一份归档」，
+   但那棵树实测 **2.2 G**（`du -sh` 现读，里面是 RD-Agent 的 `.bin`/`.pkl` 会话碎屑），且它里面的
+   `factors.json` **每场被覆写**——那正是 C-1 甲要做归档的理由。代码真正在归档的是
+   `run_etf_daily_chain.py:615/:667`，落点 `etf/v1/data/archive/official_candidates/`（挡它的是**已提交**的
+   `.gitignore:257` `*/v1/data/**`）。⇒ 按裁令的**语义**（那一份追加式候选归档）放行的是后者，
+   `rdagent_output/` 本体一行未放。若这不是用户要的那一棵，撤掉这一行 `.gitignore` 即可，其余不动。
+2. **改动只有一行白名单**（`.gitignore:270`）：`!*/v1/data/archive/official_candidates/*`，末尾不带 `**`
+   ⇒ gitignore 的 `*` 不跨 `/`，只吃该目录的**直接子文件**。旁边 `*/v1/data/**` 与其它 `!` 条目一字未动。
+3. **证据是字节层成对跑的**（`git check-ignore -v` 单独不可信：它对**负向**规则也返回 exit 0，只把命中的
+   那条连 `!` 一起打印 ⇒ 上一轮我差点据此把"已放行"读成"仍被忽略"）：
+   正对照——真落一份归档后 `git status --porcelain -uall` 看得见 `?? …/index.jsonl` 与
+   `?? …/official_candidates_20261006_134903_7a61c85f.json`；负对照——同一 `data/` 树下真实存在的
+   `data/live/`、`config_backups/` 各 **0** 命中；负对照——`…/official_candidates/sub/x.json`（递归一层）
+   仍被 `:257` 挡着；负对照——`data/results/rdagent_output/factors.json` 仍被挡（碎屑没进来）。
+4. **增量实测**：首枚 21,726 B（候选清单整份，17 条）＋ 1,055 B（`index.jsonl` 一行）＝ **22,781 B／场**，
+   同一 sha 不重写第二份 ⇒ 只追加、库不会爆，与裁令那句「归档只追加、不覆写，git 进增量」对得上。
+   ⚠️ 诚实交代：首枚归档是本轮**手工调了一次生产函数** `archive_official_candidates()` 落下来的（为了拿真
+   文件验白名单），`stamp` 13:49 是落盘时刻、行里 `src_mtime` 08:06 才是那场写完它的时刻 ⇒ 追账按 `src_mtime`
+   认场次，下一场链路自己追加时同内容会被 sha 挡下不记双份。同批把 `run_etf_daily_chain.py` 里那句已过期
+   的 docstring（原文写着"不进版本库"）改成现口径，**文件仍 1,427 行**、语法复验 OK。
+
+### 状态
+
+- **回归面现量**（一律 `--junitxml` 取数，不看 `pytest -q` 那行；下面这组是本批**全部落定后**的复跑，
+  取代本节早前那次读数）：ETF 线 **352／0／0／0**（＝旧 328＋本批 24；pytest 内 61.641 秒／墙钟 1:03.41／
+  峰值 343,268 KB）；股票线 **42／0／0／0**（1.819 秒／峰值 156,664 KB）；引证尺 **195／195／0**；
+  四份链路夹具 EXIT=0（J 夹具 **28 格**、`verify_analysis_negctl_0929`「正支十条 A–J 全绿＋
+  六支人造坏各红在指定的那一条」、H 夹具 17 格、I 夹具七格＋拔牙臂）。
+  ⚠️ **追问二／三落地后又跑了一遍**（那两问只动 `.gitignore` 与两份文档、代码字节未变）：ETF
+  **352／0／0／0**（junit 内 65.907 秒／墙钟 1:07.70／峰值 343,324 KB）、股票 **42／0／0／0**
+  （墙钟 3.16 秒／峰值 155,880 KB）、引证尺 **195／195／0**、J 夹具重跑 **28 格全绿 EXIT=0**
+  ——**格数一根没动**，两组的秒数与峰值差是逐场抖动（本线墙钟不可跨场次引）。
+- ⚠️ **放行归档把 J 夹具打死在 A4 上，是同批长出来的第二格（这是本批第二次「加一格 ⇒ 旧守卫过期」）**：
+  A4 原文是「生产归档目录**没被夹具碰过**」，实现写成了 `arm("A4 …", False, os.path.exists(_real_arch))`
+  ⇒ 它把「生产还没落过归档」与「夹具是干净的」**压成了同一个读数**。第 3 问那道白名单一落地、
+  生产真目录长出来（我手工调了一次 `archive_official_candidates()`），A4 就当场 EXIT=1——**红的是夹具的守卫，
+  不是生产被写坏**，而且从明天起每场链路自己追加都会红。改法＝A4 换成**字节指纹前后一致**
+  （`_dir_sig()`：排序后的 `[(文件名, 字节 sha256)]`，夹具起场前取一次、收场后再取一次），
+  并当场补一颗牙 **A4b**：`不存在` 必须是 `None`、`空目录` 必须是 `[]`、多一枚文件必须改变读数
+  ⇒ 现在念作「A4 生产归档目录字节指纹前后一致（夹具全程只写 /tmp）」＋「A4b 牙：不存在与空目录不是同一个读数，
+  多一枚文件必须读出差别」，夹具 **28 格全绿 EXIT=0**，docstring 的计数词同批从「十五格」改成「28 格」
+  （旧措辞本就落后于真格数——它在 12:4x 那一批已经落到 27 格了）。
+- **追问二＝甲已执行：`.gitignore` 那条未提交的 `etf/v1/temp/`（原 `:290`）整行删掉**，9 份尺子回到
+  「产物不签、脚本本身要签」的规矩。删前删后都是实读：
+  删前 `!!` 名单里 **9 份 `.py`**（本批 3 份 `bill_fold_seats_1006.py`／`registry_expr_equivalence_1006.py`／`check_library_membership_gate_1006.py`
+  ＝J 夹具 28 格那一份）＋上一批遗留 6 份（`check_official_net_new_gate_1005.py`＝H 夹具 17 格、
+  `check_row_collapse_gate_1006.py`＝I 夹具七格、`bill_ic_floor_1005.py`、`bill_official_reharvest_1005.py`、
+  `bill_yi2_yi4_1006.py`、`check_recount_silent_1006.py`），同一目录 `??` **0 条**，
+  `git check-ignore -v` 逐份指到 `:290`；删后 `??` **10 条**＝那 9 份外还带出 1 份 `.sh`
+  （`run_netnew_leg_1005.sh`，被同一把尺子的 `!*/v1/temp/**/*.sh` 挡着 ⇒ 本节的"9 份尺子"按 `.py` 数，
+  漏了这一份同族脚本，如实补上），
+  `!!` 里的 `.py`/`.sh` **0 条**，探针改指 `:248:!*/v1/temp/**/*.py`（负向规则＝放行）。
+  ⇒ **验收表三条新格 H/I/J 的夹具从这一笔起才真的在版本库里。**
+- ⚠️ **删这一行没有放宽「产物不签」，这条要用数字证而不是念口径**：删后同一份 `--ignored=matching` 读数里
+  temp 仍有 **675 条 `!!`，全部非脚本**。三根负对照探针各落在一条**已提交**规则上：
+  `temp/ablation_ring3_0928.log` ⇒ `:246 */v1/temp/**`（整目录）、
+  `temp/snapshot_ding_1005/results/rdagent_output/costeer_kb/knowledge_base_v2.pkl` ⇒ `:288`（快照碎屑）、
+  `temp/snap_before_bing2_0930_1030/results/walk_forward_daily.csv` ⇒ `:286 *.csv`。
+  这一条被改写前还有个**错数**（原文写「`temp/` 里其余 145 份 `.py` 是已跟踪的」）——
+  `git ls-files etf/v1/temp/` 现量 **145 是总数**，其中 `.py` **134**、`.sh` **8**、另 **3** 份是 09-29 那个快照目录里的
+  rdagent_output 配置件（`.env.example`/`.gitignore`/`factors.json`，它们早于 `:288` 就已跟踪 ⇒ 不受该规则影响）。
+- 库层三个文件（`factor_library.csv`／`_index.json`／`.md`）mtime 仍是 08:06、sha 前缀未变 ⇒ 本批对生产库
+  **一行未写**；`data/archive/official_candidates/` 是本批唯一新增的产物目录。
+- **第 3 问＝甲已执行：本批代码＋文档＋那条窄白名单＋24 格新测试由一笔本地 commit 落地（不 push，
+  hash 见 `git log -1`）**。⚠️ 两枚归档**产物**（`index.jsonl` 1,055 B／
+  `official_candidates_20261006_134903_7a61c85f.json` 21,726 B）**没进这一笔**：选项里写的是「这两份是否一起
+  `git add` 你先点名」，他回的是 Q3＝甲（范围＝代码＋文档＋白名单＋测试）⇒ 按字面仍未点名，默认排除。
+  白名单已在库里、放行也在字节层证过 ⇒ 他点一句就是第二笔的事，动不到第一笔。
+
+
+## 2026-10-06（12:4x）｜用户裁「第①步＝**丙**／第②步＝**只报**」⇒ C-1 两半同批落地（验收表长出第十格 J）；另三问各带回炉实测（⑥ 折层／③ schema／空 expr）
+
+裁决原文：**第①步（先做哪半）＝丙**（闸与候选归档两半同批）、**第②步（判红之后干什么）＝只报**、
+**⑥ 折层欠账＝查「折内无入库出口」是设计还是漏环**、**③ 把"绑三上下文"写成 schema 而不是散文，
+先落 CHANGELOG 不落表**、**空 expr＝先量频率再裁要不要改闸**。
+本批**生产代码有改动**（与上一批"0 行"不同）：全部落在 `etf/v1/src/run_etf_daily_chain.py` 一个文件里，
+`common/src/` 与 `config` **一行没动**。回归面收笔数字见本节第五段。
+
+### 一、C-1 落地：甲（每场候选归档）＋乙（库层闸 J 格）同批，红的动作只有"报"
+
+代码全在 `etf/v1/src/run_etf_daily_chain.py`（现 1,427 行／`243693efd5ba`）：
+
+| 件 | 落点 | 形状 |
+|---|---|---|
+| 只报哨兵 | `:611 REPORT_ONLY_RED = "只报红"` | 渲染成 `❌ 只报`，但**不进**红名单 ⇒ 拦不住 ②、改不了退出码 |
+| 归档目录 | `:615 OFFICIAL_ARCHIVE_DIR = data/archive/official_candidates/` | 每场一份 `factors_<sha8>.json` ＋ 一本 `index.jsonl` 账 |
+| 候选取数 | `:618 official_candidates_snapshot()` | 走 `config.RDAGENT_OUTPUT_DIR` ＋ `official_rdagent._factor_artifact_paths()`（与生产同一份路径清单，不抄第二份）；读不到返回 **None** |
+| 库键取数 | `:651 factor_library_keys()` | 每次**现起** `FactorLibrary()`（不用 `get_library()` 单例——单例可能是本场前半截的旧内存）；索引缺失返回 None |
+| 归档动作 | `:667 archive_official_candidates()` | **只追加**、同 sha 不重写、`tmp` + `os.replace` 原子落、失败返回 `{"error":…}` 而不抛 |
+| J 格 | `:890-945`（`verify_analysis` 末段） | 见下面那张状态表 |
+| 打印机 | `:1130-1138 print_checks` | 只有 `ok is False` 才 append 进 `failed`；哨兵渲染成 `❌ 只报` |
+| 进监控清单 | `AUX_ARTIFACTS` 第 8 项＝`archive/official_candidates/index.jsonl`（`:438-445`） | 归档没落成时「副产物 N/M 张本场被写过」那一行数会自己少一张，不用另加一格 |
+| 取数时机 | `main()`：`:1326` ③ 前取 `cand_before/lib_before`，`:1337` **`finally` 里归档**，`:1338` ③ 后取 `cand_after/lib_after` | 崩在半路的 ③ 同样要留下候选归档——否则冤案又会变成"分不了类" |
+
+J 格的五种读数（**没有一种是恒绿**，也没有一种是恒红）：
+
+| 情形 | 读数 | 为什么 |
+|---|---|---|
+| 候选／库键／后键任一取不到（None） | ⚪ 无信息 | 尺子读不到东西时不许判绿（09-29 立的规矩） |
+| 本场库层净增＝0 | ⚪ 无信息 | 「没新东西」不是这道闸的管辖对象，那一半由 **H 格**拦 |
+| 净增的名字**全在**库键里 | ✅ | 正常收场 |
+| 有净增的名字**不在**库键里 | `❌ 只报` | 用户裁「只报」⇒ 看得见、不拦停 |
+| 归档本身没落地 | 证据行念 `没试/error/skipped/file+sha8` 四种之一 | 与 J 判决同屏，防"闸绿是因为归档坏了" |
+
+**两道读数禁令写进了代码注释与本节**（都不是设计偏好，是量出来的）：
+① 不许拿日志那句 `📚 因子库更新: +N` 当净增（N＝`factor_library.py:91-94` 的 `written`，老名字追加历史也算 true；
+本场日志念 +4/+3/+11，真净增 10 键、official 0）；
+② 不许拿库里 `source` 列当"这一场谁写了它"（`main.py:337` 的 `extra={"source": src}` 会经 `factor_library.py:75`
+把老键的源改盖成最后写它的那条腿）。⇒ **唯一取数＝当场做键集合前后差**。
+
+⚠️ 一处**只报不改**（**本条已被同日 13:5x 的裁令「第 3 问＝进」结掉**：白名单一行为 `:270`，见上一节第三节；
+下面这两行留作当时的读数，不再是现口径）：归档目录被 `.gitignore:257` 那条 `*/v1/data/**` 整片挡在外面（不是我新加的规则）
+⇒ 这份候选账本是**本机取证 store，不进版本库**。换机器／被人 `clean` 就没了。
+要不要给它开白名单＝**待裁**，本批没动 `.gitignore`。
+
+夹具（新增一份，**其时** 27 格 ⇒ 同日 13:5x 那一批把 A4 换成字节指纹、长出 A4b，现量 28 格）：
+`etf/v1/temp/check_library_membership_gate_1006.py`
+G1 放行｜G2 只报红｜**G2b 只报红不进红名单**（`print_checks` 的红名单必须为空）｜G3 只含 D 那一支｜
+**G3b 「只报」≠「没渲染」**｜G4 净增 0 ⇒ ⚪｜G5–G7 三种缺取数各 ⇒ ⚪｜G8 接线十条｜
+G9a 按判据名摘掉 J 后其余九条逐字相同｜G9b 只改库键一个数判决就翻｜G9c 人造「I 被顺手动了」证比尺看得见差异｜
+G10a–c 真字节正对照（sha 现算、names 逐条核、库键==索引顶层键）｜G11a–c noop 负对照（把取数入口指向不存在的目录必须得 None，拆完能读回）｜
+A1–A3 归档逐位相同／同 sha 不重写／只追加不覆写／账本查得到净增那枚｜A4 生产归档目录没被夹具碰过（**这一格后来被证明是假红**：
+它把「生产还没落过归档」当成「夹具干净」的同义条件，第 3 问放行后当场打死夹具 ⇒ 13:5x 换成字节指纹前后一致＋长出 A4b 牙）。**EXIT=0**。
+
+同批复跑（都 EXIT=0）：`verify_analysis_negctl_0929.py` 正支十条 A–J 全绿＋六支人造坏（新增 **N6**＝改桥一个数 ⇒ J 翻，
+且红的正是 J 那一格）；`check_official_net_new_gate_1005.py` 17 格（锚点 `!=9` → `!=10`）；
+`check_row_collapse_gate_1006.py` 七格（新 AUX 那份**生产里本来就不存在** ⇒ 加了 `_ALLOWED_MISSING` 白名单，
+**没有**让夹具替生产造一枚空文件冒充字节）。
+
+### 二、⑥ 的答案：「折内无入库出口」这句话**两条腿一个是设计、一个是漏环**
+
+用户问的是设计选择还是漏了一环。现读代码＋生产日志（`etf/v1/log/research_daily_20261006.log`，
+1,930,901 字节、mtime 10-06 08:51）后，答案是**分开的两半**：
+
+**1）registry 腿折内没有出口＝设计。** `walk_forward.py`／`fold_pool.py`／`auto_remining.py` 里
+`grep -c "upsert\|get_library"` 全为 **0**，折表唯一出口是 `main.py:440-442`。这条上一批已记（§8.6 的 ⑥）。
+
+**2）multi_source 腿折内**有**出口，而且没有闸＝漏的那一环。** 写库那几行在 `fold` 参数的作用域之外：
+`multi_source_mining.py:220-224` 的 `lib.batch_upsert(...)` ＋ `:226` 的 `lib.save_markdown()` 前面
+只有一道 `official_in_fold` 的**源**守卫（`:171-175`），**没有任何一处判断过 `fold is not None` 就不写库**。
+⇒ 丙-2 关掉的是"折内吃哪个源"，**没关掉"折内写不写库"**。
+
+生产这一场的逐行证据（不是我推的，是日志行号）：
+
+| 日志行 | 内容 |
+|---|---|
+| `:16561` | `---------- 多源挖掘 折 1 ----------` |
+| `:16564` | `ℹ️ 折 1：official 源已在折内停用（回收目录不分折 ⇒ 非点时，丙-2）` |
+| `:16588` | `📚 因子库更新: +5 (来源=llm)` ← **在折里面** |
+| `:16589` | `💾 因子库已保存: …/factor_library.md (86 因子)` |
+| `:16590` | `📝 git commit: 因子库更新: 86 总 / 86 活跃` |
+| `:16615`→`:16640`→`:16642` | 折 2 同一形状：`+2 (来源=llm)` ⇒ `88 总 / 88 活跃` |
+
+库里今天净增的 10 个键按 `first_seen` 归位（现读 `FactorLibrary()`）：07:46:12 三个＝主线，
+**08:00:13 五个＝折 1、08:06:42 两个＝折 2 ⇒ 7 个键是折内生的**。这 7 个键每一个 `ic_history` 长度＝**1**，
+存的那条 IC 就是**该折训练段**的 IC，与日志逐条对得上：
+`vol_momentum_spread` 0.05485078（日志折1 `IC=+0.0549`）、`volume_rel_accel` 0.04549496（`+0.0455`）、
+`vol_spread_momentum` −0.02396542（`−0.0240`）、`vol_slope_momentum` −0.02408378、`vol_std_accel` 0.02156513、
+`volatility_regime_switch` 0.04517010、`delta_vol_slope` 0.02519514。
+
+⇒ **用大白话说是这样**：库被当成"全样本的权威归档"在用（环 2 选权重、实盘按 `|ic|` 取前 10 席都读它），
+可里面这 7 行的 IC **只在那一场的前 2018–2022（或 2022–2026）一段上算过**，
+而表上**没有任何一列说明这件事**——`market` 只区分 ETF／股票，不区分窗口。
+这就是上一批说的"两腿在折内落点不对称"的**账单**：一条腿只进折表（折表本身标了 fold、标了区间，是点时的），
+另一条腿把折内读数直接塞进了不分窗口的库。
+
+⚠️ 顺量到第二处（**只报，一行代码都没动**）：折内那次聚类还把主线自己的归档盖了。
+现读 `results/factor_clusters.csv`：mtime **08:00**（＝折 1 时刻）、只有 **5 行**（正好是折 1 那批 llm 因子），
+主线 07:46 那一份已不在盘上；而这张表**不在验收监控的 4＋8 张清单里**（`CORE_ARTIFACTS`／`AUX_ARTIFACTS` 现读）
+⇒ 盖掉了不会有任何一格发红。（折 2 的聚类头 `:16639` 打了但没落盘——那一折只有 2 条候选，`簇数` 那行都没出现。）
+
+**裁**：这两条本批**都不改**。动它们＝动准入与候选池那侧的口径，落在「不动策略权重逻辑」的边界外，
+且需要一场 A/B 才能知道代价。留给用户的编号选项（下一步只回一个字母）：
+**甲＝只补标签**（库里给每条加"IC 来自哪个窗口"的字段，谁都不改判决，纯取证）；
+**乙＝折内不写库**（`if fold is None` 包住 `:220-226`，把 7 枚折内键的来历断掉，代价＝折内 llm 新名字不再进候选池）；
+**丙＝先只读量一次影响面**（那 7 枚键今天有没有真占席位／进权重，量完再挑甲或乙）。
+
+### 三、③ schema：每场一行的"绑三上下文"，**字段化，不落表**
+
+按裁令写成 schema（不是散文）。形状＝JSONL，一行一场，**每场追加、永不回写**；
+取不到的字段填 `null`，**不许省略键**（省略＝下一场没法 diff）。
+
+| 字段 | 类型 | 现读出处 | 在可比性规则里的角色 |
+|---|---|---|---|
+| `run_date` | str `YYYY-MM-DD` | 日志文件名 `research_daily_<YYYYMMDD>.log` | — |
+| `log` | str | `etf/v1/log/` 那一份的路径 | — |
+| `dsr` | float | `dsr_daily.csv` 列 `dsr` | 判决值 |
+| `dsr_passed` | bool | 同表列 `passed` | 判决 |
+| `n_trials` | int | 同表列 `n_trials`（本场 491） | **只涨 ⇒ 不破坏可比** |
+| `n_samples` | int | 同表列 `n_samples`（4066） | 上下文 |
+| `pbo` | float | `pbo_result.json` 键 `pbo`（0.6） | 判决值 |
+| `pbo_passed` | bool | 同文件 `passed` | 判决 |
+| `config_family` | str | 同文件 `config_family`（`real`） | **变 ⇒ `comparable: false`** |
+| `n_configs` | int | 同文件 `n_configs`（11） | **变 ⇒ `comparable: false`** |
+| `n_selected_factors` | int | `optimized_params_daily.json` 键 `n_factors`（7） | 解释变量，不参与 comparable |
+| `pool_caliber` / `fold_breadth` / `daily_avg_thick` / `teeth_day_pct` | str/float×4 | `walk_forward_daily.csv` 列 `池口径`／`挖掘层宽度`／`日均厚`／`截面有牙天%`（本场 点时／100／80.5／100.0） | 10-01 已裁过：跨场只有这四读数可比 |
+| `final_equity` | float | `equity_daily.csv` 末行第 2 列（本场 3768.15019） | 同段行情内可比 |
+| `total_return` / `annual_sharpe` | str/float | `multi_summary.csv` 列 `总收益`／`夏普`（S5 那行 34.54%／0.177） | 同段行情内可比 |
+| `library_keys` | int | `factor_library_index.json` 顶层键数（本场 88） | 库层锚点 |
+| `official_net_new_keys` | int | **C-1 那两半**：候选归档 ∩ 库键前后差 | 回收层→库层唯一能兑现的数 |
+| `comparable` | bool | 派生（规则见下） | 本行能不能与上一行并排读 |
+| `comparable_reason` | str \| null | 派生：破坏可比的那一两个键名 | 只念键名，不写散文 |
+
+`comparable` 的**求值规则**（用户口径逐字落进来）：
+1. 与**上一行**逐键比 `config_family`、`n_configs`：任一不同 ⇒ `comparable = false`，
+   `comparable_reason` 填那个键名（例：`"n_configs"`）；
+   ——为什么：CSCV 每档在列内重新排名，列数一变，同一个 `pbo` 数字排的就不是同一张座次表。
+2. `n_trials` **只涨** ⇒ **不**因此置 false（`comparable` 仍为 `true`）；
+   ——为什么：它是 DSR 的分母，单调递增是设计内的，跨场比的是"同一把越拧越紧的尺"。
+3. 其余任一键（`n_samples`／折几何／`freq`）与前一行不同 ⇒ 仍判 `false` 并把键名写进 `comparable_reason`。
+4. 表里没有上一行（第一行）⇒ `comparable: null`、`comparable_reason: "no_previous_row"`。
+
+样例行（本场，字段值全部现读）：
+
+```json
+{"run_date": "2026-10-06", "log": "etf/v1/log/research_daily_20261006.log",
+ "dsr": 2.7e-05, "dsr_passed": false, "n_trials": 491, "n_samples": 4066,
+ "pbo": 0.6, "pbo_passed": false, "config_family": "real", "n_configs": 11,
+ "n_selected_factors": 7,
+ "pool_caliber": "点时", "fold_breadth": 100, "daily_avg_thick": 80.5, "teeth_day_pct": 100.0,
+ "final_equity": 3768.15019, "total_return": "34.54%", "annual_sharpe": 0.177,
+ "library_keys": 88, "official_net_new_keys": 0,
+ "comparable": null, "comparable_reason": "no_previous_row"}
+```
+
+按裁令：**本批只落这张 CHANGELOG 表，不建 CSV/JSONL 文件、不加代码**。清单出来后再决定落不落表。
+
+### 四、空 `expr`：先量频率再裁 ⇒ **不是只这一次，是每场 4 次**（改闸的代价已实测，裁决交回）
+
+用户要求：先量历史上空串出现过几次、是不是只这一次；只一次就只报，多次才考虑改闸、且要先量顶到哪些夹具。
+
+**4.1 存量层（库里有几枚）**：现读生产库 **1 枚／88**＝`ma_ratio_10_30`；
+全仓 11 份 `factor_library_index.json` 快照位**每份都恰好是这 1 枚**（`find`＋逐份现数，例外 0 份）。
+
+**4.2 历史层（这个索引文件在 git 里长什么样）**：`git log` 该文件 **95 个可解析修订**，
+按修订现数空 expr 键数的分布＝ `{0: 8, 1: 49, 4: 4, 5: 14, 6: 2, 7: 18}`
+⇒ **87／95 个修订带着 ≥1 枚空 expr**，峰值 **7 枚**（09-19~09-25 那一阵，当时整库都是 registry/pipeline 生的、
+谁都没写 expr），近 49 个修订稳定在 1 枚。**所以"是不是只这一次"＝不是。**
+
+**4.3 发射层（每场真发几次空串）—— 这一层才是关键，存量数会低估它**：
+`mine_factors`（`main.py:37-66`）产出的 dict **根本没有 `expr` 键**（只有 name/mean_ic/icir/impl/source），
+到 `main.py:334` 的 `f.get("expr", "")` 就落空串。存证 9 份日更日志里主线「入池因子」**全是 4**
+（09-28／09-29／09-30／10-01／10-02／10-03／10-05／10-06 逐份现读）⇒ **每场有 4 行以 `expr=""` 走到写库那一步**。
+那为什么库里只剩 1 枚？因为另外 3 个名字（本场是 `reversal_5`／`volatility_20`／`volume_ratio_20`）
+**早就被别的腿先写过、带了 expr**，而 `upsert` 的"已存在"分支（`factor_library.py:64-75`）
+**从不重写 `expr`**（只动 ic/icir/last_seen/status/update_count/market ＋ `f.update(extra)`）
+⇒ 空串挤不进去。**库里只有 1 枚是"结果"，每场 4 次是"发生率"，两个数不是一回事。**
+
+**4.4 改闸（空串判红）会顶到什么——实测，不是推理**：把 `_static_gate` 换成"空串判红"的**影子副本**
+放在 `/tmp/emptygate_1006/`（生产一个字节没动，用 `PYTHONPATH` 前置让它盖住同名模块），重跑：
+
+| 对象 | 未打补丁 | 打上补丁 |
+|---|---|---|
+| ETF `pytest`（328 格） | 328 通过／0 失败 | **2 格翻红**：`test_library_static_gate.py::test_empty_expr_is_exempt`（专钉豁免那格）、`test_llm_boundary_guards.py::test_library_source_is_rewritten_on_existing_row`（**这格不是为豁免写的**，它只是拿空 expr 当最省事的种子行，被判红臂连带打死） |
+| `temp/library_gate_e2e_1001.py` | E1 拒 1 条 ⇒ 通过 | E1 拒 **2** 条 ⇒ 先红在 `assert set(a.rejected) == {BAD}`，`:91` 那格压根走不到 |
+| 引证尺 `stock/v1/temp/check_agentmd_citations_0925.py:411-412` | 195／195／0 | 那根针的名字就叫「**§17 接闸：空 expr 那一格豁免**」⇒ 语义一改即成假针，必须同批改名＋重挂 span |
+| 生产写库 | 本场 11 行全收 | 本场 4 行被拒 ⇒ `ma_ratio_10_30`(11 条历史)、`reversal_5`(28)、`volatility_20`(21)、`volume_ratio_20`(18) 共 **78 行 `ic_history` 停止增长**；另外 4 个 registry 名字（`momentum_20`/`momentum_10`/`rsi_14`/`price_position_20`）今天没过地板所以暂不受影响，**但任何一场它们过了地板就一起冻** |
+
+**4.5 裁（本批代码 0 行，交回用户只回一个字母）**：
+「只报」与「改闸」两条都能走，代价不同——
+**甲＝只报不改闸**（本节就是那份报告；空 expr 继续在库里，静态闸只管"不许偷看未来"这一件事）；
+**乙＝改闸＋同批改四处**（判红臂会打死上面那 4 行，需要一并重挂引证尺针、改写两条夹具断言、
+并接受 registry 腿从此不再更新库历史＝**实质上把这条腿从库里摘出去**）；
+**丙＝不改闸，改发射端**（给 `mine_factors` 那 9 条 lambda 补 DSL 串写进 `expr`，让空串根本不发生；
+代价＝要逐条把 lambda 翻成表达式，翻错即造出"库里挂着一条与实算不一致的表达式"这种新事故）。
+⚠️ 我的读数：**空 expr 不是"不许偷看未来"那一类毛病**（`factor_library.py:44-52` 的豁免注释早就说了这点，
+它引的是 10-01 实测 45 行里的那 1 行）；4.2／4.3 的新数字只把"是不是只一次"这个问题答成"不是一次"，
+**并没有给"该判红"提供新论据**。真要治的是发射端（丙），不是闸（乙）。
+
+### 五、回归面（本批收笔现量，四个数都从 `--junitxml` 或尺子自己的汇总行读）
+
+| 尺子 | 现量 | 与台账 |
+|---|---|---|
+| ETF 线 `pytest tests --junitxml` | **328 格／失败 0／错误 0**（65.7s） | 与 10-06 台账 328 **逐格相同**⇒ 本批没减测试、没坏既有判决 |
+| 股票线 `pytest tests --junitxml` | **42 格／失败 0** | 相同 |
+| 引证尺 `stock/v1/temp/check_agentmd_citations_0925.py` | **共 195 条／通过 195／不通过 0** | 条数 195 未变；本批**重挂了三根针**（见下） |
+| 四份链路夹具 | `check_library_membership_gate_1006.py` **其时** 27 格（现量 28，见上一节状态段）、`verify_analysis_negctl_0929.py`（十条＋六支）、`check_official_net_new_gate_1005.py` 17 格、`check_row_collapse_gate_1006.py` 七格 —— **全 EXIT=0** | 新夹具为本批加长 |
+
+⚠️ **引证尺那三根针是本批改代码的直接后果，先红后修**：`run_etf_daily_chain.py` 加了 J 那一段后行号整体下移，
+第一次现跑就是 3 根红（`§7 def decide_sessions` 期望 361／实得 377；`§18.15 --allow-official-absent` 期望 970／实得 1173；
+`--allow-official-stale` 期望 976／实得 1179）。**这不是"尺子旧了"，是我这次改动真的挪了针**，
+按同批规矩重挂 span 到 377-381／1173-1174／1179-1180 后复跑得 195-195-0。
+
+
 ## 2026-10-06（11:1x）｜三张量账一次交齐（A甲 registry／B甲 跨场可比性／C-1 库层闸的误杀率）：**本批代码与 config 仍＝0 行**
 
 用户回「A甲 B甲 C-1 设但先量 C-2 删 C-3 commit」。上一批已提交（本地 `fa676bf`，5 ahead，**我没有 push**）；
@@ -114,6 +472,8 @@ docstring 为准（那里是判据的权威出处）。
 本批没改代码，尺子与测试**不起**（避免拿"没动过"的东西冒充复验）。
 若下一步动 ①／② 任一半，按同批必跑：ETF `pytest --junitxml`（现台账 328）、引证尺（现 195／195／0）、
 `temp/verify_analysis_negctl_0929.py`（九条 A–I ＋ 五支人造坏）。
+**→ 12:4x 那一步真做了，这三把尺子都跑了；且这一行的形状已过期：现在是十条 A–J ＋ 六支人造坏（新增 N6），
+数字见下一节的第五段。旧条目按流水不重写，此处立此存照。**
 
 
 ## 2026-10-06（10:2x）｜④⑤⑦ 同批复刻查清：**那 17 个官方名字逐个死在哪道闸，第一次有 bit 级证据**；同时**本节把同日 09:0x 那一版的分级结论就地作废**（它读错了树）

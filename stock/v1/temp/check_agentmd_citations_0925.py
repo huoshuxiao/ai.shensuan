@@ -122,7 +122,7 @@ CHECKS = [
     ("§8.2 环3 在库对角线秤", "etf/v1/src/run_etf_redundancy_check.py", 157, 185,
      "def library_internal"),
     # ↓ 09-28 #53：ETF 日更链路的两个判据落点（§7 那句「逐张价面问日历」+ §6.3 的批内最大值）
-    ("§7 ETF 逐张价面判该不该补", "etf/v1/src/run_etf_daily_chain.py", 361, 365,
+    ("§7 ETF 逐张价面判该不该补", "etf/v1/src/run_etf_daily_chain.py", 377, 381,
      "def decide_sessions"),
     ("§7 ETF「落后交易日」量的是批内", "common/src/data/etf/data_loader.py", 50, 52,
      "_mirror_batch_end"),
@@ -440,9 +440,9 @@ CHECKS = [
     #   ① 有人在上面插代码 ⇒ 行号漂、针抓；② 改名/删开关 ⇒ 段里念不出这个串、针抓；
     #   ③ 有人把默认改成"松"（`store_true` 换成别的、或补 `default=True`）⇒ 关键字掉出窗口、针抓。
     #   ⚠️ 牙的实测见 CHANGELOG「10-06（10:0x）」那节：/tmp 副本里各挪一格 ⇒ 恰好这两根红、其余不动。
-    ("§18.15 缺席豁免闸的注册处（只降 G）", "etf/v1/src/run_etf_daily_chain.py", 970, 971,
+    ("§18.15 缺席豁免闸的注册处（只降 G）", "etf/v1/src/run_etf_daily_chain.py", 1173, 1174,
      '--allow-official-absent'),
-    ("§18.15 旧档豁免闸的注册处（只降 H）", "etf/v1/src/run_etf_daily_chain.py", 976, 977,
+    ("§18.15 旧档豁免闸的注册处（只降 H）", "etf/v1/src/run_etf_daily_chain.py", 1179, 1180,
      '--allow-official-stale'),
 ]
 

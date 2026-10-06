@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
 """`verify_analysis()` 的正反两支自检（09-29）
 
-为什么要这一支：③ 的验收 A–I 是「分析面真的跑了」的唯一凭据，如果它恒绿，
+为什么要这一支：③ 的验收 A–J 是「分析面真的跑了」的唯一凭据，如果它恒绿，
 链路就等于把「没跑」报成「跑对」。所以除了拿 09-29 那场真产物形状喂它（正支，应全绿），
-还要**人造五种坏**（负支，每一条都必须变红）：
+还要**人造六种坏**（负支，每一条都必须变红；N6 是唯一的例外——它要求的是"只报红"那一格
+真的翻了、而红名单里不许有它）：
     N1 四张核心表一张都没写（mtime 全在起链时刻之前）⇒ A 红
     N2 净值表末值与日志回显的「最终资金」差一口（跨层对表）⇒ D 红
     N3 净值表末日比上一场倒退 ⇒ B/F 红
     N4 一张表都读不出日期列 ⇒ F 红（`all([])` 恒真就是条恒真判据，09-29 加）
     N5 `print_checks` 的三态渲染：✅/❌/⚪ 各归各位，只有 ❌ 进红名单
        （① 和 ③ 现在都走这一张表打印机，它错了两张表一起错）
+    N6 给 J 的取数桥里库键少一枚 ⇒ J 翻成「只报红」，而红名单仍为空（10-06 加）
 判据本体不在这份文件里重写：直接 import 入口模块的 `verify_analysis`，
 保证自检与链路用的是同一把尺子。
 
@@ -40,6 +42,17 @@ H 自己的正反两支（放行 2 / 判红 2 / 该 ⚪ 的 4 / 开关与接线 
       整张验收表（连着 I 那句「整张表不见了」）根本没机会打出来；改成 `.get('when', '缺表')`。
       这一条是 `check_row_collapse_gate_1006.py` 的 C5 那一格抓到的——**判据想拦的那的形状
       先把取证层打死**，与 10-01「能失败的那一层如果同时是唯一取证层」同病。
+
+10-06 同批二（加了 J 格「回收层点名的净增候选要在库键里」，用户裁 C-1「设／只报」）：
+    · 计数词从「九条 A–I」改成「十条 A–J」；
+    · **正支 P 必须给 J 传取数桥**：J 不传桥恒走 ⚪，而 P2 那条「一格 ⚪ 都不许有」会把整支
+      正对照打死。桥是手写的三枚名字（不是真产物），J 自己的七格＋归档七格在
+      `check_library_membership_gate_1006.py`（那边吃生产 `factors.json` 的真字节）。
+    · 新增 **N6**：把这座桥的库键集合里少抹一枚 ⇒ J 必须翻成「只报红」。这一支钉的是
+      "P 那格绿是**真读出来的**、不是 J 恒绿"——桥改了判决不动＝这份夹具对 J 恒盲
+      （10-06 自己踩过的坑：`mk()` 不给新判据读的那一列，老夹具就看不见新格）。
+    · J 的红是 `REPORT_ONLY_RED` 哨兵 ⇒ 天生进不了 `judge()` 的红名单（那里口径是 `ok is False`），
+      所以 N6 要求的是「红名单仍为空 **且** J 那格翻了」两个一起成立；只查前者＝恒真。
 """
 import contextlib
 import io
@@ -114,6 +127,18 @@ LOG_OK = ("  最终资金      : 100.00\n" + NET_LINE +
           "\n  ✅ official   产出 9 个因子\n  多源挖掘追加: 2\n")
 LOG_BAD = "  最终资金      : 4321.00"
 
+# J（10-06 C-1）读的三样：起场前候选名、收场后候选名、库键集合。正支给一座"净增那枚在库里"
+# 的桥，N6 把库键少抹一枚 ⇒ 判决必须跟着翻（不翻＝这份夹具对 J 恒盲）。
+_J_OLD = frozenset({"fixture_alpha_1005", "fixture_beta_1005"})
+_J_NEW = _J_OLD | {"fixture_gamma_1006"}
+
+
+def bridge(keys=_J_NEW):
+    return {"before": _J_OLD, "after": _J_NEW,
+            "library_before": _J_OLD, "library_after": frozenset(keys),
+            "archive": {"skipped": "自检不落盘（真归档的七格在 check_library_membership_gate_1006.py）"}}
+
+
 results = []
 
 
@@ -121,6 +146,7 @@ def judge(tag, checks, must_red, exact=False):
     """must_red：这一支里**必须**变红的判据序号（0 起）；exact ⇒ 红名单必须**恰好**等于它
 
     三态里只有 `False` 算红（`None` 是「判不出、只念不拦」，与 `print_checks` 同一口径）。
+    第四种 `REPORT_ONLY_RED`（10-06 J 格）在这里同样**不算红**——这正是"只报"的定义。
     """
     red = [i for i, (_, ok, _) in enumerate(checks) if ok is False]
     want = set(must_red)
@@ -133,15 +159,16 @@ def judge(tag, checks, must_red, exact=False):
     return ok
 
 
-print("\n──── 正支 P：09-29 真产物形状 + 真产出行 + 共享层真打的净增行（九条 A–I 不许红）────")
+print("\n──── 正支 P：09-29 真产物形状 + 真产出行 + 共享层真打的净增行 + 给 J 的桥（十条 A–J 不许红）────")
 b, a = good_pair()
-p = chain.verify_analysis(b, a, T_START, LOG_OK)
+p = chain.verify_analysis(b, a, T_START, LOG_OK, official_candidates=bridge())
 judge("P 全绿", p, must_red=[], exact=True)
 # P2：把 10-01 那句"也不许是 ⚪"落成判据（`exact=True` 只钉得住红名单，钉不住灰格）。
 # H 加进来之后这片必须有真净增行才绿得起来 ⇒ 少了 NET_LINE 这一支就红，正是想要的耦合。
+# J 加进来之后这片还必须有一座桥（不传桥 J 恒 ⚪，P2 就打死在 J 上）——这条耦合是有意的。
 gray = [i for i, (_, is_ok, _) in enumerate(p) if is_ok is None]
 ok_p2 = gray == []
-print(f"  {'✅' if ok_p2 else '❌'} 九条里一格 ⚪ 都不许有（P2）  实得灰格序号={gray}")
+print(f"  {'✅' if ok_p2 else '❌'} 十条里一格 ⚪ 都不许有（P2）  实得灰格序号={gray}")
 results.append(("P2 不许有 ⚪", ok_p2, [], []))
 
 print("\n──── 负支 N1：四张核心表一张没写（mtime 都早于起链时刻）────")
@@ -180,11 +207,23 @@ ok5 = (red == ["真跑坏"]
 print(f"  {'✅' if ok5 else '❌'} 三态：红名单={red}｜渲染={shown.strip().splitlines()}")
 results.append(("N5 三态渲染", ok5, [], []))
 
+print("\n──── 负支 N6：J 的桥少抹一枚库键 ⇒ J 翻成「只报红」，红名单仍为空 ────")
+b, a = good_pair()
+n6 = chain.verify_analysis(b, a, T_START, LOG_OK,
+                           official_candidates=bridge(keys=_J_OLD))
+j_row = [c for c in n6 if c[0].startswith("J ")][0]
+red_n6 = chain.print_checks("自检 N6", [c for c in n6 if c[0] != j_row[0]])
+ok6 = (j_row[1] == chain.REPORT_ONLY_RED and red_n6 == [])
+print(f"  {'✅' if ok6 else '❌'} N6 J={j_row[1]!r}（要求哨兵 {chain.REPORT_ONLY_RED!r}）"
+      f"｜除 J 外红名单={red_n6}（要求空）")
+results.append(("N6 桥改一格 J 就翻", ok6, [], []))
+
 print("\n──── 判定 ────")
 bad = [tag for tag, ok, _, _ in results if not ok]
 for tag, ok, got, want in results:
     print(f"  {tag:<18} {'✅' if ok else '❌'} 红的条数={got} 要求覆盖={want}")
 if bad:
     raise SystemExit(f"[自检失败] {bad} ⇒ 验收判据与它的对照不一致，链路的 ③ 验收不可信")
-print("[自检通过] 正支九条 A–I 全绿（exact 红名单为空 + P2 一格 ⚪ 都没有）"
-      "+ 五支人造坏各红在指定的那一条 ⇒ A–I 与那张表打印机都不是恒绿")
+print("[自检通过] 正支十条 A–J 全绿（exact 红名单为空 + P2 一格 ⚪ 都没有）"
+      "+ 六支人造坏各红在指定的那一条（N6 红在 J 上、但只报不进红名单）"
+      "⇒ A–J 与那张表打印机都不是恒绿")

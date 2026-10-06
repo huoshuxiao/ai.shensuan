@@ -90,11 +90,12 @@ ETF 线此前有四个各自为政的时钟，`scheduler.py` 里那四条 job �
        末日没变则分两种：源本来就没有更新的一行（T+1 还没出，正常）vs 该面根本
        是 0 只/读不出来（异常）。链路把两种分开念，不把"没推进"一律报成失败。
        收尾再问一次日历 ⇒ 「价面是否追平」：还差一格就明说差哪一格，不含糊。
-    ③ 后（`--with-analysis` 起过时）：对九张产物做**字节级**对表
-       （`stamp_artifacts()` / `verify_analysis()`）。这一格的来历是 09-29 的一条教训：
+    ③ 后（`--with-analysis` 起过时）：对那批产物（4 张核心 + 8 张副，清单就是
+       `CORE_ARTIFACTS`／`AUX_ARTIFACTS`，不在这里抄第二份数字）做**字节级**对表
+       （`stamp_all()` / `verify_analysis()`）。这一格的来历是 09-29 的一条教训：
        **"没跑"与"跑对"必须给出不同的读数**，否则验收是恒真的。所以每条判据都取
        mtime/行数/末值这种只有真写过才会动的量：
-         A 九张产物里至少 `signals/equity/trades/dsr` 四张的 mtime 晚于起链时刻
+         A 至少 `signals/equity/trades/dsr` 四张的 mtime 晚于起链时刻
            ⇒ main.py 崩在半路时这一条会红（产物停在上一场）；
          B `equity_daily.csv` 行数不得比上一场**少**（回测区间只该长不该缩）；I（10-06 裁「补」）＝`signals`／`trades` 两张表不许塌方（覆盖的交易日少一格或行数跌破上一场一半⇒红，日常换血实测 −3.7%/−12.2% 只念不拦）；
          C `signals_daily.csv` 与 `equity_daily.csv` 末日必须**同一天**（同一次生成）；
@@ -123,6 +124,20 @@ ETF 线此前有四个各自为政的时钟，`scheduler.py` 里那四条 job �
            没有可比对象（N 缺失或 N=0，那是 G 的活）、或那行「本场净增」压根没念
            （10-04 之前的共享层 / 起场前没有基线）⇒ 判 ⚪ 只念不拦，无读数不等于坏读数；
            确实要让"本场挖不出新的"还往下走：`--allow-official-stale`（只把 H 降成 ⚪）。
+         J **回收层点名的净增候选，每一个都真的在因子库键里**（10-06 C-1 加，**只报不拦**）：
+           起场前/收场后各读一次 `rdagent_output/factors.json` 的名字集合与库的键集合，
+           本场新出现的候选名若不在库键里 ⇒ 这一格渲染成 ❌，但它是 `REPORT_ONLY_RED` 哨兵
+           ⇒ **不进红名单、不改退出码、② 照起**（用户裁「第②步：只报」）。
+           来历：10-06 那场「H 绿」而库层 official 净增 0——回收层交回 4 条 official，
+           全部是库里的老名字，唯一那枚新名字重算后 |IC|＝0.0029186 死在地板甲下面。
+           历史七场回放里这道闸要红 **4/7＝57%**，所以它天生不是拦停的东西；它给的是
+           "官方这条腿本场到底有没有把新东西送进库"这个此前**没有任何一格在数**的读数。
+           两条读数禁令（都是量出来的）：**不许**拿日志那行 `📚 因子库更新: +N` 当净增
+           （N 是 `upsert` 返回 true 的行数，老名字追加历史也算 true），**不许**读库里那列
+           `source`（同一键会被后写的腿盖掉，见 `factor_library.py:75`）⇒ 只能取键集合前后差。
+           缺取数（候选或库键读不出）、本场候选净增 0 个名字（那一半归 H）⇒ 判 ⚪。
+           与这一格同批落地的是**候选归档**（`archive_official_candidates()`，只追加不覆写，
+           落 `<线>/data/archive/official_candidates/`）：没归档就没法给红的那几场定性。
        这几条只判"这场真的写了、且写出来的东西自洽"，**不判**新旧两场数值相同：
        ③ 天然不可幂等（`trial_counter` 递增、SHAP 正文由 LLM 现生成、因子库若被
        并行会话改过则因子集会换），所以"重跑一遍数字一模一样"不是这条链的判据。
@@ -153,7 +168,7 @@ ETF 线此前有四个各自为政的时钟，`scheduler.py` 里那四条 job �
        "覆写归档 + 动辄几小时"。09-29 改口：它不能默认起（一天 30~52 分钟、天天重刷
        归档、还会打 `[factor-lib]` commit，这些都不是"贴一行日线"该顺带干的事），
        但**完全没有这一块**同样不对——它就是"单独敲脚本会丢块"的那个块。
-       ⇒ 折中：`--with-analysis` 显式起，起则带 A~I 九条字节级验收。
+       ⇒ 折中：`--with-analysis` 显式起，起则带 A~J 十条字节级验收（J 只报不拦）。
     `data/etf_universe.py` 的 `build()`：候选池"不每天重算"，且它的上市日期抓取是
        420s×12 轮的并发（`etf_universe.py:168-206`），日更里等它等于天天赌十几分钟。
     三条研究评估入口 `run_etf_factor_eval` / `run_etf_portfolio_eval` /
@@ -184,6 +199,7 @@ import _bootstrap  # noqa: F401  (必须最先导入：裸模块名导入的 sys
 
 import argparse
 import glob
+import hashlib
 import json
 import os
 import re
@@ -423,7 +439,10 @@ AUX_ARTIFACTS = ["results/walk_forward_daily.csv", "results/pbo_result.json",
                  "results/multi_summary.csv", "results/shap_timeline.csv",
                  "results/optimized_params_daily.json",
                  "library/factor_library_index.json",
-                 "cache/trial_counter.json"]
+                 "cache/trial_counter.json",
+                 # C-1 甲那份候选账本（10-06 加）：进 AUX 就是为了让「副产物 N/M 张本场被写过」
+                 # 那一行数得到它——归档没落成时那一格会自己少一张，不用另加一格。
+                 "archive/official_candidates/index.jsonl"]
 
 
 def stamp(rel, with_tail=True):
@@ -587,9 +606,129 @@ def official_leg_evidence(log_text):
                                               main)))}
 
 
+# C-1（10-06 用户裁「设」＋「第①步：丙＝两半同批」＋「第②步：只报」）的两半都住这里：
+# 甲＝`archive_official_candidates()` 每场归档候选清单，乙＝验收表第十格 J 的取数。
+REPORT_ONLY_RED = "只报红"      # 渲染成 ❌，但**不进**红名单 ⇒ 拦不住 ②、改不了退出码
+# 为什么用哨兵而不是 `False`：全仓「红不红」的口径一律是 `ok is False`（`print_checks`、
+# negctl 的 `judge`、H/I 两份夹具的红名单比对都是这一把），哨兵天生混不进去 ⇒ 一颗
+# 「只报」的红不需要在任何一份老夹具里改判据，也不会被哪一处当成真红误拦 ②。
+OFFICIAL_ARCHIVE_DIR = os.path.join(DATA_DIR, "archive", "official_candidates")
+
+
+def official_candidates_snapshot():
+    """回收层那份候选清单 ⇒ dict{path, names, n, bytes, sha256, src_mtime}，读不出 ⇒ None
+
+    路径清单与取名口径**直接借共享层**（`core.official_rdagent._factor_artifact_paths`
+    那三份文件、`name` 缺失时同一个 `official_{i}` 兜底名）⇒ 链路与回收读的是同一棵树，
+    不在这儿造第二把尺子（#47 的教训：两处各抄一份就会飘）。
+
+    ⚠️ 与共享层 `_existing_factor_names` 有一处**故意**不同：它把「文件读不出」折成空集
+    （那边只影响一行读数），这里必须把 `None`（没有可比对象）与空 frozenset（清单真的是空的）
+    分开——否则 J 格会把一片坏读数念成「本场净增 0」，那是把尺子数不到当成数到了。
+    """
+    from config import RDAGENT_OUTPUT_DIR
+    from core.official_rdagent import _factor_artifact_paths
+    for path in _factor_artifact_paths(RDAGENT_OUTPUT_DIR):
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path, "rb") as f:
+                raw = f.read()
+            data = json.loads(raw.decode("utf-8"))
+        except Exception:
+            return None
+        if not isinstance(data, list):
+            return None
+        return {"path": path,
+                "names": frozenset(it.get("name", f"official_{i}")
+                                   for i, it in enumerate(data)),
+                "n": len(data), "bytes": raw,
+                "sha256": hashlib.sha256(raw).hexdigest(),
+                "src_mtime": os.path.getmtime(path)}
+    return None
+
+
+def factor_library_keys():
+    """库层键集合 ⇒ frozenset，读不到 ⇒ None（J 格第三种状态：没有可比对象，不是 0 个键）
+
+    走 `FactorLibrary` 自己的加载器（`index_path` 从 `FACTOR_LIBRARY` 派生，不写死路径），
+    但**每次现起一枚实例**、不用 `get_library()` 那个单例：③ 是子进程写的库，本进程里缓存的
+    那份永远是起场前的 ⇒ 拿缓存去算「本场净增了几个键」会恒等于 0。
+    """
+    from core.factor_library import FactorLibrary
+    lib = FactorLibrary()
+    if not os.path.exists(lib.index_path):
+        return None
+    keys = frozenset(lib.factors)
+    # `_load_index` 把「JSON 读不出」吞成空表，所以空表与坏文件在这里同一个形状 ⇒ 都当没读数
+    return keys or None
+
+
+def archive_official_candidates(snap=None):
+    """每场把官方候选清单整份归档（只追加、永不覆写）⇒ dict{file, sha256, n, skipped, error}
+
+    为什么要这一半（10-06 量 C-1 误杀率时现撞的墙）：七场回放里红 4 场，可其中 3 场
+    **分不了类**——那几场的 `factors.json` 已被下一场覆写，全仓只剩一枚快照
+    （`temp/snapshot_ding_1005/`）⇒ 没归档就没法说清「红的那几场里哪几场是冤案」。
+    闸与归档是一件事的两半，只做前半就上线，那 57% 的误杀率永远查不下去。
+
+    形状：`<线>/data/archive/official_candidates/official_candidates_<起场时刻>_<sha8>.json`
+    ＋同目录 `index.jsonl` 每场一行 `{stamp, src_mtime, file, sha256, n, names}`。
+    同一份内容（sha 相同）不重写第二份 ⇒ 一场跑两遍不记双份账。**失败不拦路**：
+    归档写不成只让 J 的证据行念出 `error`，验收照走（这一半坏了不该把另一半也拖停）。
+
+    ⚠️ `stamp` 是落盘时刻、`src_mtime` 才是那场写完清单的时刻 ⇒ 追账按 `src_mtime` 认场次。
+    进 git：`.gitignore:270` 只放行本目录直接子文件，(:257) 的 `*/v1/data/**` 仍挡着其它邻居。
+    """
+    snap = snap or official_candidates_snapshot()
+    if snap is None:
+        return {"skipped": "回收层那三份候选文件一份都不在（或读不出）⇒ 无可归档"}
+    try:
+        os.makedirs(OFFICIAL_ARCHIVE_DIR, exist_ok=True)
+        idx = os.path.join(OFFICIAL_ARCHIVE_DIR, "index.jsonl")
+        prev = []
+        if os.path.exists(idx):
+            with open(idx, encoding="utf-8") as f:
+                prev = [ln for ln in f.read().splitlines() if ln.strip()]
+        for ln in prev:
+            try:
+                if json.loads(ln).get("sha256") == snap["sha256"]:
+                    return {"skipped": f"与已归档的 `{json.loads(ln).get('file')}` 逐字节相同"
+                                       f"（sha {snap['sha256'][:8]}）⇒ 不重写",
+                            "sha256": snap["sha256"], "n": snap["n"]}
+            except Exception:
+                continue            # 索引里有一行坏了不影响归档：那是账本，不是判据
+        stamp_s = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+        fname = f"official_candidates_{stamp_s}_{snap['sha256'][:8]}.json"
+        dst = os.path.join(OFFICIAL_ARCHIVE_DIR, fname)
+        seq = 0
+        while os.path.exists(dst):      # 同一秒里两场：改名字，不覆写
+            seq += 1
+            dst = os.path.join(OFFICIAL_ARCHIVE_DIR,
+                               fname.replace(".json", f"_{seq}.json"))
+            fname = os.path.basename(dst)
+        tmp = dst + ".tmp"
+        with open(tmp, "wb") as f:
+            f.write(snap["bytes"])
+        os.replace(tmp, dst)            # 原子落盘：与 ① 的 `append_tail` 同一把规矩
+        with open(idx, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"stamp": stamp_s,
+                                "src_mtime": time.strftime(
+                                    "%Y-%m-%d %H:%M:%S",
+                                    time.localtime(snap["src_mtime"])),
+                                "file": fname, "sha256": snap["sha256"],
+                                "n": snap["n"], "names": sorted(snap["names"])},
+                               ensure_ascii=False) + "\n")
+        return {"file": fname, "sha256": snap["sha256"], "n": snap["n"],
+                "dir": OFFICIAL_ARCHIVE_DIR, "index_lines": len(prev) + 1}
+    except Exception as e:
+        return {"error": f"{type(e).__name__}: {e}"}
+
+
 def verify_analysis(before, after, t_start, log_text,
-                    allow_official_absent=False, allow_official_stale=False):
-    """③ 的字节级跨步验收 ⇒ [(判据名, 过不过, 证据)]，九条 A–I。
+                    allow_official_absent=False, allow_official_stale=False,
+                    official_candidates=None):
+    """③ 的字节级跨步验收 ⇒ [(判据名, 过不过, 证据)]，十条 A–J。
 
     每条都必须"没跑/跑一半"时给不出同一个读数（09-29 的教训：可失败的那一步
     最会藏恒真判据）。**不判**与上一场数值相同——③ 天然不可幂等。
@@ -598,6 +737,7 @@ def verify_analysis(before, after, t_start, log_text,
     仍然把字念出来，但不拦 ②。
     `allow_official_stale=True` 只把 H 从 ❌ 降成 ⚪（A–G、I 一条不动）：交回的全是旧档时
     仍然把字念出来，但不拦 ②。
+    `official_candidates=None`（默认）⇒ J 判 ⚪；传 dict 才有点名的对象，见下面 J 那一段。
     """
     checks = []
     fresh = [k for k in CORE_ARTIFACTS
@@ -746,6 +886,63 @@ def verify_analysis(before, after, t_start, log_text,
         i_ok, i_ev = True, ("没撞到「丢交易日」或「行数腰斩」两种事故形状；" + "；".join(parts_i)
                             + ("；无基线跳过：" + "、".join(no_base_i) if no_base_i else ""))
     checks.append(("I 信号表/成交表没有塌方（交易日不丢格、行数不腰斩）", i_ok, i_ev))
+    # J 库层这道闸（10-06 用户裁「C-1：设」→「第①步：丙＝两半同批／第②步：只报」）。
+    # 口径先说死：**这一格只报**。它的红是 `REPORT_ONLY_RED` 哨兵 ⇒ `print_checks` 渲染成 ❌
+    # 却不写进红名单 ⇒ ② 照起、退出码照 0。历史回放里它要红 4/7＝57%，接成拦停就是每天
+    # 多一道门；那三场冤案能不能定性，靠的是甲那一半（`archive_official_candidates`）。
+    # 读数两条禁令（都是量出来的，不是设计的）：
+    #   · **不许**念日志那行 `📚 因子库更新: +N`——N 是逐条 `upsert` 返回 true 的行数，
+    #     老名字追加历史也算 true（`factor_library.py:91-94`）；10-06 那场实测日志念
+    #     +4／+3／+11，而库层真净增＝10 个键、其中新增自 official 的 0 个 ⇒ 只能取键集合的前后差。
+    #   · **不许**读库里那一列 `source`——同一个键的 source 会被后写的那条腿盖掉
+    #     （`main.py:337` 的 `extra={"source": src}` → `factor_library.py:75`），而
+    #     `batch_upsert` 根本不传 extra ⇒ source 记的是「最后谁碰过它」，不是「谁造的」。
+    # 「不在库里」不等于坏：候选要连过地板甲／判重／聚类三道闸才进库（10-06 复刻：17 条候选
+    # 死 4／5／4、只 4 条交回）。这一格点名的正是**这道漏斗把回收层自认的新东西吃掉了几个**。
+    oc = official_candidates or {}
+    cb, ca = oc.get("before"), oc.get("after")
+    lib_after, lib_before, arc = oc.get("library_after"), oc.get("library_before"), oc.get("archive")
+    if not isinstance(arc, dict):
+        arc_ev = "候选归档：本场没试（调用方没给取数）"
+    elif arc.get("error"):
+        arc_ev = f"候选归档：❌ 写坏了（{arc['error']}）⇒ 这一场的候选清单过后没法复刻"
+    elif arc.get("skipped"):
+        arc_ev = f"候选归档：{arc['skipped']}"
+    else:
+        arc_ev = (f"候选归档：`{arc['file']}`（sha {arc['sha256'][:8]}／{arc['n']} 条"
+                  f"／index 第 {arc['index_lines']} 行）")
+    if cb is None or ca is None or lib_after is None:
+        j_ok, j_ev = None, (
+            "这一格缺取数（" + "、".join(
+                f"{lab}={len(val) if val is not None else '缺'}"
+                for lab, val in (("候选前", cb), ("候选后", ca), ("库键", lib_after))
+                if val is None) +
+            f"）⇒ 判不出，只念不拦（缺读数不等于坏读数，与 H 同一口径）；{arc_ev}")
+    else:
+        net = sorted(set(ca) - set(cb))
+        keys_net = ("" if lib_before is None else
+                    f"；同期库键净增 {len(set(lib_after) - set(lib_before))} 个")
+        if not net:
+            j_ok, j_ev = None, (f"回收层候选本场净增 0 个名字（{len(cb)}→{len(ca)} 条）"
+                                "⇒ 这一格没有点名的对象（「交回的全是旧档」那一半由 H 拦）"
+                                f"；库共 {len(lib_after)} 键{keys_net}；{arc_ev}")
+        else:
+            missing = [n for n in net if n not in set(lib_after)]
+            listed = "、".join(f"`{n}`" for n in missing[:5])
+            if len(missing) > 5:
+                listed += f"…共 {len(missing)} 个"
+            if missing:
+                j_ok, j_ev = REPORT_ONLY_RED, (
+                    f"回收层点名的净增 {len(net)} 个候选里 **{len(missing)} 个不在库键**"
+                    f"（{listed}）⇒ 只报，不拦 ②。不在库里不等于坏：它们多半死在地板甲／判重／"
+                    f"聚类三道闸里（10-06 复刻 17 条候选死 4／5／4），要定性就复刻下面那份归档"
+                    f"；候选本场 {len(cb)}→{len(ca)} 条，库共 {len(lib_after)} 键{keys_net}；{arc_ev}")
+            else:
+                j_ok, j_ev = True, (
+                    f"回收层点名的净增 {len(net)} 个候选**全部在库键里**"
+                    f"（{'、'.join(f'`{n}`' for n in net[:5])}）；候选本场 {len(cb)}→{len(ca)} 条，"
+                    f"库共 {len(lib_after)} 键{keys_net}；{arc_ev}")
+    checks.append(("J 回收层点名的净增候选，每一个都在因子库键里（只报，不拦 ②）", j_ok, j_ev))
     return checks
 
 
@@ -928,11 +1125,17 @@ def verify_data(before, after, skipped=False):
 
 
 def print_checks(title, checks):
-    """打一张验收表 ⇒ 红的判据名列表。三态：True=✅ / False=❌ / None=⚪ 无信息"""
+    """打一张验收表 ⇒ 红的判据名列表。三态：True=✅ / False=❌ / None=⚪ 无信息
+
+    第四种 `REPORT_ONLY_RED`：渲染成 ❌（只报的那道红要看得见，不能糊成 ⚪），
+    **但不进返回值** ⇒ 拿返回值决定 ② 起不起的那一处（`main()` 里 `if failed: raise SystemExit`）
+    看不见它。口径与各处「红不红」的 `ok is False` 判断一致，老夹具不用改一把尺。
+    """
     print(f"\n──────── {title} ────────")
     failed = []
     for name, ok_c, ev in checks:
-        mark = "✅" if ok_c is True else ("❌" if ok_c is False else "⚪ 无信息")
+        mark = "✅" if ok_c is True else ("❌" if ok_c is False else
+                                        ("❌ 只报" if ok_c == REPORT_ONLY_RED else "⚪ 无信息"))
         print(f"  [{mark}] {name}：{ev}")
         if ok_c is False:
             failed.append(name)
@@ -1116,17 +1319,33 @@ def main():
         rebuild_rdagent_data_surface()
         t_analysis = time.time()
         before_a = stamp_all(CORE_ARTIFACTS + AUX_ARTIFACTS)
+        # J 格（C-1）的两半在这里取数：**起场前**读候选清单与库键，**收场后**再读一遍。
+        # 基线必须自己现读，不能拿归档的倒数第二行当基线——那假设"每场都成功归档过"，
+        # 一场崩掉就整条错位；`official_candidates_snapshot()` 与共享层 `_existing_factor_names`
+        # 同一份路径清单，所以这就是回收层那句话点名的同一棵树。
+        cand_before, lib_before = official_candidates_snapshot(), factor_library_keys()
         block_ran["③ 分析面"] = time.strftime("%H:%M:%S 起", time.localtime(t_analysis))
-        out3 = run("③ 分析面九步（覆写 data/results/ 归档 + upsert 因子库 + [factor-lib] commit）"
-                   + ("｜断点续传已开" if a.resume else ""),
-                   [P310, ANALYSIS_PY],
-                   extra_env={"ETF_RUN_RESUME": "1"} if a.resume else None) or ""
-        after_a = stamp_all(CORE_ARTIFACTS + AUX_ARTIFACTS)
+        try:
+            out3 = run("③ 分析面九步（覆写 data/results/ 归档 + upsert 因子库 + [factor-lib] commit）"
+                       + ("｜断点续传已开" if a.resume else ""),
+                       [P310, ANALYSIS_PY],
+                       extra_env={"ETF_RUN_RESUME": "1"} if a.resume else None) or ""
+        finally:
+            after_a = stamp_all(CORE_ARTIFACTS + AUX_ARTIFACTS)
+            # 归档放进 finally：崩在半路的那一场**正是**最需要留下候选清单的那一场
+            # （10-06 那三场分不了类的冤案，缺的就是这份字节）。写坏了不拦路，J 会念 error。
+            archive = archive_official_candidates()
+        cand_after, lib_after = official_candidates_snapshot(), factor_library_keys()
         failed = print_checks(
             "验收 ③（全部从产物反推；③ 天然不可幂等，所以不判「和上一场一样」）",
             verify_analysis(before_a, after_a, t_analysis, out3,
                             allow_official_absent=a.allow_official_absent,
-                            allow_official_stale=a.allow_official_stale))
+                            allow_official_stale=a.allow_official_stale,
+                            official_candidates={
+                                "before": None if cand_before is None else cand_before["names"],
+                                "after": None if cand_after is None else cand_after["names"],
+                                "library_before": lib_before, "library_after": lib_after,
+                                "archive": archive}))
         if failed:
             # ② 吃的是 ③ 写出来的归档：分析面半口血就往 ② 走，日报会把一个坏掉的净值当今天的成绩
             raise SystemExit(f"[验收 ③ 失败] {failed} ⇒ **② 不起**：归档是三张表的唯一来源，"
@@ -1137,7 +1356,10 @@ def main():
         print(f"  [附] 本场因子库提交 {len(commits)} 次"
               + ("：" + " → ".join(f"{t}总/{a}活跃" for t, a in commits) if commits
                  else "（一次没有 ⇒ `[4/9]` 没判出净变化，`git log -1 --oneline` 应当还是上一场那条）"))
-        print(f"  [附] 副产物 {sum(1 for k in AUX_ARTIFACTS if after_a[k]['mtime'] >= t_analysis)}"
+        # `.get` 不是凑数：`stamp()` 对不存在的表返回的是 `{"exists": False}`，**没有 mtime 键**。
+        # 副产物里现在有一张（候选归档账本）是"归档写坏了就没有"的 ⇒ 硬取键会把整张验收表之后的
+        # 附报打死，与 10-06 A 格那次 `KeyError` 同病（取证层不许比判据先崩）。
+        print(f"  [附] 副产物 {sum(1 for k in AUX_ARTIFACTS if after_a[k].get('mtime', 0) >= t_analysis)}"
               f"/{len(AUX_ARTIFACTS)} 张本场被写过")
 
     if a.no_feedback:

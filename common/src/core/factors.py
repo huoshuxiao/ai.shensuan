@@ -75,3 +75,32 @@ FACTOR_REGISTRY = {
     "volume_ratio_20":  lambda df: volume_ratio(df, 20),
     "price_position_20": lambda df: price_position(df, 20),
 }
+
+# 与上面**逐条配对**的 DSL 表达式（10-06 用户裁「第 2 问＝丙：不改闸，改发射端」）。
+#
+# 为什么要有这张表：`expr` 不是注释——`run_live.py:193` 会拿库里存的 `expr` 重新求值
+# 给实盘打分，而库里的 `ic` 是用**左边那台 lambda** 量出来的；同时
+# `etf/v1/src/main.py` 的写库腿 `f.get("expr", "")` 在没有这张表时一律落空串，
+# 于是这些名字在库里挂着空表达式、被 `run_live.py:156` 的非空过滤直接挡在实盘门外。
+#
+# 每一条都必须与对应 lambda **逐位相同**（不是"差不多"）。对拍尺＝
+# `etf/v1/temp/registry_expr_equivalence_1006.py`：真池子＋人造停牌缺口池各拍一遍，
+# 外加三支负对照（窗口差一档 / 防零除少一个）。取形的规矩是**按构造相同优先**：
+# 前四条写成方法链（与 lambda 同一台 pandas 调用）而不是 DSL 惯用形
+# `close / delay(close, 20) - 1`——后者在真池子上与 lambda 逐位相同，但在有停牌缺口的
+# 数据上就分家（DSL 的 `returns` 写 `fill_method=None`，lambda 用 pandas 默认的 `'pad'`），
+# 那是"今天相等"不是"按构造相等"。夹具 `test_registry_expr_1006.py` 把这条对拍常驻。
+FACTOR_EXPR = {
+    "momentum_20": "close.pct_change(20)",
+    "momentum_10": "close.pct_change(10)",
+    "reversal_5": "-close.pct_change(5)",
+    "volatility_20": "-close.pct_change().rolling(20).std()",
+    "ma_ratio_5_20": "ma(close, 5) / ma(close, 20) - 1",
+    "ma_ratio_10_30": "ma(close, 10) / ma(close, 30) - 1",
+    "rsi_14": "(100 - 100 / (1 + ts_mean(delta(close, 1).clip(lower=0), 14) / "
+              "(ts_mean((-delta(close, 1)).clip(lower=0), 14) + 1e-9)) - 50) / 50",
+    "volume_ratio_20": "volume / ts_mean(volume, 20)",
+    "price_position_20": "2 * (close - ts_min(low, 20)) / "
+                         "(ts_max(high, 20) - ts_min(low, 20) + 1e-9) - 1",
+}
+

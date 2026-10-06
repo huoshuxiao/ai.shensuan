@@ -90,14 +90,20 @@ CHECKS = [
     ("§12.1 默认 paper", "etf/v1/src/live/config_live.py", 13, 13, "paper"),
     ("§12.1 三开关", "etf/v1/src/live/config_live.py", 26, 31, "auto_order"),
     ("§12.2 live 风控基线", "etf/v1/src/live/config_live.py", 59, 60, "max_drawdown_stop"),
-    ("§12.1 券商依赖被注释", "etf/v1/requirements.txt", 36, 37, "easytrader"),
+    # ↓ 10-05 乙-3 收尾重挂：这份清单里 requirements.txt 的路径写的是 `etf/v1/requirements.txt`，
+    #   而那个路径在 80bac5e 之后已并入**仓库根**的 `requirements.txt`（本行原样指过去=尺子报「文件不存在」）。
+    ("§12.1 券商依赖被注释", "requirements.txt", 36, 37, "easytrader"),
     ("§7 scheduler 不排 live", "etf/v1/src/scheduler.py", 64, 67, "schedule"),
     ("§12.1 双开关才下单", "etf/v1/src/run_live.py", 239, 248, "auto_order"),
     ("§12.2 越界风控数拦截", "etf/v1/src/run_live.py", 51, 86, "RISK_BOUNDS"),
     ("§12.2 日止损实现", "etf/v1/src/backtest/backtest_daily.py", 131, 151, "daily_stop_loss"),
     ("§12.2 live 侧同一判据", "etf/v1/src/live/live_risk.py", 41, 47, "max_drawdown_stop"),
     ("§12.3 DSR 报告线 0.95", "etf/v1/src/backtest/dsr.py", 75, 75, "0.95"),
-    ("§12.2 ETF 参数扫描档", "etf/v1/src/config/config.py", 203, 207, "max_drawdown_stop"),
+    # ↓ 10-05 乙-3 收尾：本批共重挂 6 根针＝requirements.txt 路径（见上一条）+ config.py
+    #   203→233 / 183→213 / 321→352 + walk_forward.py 93→119 + run_checkpoint.py 59→86。
+    #   它们红的是**行漂移**，不是判据变了：新号一律拿期望子串在当前文件 grep 出来，不心算「加了几行」。
+    #   重挂前这 5 根在 HEAD 处就已经红（工作区与 HEAD 逐字节相同 ⇒ 不是别人正在改）。
+    ("§12.2 ETF 参数扫描档", "etf/v1/src/config/config.py", 233, 237, "max_drawdown_stop"),
     ("§8.2 环1 截面最小数", "etf/v1/src/etf_admission.py", 94, 96, "MIN_CS"),
     ("§8.2 环1 波动闸", "etf/v1/src/etf_admission.py", 102, 102, "MIN_ANN_VOL"),
     ("§8.2 环1 假台阶 0.35", "etf/v1/src/etf_admission.py", 107, 107, "RET_LIMIT"),
@@ -116,7 +122,7 @@ CHECKS = [
     ("§8.2 环3 在库对角线秤", "etf/v1/src/run_etf_redundancy_check.py", 157, 185,
      "def library_internal"),
     # ↓ 09-28 #53：ETF 日更链路的两个判据落点（§7 那句「逐张价面问日历」+ §6.3 的批内最大值）
-    ("§7 ETF 逐张价面判该不该补", "etf/v1/src/run_etf_daily_chain.py", 335, 339,
+    ("§7 ETF 逐张价面判该不该补", "etf/v1/src/run_etf_daily_chain.py", 361, 365,
      "def decide_sessions"),
     ("§7 ETF「落后交易日」量的是批内", "common/src/data/etf/data_loader.py", 50, 52,
      "_mirror_batch_end"),
@@ -141,11 +147,11 @@ CHECKS = [
     ("§18.11 逐源地板（绕不过）", "common/src/core/multi_source_mining.py", 203, 203,
      "min_ic_per_source"),
     ("§18.11 0.02 的取值处（daily 档）", "common/src/config_base.py", 112, 112, "IC_THRESHOLD"),
-    ("§18.11 0.01 属 FACTOR_DECAY", "etf/v1/src/config/config.py", 183, 183, "ic_min_threshold"),
+    ("§18.11 0.01 属 FACTOR_DECAY", "etf/v1/src/config/config.py", 213, 213, "ic_min_threshold"),
     ("§18.11 0.01 的消费点在生命周期", "etf/v1/src/strategy/strategy_lifecycle.py", 141, 141,
      "ic_min_threshold"),
     ("§18.11 折内 >240 bar 闸（宽度只有 4/17/69 只的来源）", "etf/v1/src/backtest/walk_forward.py",
-     93, 93, "240"),
+     119, 119, "240"),
     # ↓ 10-03「C2/C3 收尸」在该文件顶部加 import signal + 三个新函数（净 +64 行）
     #   ⇒ 346/381 与 48/53 四格整体下移，本批重挂（牙在 etf/v1/temp/check_reap_group_1003.py）
     # ↓ 10-04 19:1x「乙二」：`_driver_env` 把 <conda 根>/envs/rdagent/bin 挂上 PATH（含 docstring 净 +14），
@@ -334,11 +340,12 @@ CHECKS = [
      "mine_factors_multi_source(pool, fold=fold)"),
     ("§18.11 丙-2 facade 透传 fold", "common/src/core/rdagent_facade.py", 56, 60,
      "multi_source_mine(pool, fold=fold)"),
-    ("§18.11 丙-2 本线开关=折内停 official", "etf/v1/src/config/config.py", 321, 321,
+    ("§18.11 丙-2 本线开关=折内停 official", "etf/v1/src/config/config.py", 352, 352,
      'MULTI_SOURCE["official_in_fold"] = False'),
     ("§18.11 丙-2 底座默认照旧吃 official", "common/src/config_base.py", 147, 147,
      '"official_in_fold": True'),
-    ("§18.11 丙-2 开关进指纹（防续传空转）", "etf/v1/src/run_checkpoint.py", 59, 59,
+    # 86 = 指纹字典里那一项本体（48 是 FOLD_ONLY_KEYS 的归属，不是「进指纹」这句的正主）
+    ("§18.11 丙-2 开关进指纹（防续传空转）", "etf/v1/src/run_checkpoint.py", 86, 86,
      '"official_in_fold"'),
     # 09-25：§3.1「qlib 的真实出场面」五处里的后四处 + 两处对拍状态（旧措辞"只用数据格式"被实测否掉）
     ("§3.1 面板生成器 import qlib", "common/rdagent_docker/pregen_source_data.py", 96, 96,
@@ -425,6 +432,18 @@ CHECKS = [
     # 那句「只改一层」就不成立了。
     ("§18.15 全仓唯一一处 SDK import（丙只有一条缝）",
      "common/src/core/llm_client.py", 25, 29, "from openai import OpenAI"),
+    # ↓ 10-06 裁令⑧「给两颗 --allow-official-* 开关加针」。这两颗闸是全仓**唯一**能把验收表
+    #   G/H 两格从 ❌ 降成 ⚪ 的口子，而 10-06 04:5x 已裁「H 默认紧」⇒ 文档里那两句
+    #   （`--allow-official-absent` 只降 G、`--allow-official-stale` 只降 H，且两颗互相独立）
+    #   靠的是行号，此前**没有任何尺子盯**（10-05 那批就是手工 grep 才发现 `:936` 已漂到 `:976`）。
+    #   钉的是**注册处**（argparse 那两行），不是引用处 ⇒ 三种事故都会红：
+    #   ① 有人在上面插代码 ⇒ 行号漂、针抓；② 改名/删开关 ⇒ 段里念不出这个串、针抓；
+    #   ③ 有人把默认改成"松"（`store_true` 换成别的、或补 `default=True`）⇒ 关键字掉出窗口、针抓。
+    #   ⚠️ 牙的实测见 CHANGELOG「10-06（10:0x）」那节：/tmp 副本里各挪一格 ⇒ 恰好这两根红、其余不动。
+    ("§18.15 缺席豁免闸的注册处（只降 G）", "etf/v1/src/run_etf_daily_chain.py", 970, 971,
+     '--allow-official-absent'),
+    ("§18.15 旧档豁免闸的注册处（只降 H）", "etf/v1/src/run_etf_daily_chain.py", 976, 977,
+     '--allow-official-stale'),
 ]
 
 

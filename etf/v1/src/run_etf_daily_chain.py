@@ -96,7 +96,7 @@ ETF 线此前有四个各自为政的时钟，`scheduler.py` 里那四条 job �
        mtime/行数/末值这种只有真写过才会动的量：
          A 九张产物里至少 `signals/equity/trades/dsr` 四张的 mtime 晚于起链时刻
            ⇒ main.py 崩在半路时这一条会红（产物停在上一场）；
-         B `equity_daily.csv` 行数不得比上一场**少**（回测区间只该长不该缩）；
+         B `equity_daily.csv` 行数不得比上一场**少**（回测区间只该长不该缩）；I（10-06 裁「补」）＝`signals`／`trades` 两张表不许塌方（覆盖的交易日少一格或行数跌破上一场一半⇒红，日常换血实测 −3.7%/−12.2% 只念不拦）；
          C `signals_daily.csv` 与 `equity_daily.csv` 末日必须**同一天**（同一次生成）；
          D 日志回显的「最终资金」必须等于 `equity_daily.csv` 的末值（跨层对表：
            一个念的是终端、一个念的是文件，写坏了必红）；
@@ -153,7 +153,7 @@ ETF 线此前有四个各自为政的时钟，`scheduler.py` 里那四条 job �
        "覆写归档 + 动辄几小时"。09-29 改口：它不能默认起（一天 30~52 分钟、天天重刷
        归档、还会打 `[factor-lib]` commit，这些都不是"贴一行日线"该顺带干的事），
        但**完全没有这一块**同样不对——它就是"单独敲脚本会丢块"的那个块。
-       ⇒ 折中：`--with-analysis` 显式起，起则带 A~H 八条字节级验收。
+       ⇒ 折中：`--with-analysis` 显式起，起则带 A~I 九条字节级验收。
     `data/etf_universe.py` 的 `build()`：候选池"不每天重算"，且它的上市日期抓取是
        420s×12 轮的并发（`etf_universe.py:168-206`），日更里等它等于天天赌十几分钟。
     三条研究评估入口 `run_etf_factor_eval` / `run_etf_portfolio_eval` /
@@ -459,7 +459,7 @@ def stamp(rel, with_tail=True):
         else:
             dts = pd.to_datetime(first, errors="coerce")
             if dts.notna().any():
-                out["last_date"] = str(dts.max().date())
+                out["last_date"], out["n_dates"] = str(dts.max().date()), int(dts.dropna().nunique())
         for col in ("equity", "dsr"):
             if col in df and len(df) and pd.notna(df[col].iloc[-1]):
                 out["last_value"] = float(df[col].iloc[-1])
@@ -589,14 +589,14 @@ def official_leg_evidence(log_text):
 
 def verify_analysis(before, after, t_start, log_text,
                     allow_official_absent=False, allow_official_stale=False):
-    """③ 的字节级跨步验收 ⇒ [(判据名, 过不过, 证据)]，八条 A–H。
+    """③ 的字节级跨步验收 ⇒ [(判据名, 过不过, 证据)]，九条 A–I。
 
     每条都必须"没跑/跑一半"时给不出同一个读数（09-29 的教训：可失败的那一步
     最会藏恒真判据）。**不判**与上一场数值相同——③ 天然不可幂等。
 
-    `allow_official_absent=True` 只把 G 从 ❌ 降成 ⚪（A–F 一条不动）：那一腿缺席时
+    `allow_official_absent=True` 只把 G 从 ❌ 降成 ⚪（A–F、I 一条不动）：那一腿缺席时
     仍然把字念出来，但不拦 ②。
-    `allow_official_stale=True` 只把 H 从 ❌ 降成 ⚪（A–G 一条不动）：交回的全是旧档时
+    `allow_official_stale=True` 只把 H 从 ❌ 降成 ⚪（A–G、I 一条不动）：交回的全是旧档时
     仍然把字念出来，但不拦 ②。
     """
     checks = []
@@ -605,7 +605,7 @@ def verify_analysis(before, after, t_start, log_text,
     checks.append(("A 核心四张产物本场真的被写过",
                    len(fresh) == len(CORE_ARTIFACTS),
                    f"{len(fresh)}/{len(CORE_ARTIFACTS)} 张 mtime 晚于起链时刻："
-                   + "、".join(f"{k.split('/')[-1]} {after[k]['when']}"
+                   + "、".join(f"{k.split('/')[-1]} {after[k].get('when', '缺表')}"   # 缺表要念「缺」：原先 ['when'] 硬取 ⇒ 一张核心表不见了就 KeyError，整张验收表（含 I 那条「整张表不见了」）根本没机会打出来（10-06 夹具 C5 抓到）
                                for k in CORE_ARTIFACTS)))
     eq_b, eq_a = before["results/equity_daily.csv"], after["results/equity_daily.csv"]
     rows_ok = (eq_a.get("rows") or 0) >= (eq_b.get("rows") or 0)
@@ -706,6 +706,46 @@ def verify_analysis(before, after, t_start, log_text,
         h_ev = ("--allow-official-stale 已给 ⇒ 只念不拦。" + h_ev)
         h_ok = None
     checks.append(("H official 交回的因子本场净增 > 0（旧档不算产出）", h_ok, h_ev))
+    # I `signals`／`trades` 两张表的「塌方」闸（10-06 用户裁「补」）。
+    # 来历：10-06 那场真日更里 signals 27,002→25,996（−1,006）、trades 24,583→21,592（−2,991），
+    # 而 B 只盯净值表（4,067→4,067）⇒ 这两张表少掉三千行链路上没有任何一格在数。
+    # 口径先说死：**减行本身不是事故**。③ 天然不可幂等，逐日换血是设计内的（本文件顶部就写着
+    # 「同一份数据重跑两遍，归档不该逐字节相同」），实测那场也确实是换血：日期一张没丢、
+    # 每日行数有增有减（signals 905 天少／689 天多，最大 ±9 行；trades 反而多了 9 个日期）。
+    # ⇒ 这一格只拦两种**事故形状**：①覆盖的交易日少了一格（尾巴被截／某段崩在半路）；
+    #   ②行数跌破上一场的一半（只剩骨架）。
+    # ⚠️ 界的来历要说清：那两场对照（−3.7%／−12.2%）是**单场观测**，不是多样本分位数。
+    #   留的是"腰斩才算"这一档余量——它拦得住截断，拦不住温和缩水；要收紧要另起一场量分布。
+    # 三态：两张表都没有上一场（首场或表原本不存在）⇒ ⚪ 无基线不拦。
+    bad_i, parts_i, no_base_i = [], [], []
+    for key_i in ("results/signals_daily.csv", "results/trades_daily.csv"):
+        nm_i = key_i.split("/")[-1]
+        b_i, a_i = before.get(key_i) or {}, after.get(key_i) or {}
+        if not b_i.get("exists"):
+            no_base_i.append(nm_i)
+            continue
+        if not a_i.get("exists"):
+            bad_i.append(f"{nm_i} 上一场有、本场整张表不见了")
+            parts_i.append(f"{nm_i} {b_i.get('rows')}→缺表")
+            continue
+        parts_i.append(f"{nm_i} {b_i.get('rows')}→{a_i.get('rows')} 行、"
+                       f"日期 {b_i.get('n_dates')}→{a_i.get('n_dates')} 格")
+        if b_i.get("n_dates") is not None and a_i.get("n_dates") is not None \
+                and a_i["n_dates"] < b_i["n_dates"]:
+            bad_i.append(f"{nm_i} 覆盖的交易日少 {b_i['n_dates'] - a_i['n_dates']} 格"
+                         f"（{b_i['n_dates']}→{a_i['n_dates']}）")
+        if b_i.get("rows") and a_i.get("rows") is not None \
+                and a_i["rows"] * 2 < b_i["rows"]:
+            bad_i.append(f"{nm_i} 行数跌破上一场的一半（{b_i['rows']}→{a_i['rows']}）")
+    if bad_i:
+        i_ok, i_ev = False, "、".join(bad_i) + "｜" + "；".join(parts_i)
+    elif len(no_base_i) == 2:
+        i_ok, i_ev = None, ("两张表都没有上一场可比基线（首场或表原本不存在）"
+                           "⇒ 判不出，只念不拦")
+    else:
+        i_ok, i_ev = True, ("没撞到「丢交易日」或「行数腰斩」两种事故形状；" + "；".join(parts_i)
+                            + ("；无基线跳过：" + "、".join(no_base_i) if no_base_i else ""))
+    checks.append(("I 信号表/成交表没有塌方（交易日不丢格、行数不腰斩）", i_ok, i_ev))
     return checks
 
 

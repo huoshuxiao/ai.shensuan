@@ -1174,9 +1174,9 @@ def topk_rebalance(score, m, days, k, hold, cost=None,
                    min_scale=MIN_SCALE):
     """每 hold 个交易日调一次、持有截面 top-k 等权的多头组合回放。
 
-    时序（可执行口径）：信号日 s 收盘算分 → s+1 **开盘**建仓 → 持有 hold 日
-    到下一信号日开盘平仓。用开盘价而不是收盘价，是因为本线实盘也是人工下单，
-    收盘集合竞价的成交价不可控；开盘到开盘收益记作：
+    时序（可执行口径）：信号日 s 收盘算分 → s+1 **开盘**建仓 → 持有 hold 个交易日、
+    到建仓后第 hold 天（＝下一信号日的次日）开盘平仓。用开盘价而不是收盘价，是因为
+    本线实盘也是人工下单，收盘集合竞价的成交价不可控；开盘到开盘收益记作：
         r^open_{i,d} = O_{i,d}/O_{i,d-1} - 1
     组合日收益（期内不再平衡，忽略权重漂移；hold=10、k>=10 时该项量级远小于费率）：
         p_d = Σ_i A_{i,d}·r^open_{i,d} - Σ_{i∈买入} c_i/k - Σ_{i∈卖出} c_i/k_prev
@@ -1185,8 +1185,12 @@ def topk_rebalance(score, m, days, k, hold, cost=None,
     `2c·φ` 在等规模篮子下逐项相等（|买入|=|卖出|=φk），差别只在首笔：旧式在第 0
     次调仓就按双边 2cφ=2c 计费，本式把最后一篮子的清算成本记到期末最后一天，
     总费用一致、时点不同。`cost=None` 时读 `COST_MODE`（默认 tier）。
-    A 为当日生效目标权重（篮子内等权 1/k）。调仓日 d1 的收益仍归旧篮子（它到
-    d1 开盘才卖），成本也记在 d1，二者不冲突。
+    A 为当日生效目标权重（篮子内等权 1/k）。权重落在行 **[i+2, i+2+hold)**：
+    调仓日 d1=i+1 那一格（O_s→O_d1）归**上一篮**（它到 d1 开盘才卖），建仓/平仓的费用
+    仍记在 d1，新篮子的收益从 d2 起计。⚠️这里曾经是 `lo = i + 1`，等于让还没建仓的新
+    篮子白拿 O_s→O_d1 那段；实测族间合成 k=10 全窗口因此虚高 **27.8pp 净年化**
+    （43.38% → 15.57%，见 `temp/timing_shift_0929.py` 的 lag=2 臂与
+    `temp/timing_shift_xcheck_0929.py` 的零复刻臂），10-06 按裁令「修法一」落地为 i+2。
 
     缺失格按 0 处理（`nan_to_num`）而不是让整行变 NaN：本池**每一天**都有尚未上市
     的标的（池子从 28 只长到 871 只），零权重乘以 NaN 会把整个组合日的收益污染成
@@ -1221,7 +1225,7 @@ def topk_rebalance(score, m, days, k, hold, cost=None,
                             + float(c[sells].sum()) / max(1, len(prev or basket)))
         slip_rows.append(float(c[basket].mean()))
         phi = 1.0 if prev is None else 1.0 - len(pset & bset) / k
-        lo, hi = i + 1, min(i + 1 + hold, len(days))
+        lo, hi = i + 2, min(i + 2 + hold, len(days))
         w[lo:hi] = 0.0
         w[lo:hi, [col_of[b] for b in basket]] = 1.0 / len(basket)
         prev, n_rebal = basket, n_rebal + 1

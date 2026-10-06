@@ -778,12 +778,12 @@ def test_risk_readout_reads_each_name_own_last_readable_day(monkeypatch):
 
 
 
-# ---------- 14. 调仓时序：调仓日那根「开盘到开盘」记给谁（09-29 实测的钉子）----------
+# ---------- 14. 调仓时序：调仓日那根「开盘到开盘」记给谁（09-29 量、10-06 修完的钉子）----------
 #
 # 这一节的存在理由：上面三条 topk_rebalance 测试全用平值池（价格恒 10 元、毛收益
 # 恒 0），把权重往后挪一天在平值池上差是 0 —— 时间口径**一条钉子都没有**。
 # 09-29 实测（`temp/timing_shift_0929.py` 逐行复刻 + `temp/timing_shift_xcheck_0929.py`
-# 零复刻构造，两条独立路径给出同一个量级）：现行 `lo = i + 1` 让**新**篮子拿到
+# 零复刻构造，两条独立路径给出同一个量级）：当时 `lo = i + 1` 让**新**篮子拿到
 # 区间 O_s→O_d1，而信号要到 s 收盘才算得出、要到 d1 开盘才买得进，这段拿不到。
 # 族间合成 k=10 上这笔账值 **27.8~29.9pp 净年化/年**：
 #   全窗口 2019+   43.38% → 15.57%（复刻 lag=2）/ 13.45%（零复刻 shift=1），回撤 −16.5% → −32.3%/−48.3%
@@ -792,13 +792,15 @@ def test_risk_readout_reads_each_name_own_last_readable_day(monkeypatch):
 # 趋势位置 +27.3、动量 +7.5、价格水平 +0.3，而**波动 −1.0、量能 −0.6**（倒收）⇒ 这笔偏差
 # 是快价格信号的属性，不是全池通胀。
 #
-# 所以这里用**变价池**把它钉住，两条钉子各管一件事、互不混淆：
-#   ① 归属（`test_..._to_new_basket`）：边界那一格记给**新**篮子还是旧篮子
+# **10-06 裁令「修法一」已落地**：`etf_admission.py:1228` 的 `lo` 从 `i + 1` 改成
+# `i + 2`（hi 同批跟着挪，块与块仍首尾相接、不断档），docstring 那句"调仓日 d1 的收益
+# 仍归旧篮子"从**与代码不符**变成**与代码一致**。下面两条钉子随之**反写**：它们现在钉的
+# 是修完的口径，谁把 `lo` 挪回 `i + 1` 就当场红（①行 3 从 −1/16 变 +1/32、行 1 从 0 变
+# +1/16；②行 1 从 0 变 +1/16）。两条各管一件事、互不混淆：
+#   ① 归属（`test_..._to_previous_basket`）：边界那一格记给**上一篮**还是新篮子
 #      —— 分数每 2 行换一次点名对象，两列收益串不同，所以"记给谁"能分辨；
-#   ② 时点（`test_..._needs_the_signal_a_day_early`）：这一格要不要送
-#      —— 分数恒定只点同一只，两臂持有的标的完全相同，差的就是那一格。
-# 注意 `topk_rebalance` 的 docstring 里"调仓日 d1 的收益仍归旧篮子"那句与代码
-# 不符（代码是 `w[lo:hi]` 整段覆盖成新篮子）；本节的读数是**代码**的读数。
+#   ② 时点（`test_..._starts_the_day_after_entry`）：建仓日 d1 那一格归谁
+#      —— 分数恒定只点同一只，两臂持有的标的完全相同，差的就是新篮子头两格真持有的收益。
 
 
 _ROT = pd.bdate_range("2020-01-06", periods=8)
@@ -854,47 +856,49 @@ FAVOR_SWITCH = ["510300", "510300", "510310", "510310",
 FAVOR_A = ["510300"] * 8
 
 
-def test_rebalance_credits_boundary_interval_to_new_basket():
-    """① 归属钉子（**现状钉子，不是验收**）：调仓日 d1 那格记给**新**篮子。
+def test_rebalance_credits_boundary_interval_to_previous_basket():
+    """① 归属钉子（10-06 修法一落地后的口径）：调仓日 d1 那一格记给**上一篮**。
 
-    hold=2、k=1 ⇒ 栅格落在 i=0/2/4，权重写在行 [1,2] / [3,4] / [5,6]：
-        行 1,2 ← 信号日 0 选的 A   行 3,4 ← 信号日 2 选的 B   行 5,6 ← 信号日 4 选的 A
-    行 1/3/5 是 O_s→O_d1：新篮子要到 d1 **开盘**才存在，这段它没持有。
-    把行 3 单独念出来即可分辨"记给谁"：+1/32 是 **B** 的隔日跳空（记给新篮子），
-    若代码把 d1 归旧篮子，这里会是 −1/16（A 的那格）。
-    哪天把 `lo` 改成 `i + 2`，这条会立刻红 ⇒ 那一改是有意的、要连着重建环 2
-    归档基线，不是顺手改掉。
+    hold=2、k=1 ⇒ 栅格落在 i=0/2/4，权重写在行 [2,3] / [4,5] / [6,7]：
+        行 2,3 ← 信号日 0 选的 A   行 4,5 ← 信号日 2 选的 B   行 6,7 ← 信号日 4 选的 A
+    行 3 是 B 的信号日之后那一格（O_2→O_3）：B 要到行 3 **开盘**才买得进，这段手里
+    还是上一篮 A ⇒ 该行归 A 的 −1/16。把行 3 单独念出来即可分辨"记给谁"：
+    −1/16 是 A（上一篮），若 `lo` 被人挪回 `i + 1` 这里就变回 B 的 +1/32 ⇒ 当场红。
+    行 1 也是钉子：那是首个建仓日之前的 O_0→O_1，池子里没人持有 ⇒ 必为 0
+    （`lo = i + 1` 时它是新篮子白拿的 +1/16）。
     """
     gross, s = _gross_on_score(FAVOR_SWITCH)
     assert s["n_rebal"] == 3                       # 三块都在（六道闸门没把夹具吃掉）
-    exp = [0.0, 1 / 16, 1 / 32, 1 / 32, 1 / 16, 1 / 32, 0.0, 0.0]
+    exp = [0.0, 0.0, 1 / 32, -1 / 16, 1 / 16, 0.0, 0.0, 0.0]
     assert gross.to_numpy() == pytest.approx(exp, abs=1e-15)
-    assert gross.iloc[1] == pytest.approx(1 / 16, abs=1e-15)     # A：还没建仓就给了 +1/16
-    assert gross.iloc[3] == pytest.approx(1 / 32, abs=1e-15)     # B：归新篮子（归旧篮子这里是 −1/16）
-    assert gross.abs().sum() == pytest.approx(7 / 32, abs=1e-15)
+    assert gross.iloc[1] == pytest.approx(0.0, abs=1e-15)          # 建仓日之前没人拿
+    assert gross.iloc[3] == pytest.approx(-1 / 16, abs=1e-15)      # A：归上一篮（挪回 i+1 这里是 B 的 +1/32）
+    assert gross.abs().sum() == pytest.approx(5 / 32, abs=1e-15)
 
 
-def test_rebalance_boundary_interval_needs_the_signal_a_day_early():
-    """② 时点钉子：分数恒定只点 A，把分数整体后移一天 ⇒ 那一格才"合法"。
+def test_rebalance_first_credit_starts_the_day_after_entry():
+    """② 时点钉子：分数恒定只点 A ⇒ 新篮子拿的第一格是**建仓日之后**那一格，不是建仓日。
 
-    两臂持有的标的逐行相同（全程 A），唯一区别是行 1/2 归谁：
-      现口径 `lo=i+1`：行 1,2 = A 的 +1/16、+1/32，共 3/32 —— 可 A 的分数要到
-        行 0 收盘才算得出、行 1 开盘才买得进，这两格是白送的；
-      后移一天：行 0 变 NaN ⇒ 首块被跳，行 1,2 归谁都不是（0），从行 3 起两臂
-        逐格相同 ⇒ **差的就是那 3/32**，而且拿掉的正是"买不进去的那段"。
-    这就是 09-29 零复刻复核（`score.shift(1)` 喂官方函数）在同一把小尺子上的读数。
-    若 `lo` 被挪到 `i + 2`，这条同样会红（行 3 会变成 0）⇒ 与上一条一前一后，
-    改哪儿都躲不掉。
+    两臂持有的标的逐行相同（全程 A），唯一区别是新篮子从行几开始拿：
+      修法一之后 `lo=i+2`：行 2,3 = A 的 +1/32、−1/16（A 于行 1 开盘建仓，第一段
+        能拿到的是 O_1→O_2 ⇒ 行 2），而行 1 归 nobody —— 那段 O_0→O_1 要行 0 收盘
+        才算得出分数、行 1 开盘才买得进，本来就拿不到；
+      后移一天：行 0 变 NaN ⇒ 首块被跳，行 2,3 也归零，从行 4 起两臂逐格相同
+        ⇒ 差的正是首块**真持有**的两格（+1/32 与 −1/16，绝对值和 3/32）。
+    ⚠️这个 3/32 与修法前那个 3/32 **同值不同义**：旧口径差的是行 1,2（其中行 1 是
+    白送的跳空），现口径差的是行 2,3（两格都可执行）。所以钉子必须逐格念，
+    只比总额会放过一次口径漂移。
     """
     cur, s_cur = _gross_on_score(FAVOR_A)
     shf, s_shf = _gross_on_score([None] + FAVOR_A[:-1])
     assert s_cur["n_rebal"] == 3 and s_shf["n_rebal"] == 2       # 首块因整行 NaN 被跳
     assert cur.to_numpy() == pytest.approx(
-        [0.0, 1 / 16, 1 / 32, -1 / 16, 0.0, 1 / 32, 0.0, 0.0], abs=1e-15)
+        [0.0, 0.0, 1 / 32, -1 / 16, 0.0, 1 / 32, 0.0, 0.0], abs=1e-15)
     assert shf.to_numpy() == pytest.approx(
-        [0.0, 0.0, 0.0, -1 / 16, 0.0, 1 / 32, 0.0, 0.0], abs=1e-15)
-    assert cur.iloc[1] == pytest.approx(1 / 16, abs=1e-15)       # 白送的那格
-    assert shf.iloc[1] == pytest.approx(0.0, abs=1e-15)          # 拿不到的那段没人拿
-    assert (cur - shf).abs().to_numpy()[3:] == pytest.approx(0.0, abs=1e-15)  # 行 3 起两臂相同
-    assert cur.abs().sum() - shf.abs().sum() == pytest.approx(3 / 32, abs=1e-15)
+        [0.0, 0.0, 0.0, 0.0, 0.0, 1 / 32, 0.0, 0.0], abs=1e-15)
+    assert cur.iloc[1] == pytest.approx(0.0, abs=1e-15)          # 建仓日那格没人拿
+    assert cur.iloc[2] == pytest.approx(1 / 32, abs=1e-15)        # 新篮子拿的第一格＝建仓次日
+    assert (cur - shf).abs().to_numpy()[[0, 1]] == pytest.approx(0.0, abs=1e-15)
+    assert (cur - shf).abs().to_numpy()[4:] == pytest.approx(0.0, abs=1e-15)   # 行 4 起两臂相同
+    assert (cur - shf).abs().iloc[[2, 3]].sum() == pytest.approx(3 / 32, abs=1e-15)
     assert cur.abs().sum() > 1e-9                  # 不许是"两臂全 0 所以都过"的恒真

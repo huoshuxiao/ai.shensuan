@@ -6,13 +6,15 @@
 变价池，本脚本把它俩的牙量出来：同一份测试体在三个臂下各跑一遍。
 
     臂 A  真模块（从 src 正常 import）                       ⇒ 两条都该过
-    臂 B  /tmp 副本，只把 `lo, hi = i + 1, …` 拔成 `i + 2, …`  ⇒ 两条都该红
+    臂 B  /tmp 副本，只把 `lo, hi = i + 2, …` 拔回 `i + 1, …` ⇒ 两条都该红
     臂 C  /tmp 副本，与 src **逐字节相同**（只走同一套装载路径） ⇒ 两条都该过
 
 C 的意义：红必须来自那一行，不能来自"我从 /tmp 加载了一个模块"这件事本身。
 没有 C 的话，B 的红可能是装载方式造的假红（夹具根本没跑到断言）。
 
-判据一行未改：本脚本不碰生产文件、不写 `data/`，副本全在 `temp/tmp_timing_teeth_0930/`。
+⚠️10-06 极性对调过一次：这一行原本钉的是**现状**（`lo = i + 1` 是缺陷、B 臂是"改成
+修法一之后"）；裁令「修法一」落地后生产代码就是 `i + 2`，于是 B 臂换成"拔回 `i + 1`"。
+本脚本不落任何生产改动：不碰生产文件、不写 `data/`，副本全在 `temp/tmp_timing_teeth_0930/`。
 跑法：
     cd etf/v1 && /usr/bin/python3.10 temp/timing_teeth_check_0930.py
 """
@@ -30,11 +32,12 @@ TESTS = os.path.join(V1, "tests")
 WORK = os.path.join(HERE, "tmp_timing_teeth_0930")
 
 ORIG = os.path.join(SRC, "etf_admission.py")
-TARGET_LINE = "    lo, hi = i + 1, min(i + 1 + hold, len(days))"
-PATCHED_LINE = "    lo, hi = i + 2, min(i + 2 + hold, len(days))"
+# 10-06 修法一落地后生产那一行是 `i + 2` ⇒ 要拔的（TARGET）与拔成的（PATCHED）对调
+TARGET_LINE = "    lo, hi = i + 2, min(i + 2 + hold, len(days))"
+PATCHED_LINE = "    lo, hi = i + 1, min(i + 1 + hold, len(days))"
 
-TESTS_TO_RUN = ["test_rebalance_credits_boundary_interval_to_new_basket",
-                "test_rebalance_boundary_interval_needs_the_signal_a_day_early"]
+TESTS_TO_RUN = ["test_rebalance_credits_boundary_interval_to_previous_basket",
+                "test_rebalance_first_credit_starts_the_day_after_entry"]
 
 
 def sha256(path):
@@ -91,11 +94,11 @@ def main():
     os.environ.pop("ETF_LLM_BASE_URL", None)
 
     print("=" * 78)
-    print("负对照 · 第 14 节两条时序钉子的牙（臂 A 真 / 臂 B 拔一行 / 臂 C 逐字节同）")
+    print("负对照 · 第 14 节两条时序钉子的牙（臂 A 真 / 臂 B 拔回一行 / 臂 C 逐字节同）")
     print("=" * 78)
 
     src_copy = os.path.join(WORK, "ea_src_snapshot.py")
-    patch_copy = os.path.join(WORK, "ea_lo_i_plus_2.py")
+    patch_copy = os.path.join(WORK, "ea_lo_back_to_i_plus_1.py")
     ident_copy = os.path.join(WORK, "ea_identical.py")
     shutil.copy2(ORIG, src_copy)
     shutil.copy2(ORIG, ident_copy)
@@ -121,7 +124,7 @@ def main():
     print(f"[副本] B 臂差异行数 = {len(changed)}（− `{TARGET_LINE.strip()}` / + `{PATCHED_LINE.strip()}`）")
     print(f"[副本] C 臂 diff -q rc = {d2.returncode}（0 = 与原件逐字节相同）")
 
-    arms = {"A 真模块": ORIG, "B 拔 lo→i+2": patch_copy, "C 逐字节同": ident_copy}
+    arms = {"A 真模块": ORIG, "B 拔回 lo→i+1": patch_copy, "C 逐字节同": ident_copy}
     results = {}
     for label, path in arms.items():
         print(f"\n---- 臂 {label} ----")
@@ -132,7 +135,7 @@ def main():
 
     # ---- 六格判定 ----
     want = {"A 真模块": ["pass", "pass"],
-            "B 拔 lo→i+2": ["FAIL", "FAIL"],
+            "B 拔回 lo→i+1": ["FAIL", "FAIL"],
             "C 逐字节同": ["pass", "pass"]}
     bad = []
     for label, expects in want.items():

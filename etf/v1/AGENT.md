@@ -478,7 +478,10 @@ PBO 只在 `config_family` 与 `n_configs`（现读 `real`／11）相同的前�
 ⇒ **闸与"每场归档官方候选"是一件事的两半**，只做前半就上线，4 场红里哪 3 场是冤案永远查不了。
 另：`📚 因子库更新: +N` 那行的 N 是 `factor_library.py:89-97` 的 `written`（**老名字追加历史行也算**），
 不是净增键数（10-06 实测日志 `+4 official` vs 库层 official 净增 0）⇒ **这道闸不许拿那行日志当读数，
-必须做库键集合的前后差**。落地顺序与「判红之后是只报还是拦停」两步**待裁**。
+必须做库键集合的前后差**。⚠️ 同样**不许拿库里的 `source` 列当"这一场谁写了它"**：`main.py:337` 的
+`extra={"source": src}` 会经 `factor_library.py:75` 的 `f.update(extra)` 把老键的源改盖成最后写它的那条腿
+（`multi_source_mining.py:224` 那条腿改不动——`batch_upsert` 不转发 `extra`），而 `ic_history` 的行里没有源字段。
+落地顺序与「判红之后是只报还是拦停」两步**待裁**。
 
 ---
 

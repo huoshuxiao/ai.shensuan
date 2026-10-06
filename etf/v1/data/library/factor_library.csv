@@ -80,3 +80,8 @@ delayed_rank_spread,"滚动分位(标准差(收益率,20),120) - 滚动分位(�
 high_gap_rank,"滚动分位((最高价 - 收盘价) / 均线(收盘价, 20), 120)","rank((high - close) / ma(close, 20), 120)",0.0516,1.0255,llm,etf,active,2026-10-06 07:46:12,2026-10-06 07:46:36,2
 high_low_spread_norm,"绝对值(最高价 - 最低价) / (均线(收盘价, 10) + 1e-9)","abs(high - low) / (ma(close, 10) + 1e-9)",0.0236,0.5935,llm,etf,active,2026-10-06 07:46:12,2026-10-06 07:46:36,2
 vol_ma_slope_rank,"滚动分位(差分(均线(成交量, 20), 5), 60)","rank(delta(ma(volume, 20), 5), 60)",0.0223,0.6642,llm,etf,active,2026-10-06 07:46:12,2026-10-06 07:46:36,2
+vol_momentum_spread,"(最高价 - 最低价) / 收盘价 * 差分(成交量, 5) / 均线(数据, ","(high - low) / close * delta(volume, 5) / ma(df, 20)",0.0549,1.2115,llm,etf,active,2026-10-06 08:00:13,2026-10-06 08:00:13,1
+volume_rel_accel,"差分(成交量, 3) / (均线(数据, 20) + 1e-9) * 符号(差分","delta(volume, 3) / (ma(df, 20) + 1e-9) * sign(delta(close, 5))",0.0455,2.9544,llm,etf,active,2026-10-06 08:00:13,2026-10-06 08:00:13,1
+vol_slope_momentum,"滚动均值(差分(成交量, 5), 10) / (均线(数据, 20) + 1e-","ts_mean(delta(volume, 5), 10) / (ma(df, 20) + 1e-9)",-0.0241,-0.7335,llm,etf,active,2026-10-06 08:00:13,2026-10-06 08:00:13,1
+vol_spread_momentum,"(收盘价 - 最低价) / 最高价 * 差分(收盘价, 5) / (均线(数据,","(close - low) / high * delta(close, 5) / (ma(df, 10) + 1e-9)",-0.024,-1.3504,llm,etf,active,2026-10-06 08:00:13,2026-10-06 08:00:13,1
+vol_std_accel,"滚动标准差(成交量, 15) - 滚动均值(标准差(成交量, 10), 20)","ts_std(volume, 15) - ts_mean(std(volume, 10), 20)",0.0216,0.6809,llm,etf,active,2026-10-06 08:00:13,2026-10-06 08:00:13,1
